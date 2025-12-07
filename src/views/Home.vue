@@ -2,33 +2,30 @@
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import SqlBox from '../components/SqlBox.vue'
 import Sidebar from '../components/Sidebar.vue'
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { useCanvasStore } from '../stores/canvas'
 
-const sqlBoxes = ref([
-  { id: 1, x: 100, y: 100, width: 600, height: 500 },
-  { id: 2, x: 750, y: 100, width: 600, height: 500 },
-  { id: 3, x: 100, y: 650, width: 600, height: 500 }
-])
-
-const selectedBoxId = ref(null)
+const canvasStore = useCanvasStore()
+const canvasRef = ref(null)
 
 const addSqlBox = () => {
-  const newBox = {
-    id: Date.now(),
-    x: 100 + Math.random() * 200,
-    y: 100 + Math.random() * 200,
-    width: 600,
-    height: 500
-  }
-  sqlBoxes.value.push(newBox)
+  canvasStore.addBox()
 }
 
 const selectBox = (id) => {
-  selectedBoxId.value = id
+  canvasStore.selectBox(id)
 }
 
 const deselectBox = () => {
-  selectedBoxId.value = null
+  canvasStore.deselectBox()
+}
+
+const handleUpdatePosition = (id, position) => {
+  canvasStore.updateBoxPosition(id, position)
+}
+
+const handleUpdateSize = (id, size) => {
+  canvasStore.updateBoxSize(id, size)
 }
 
 const handleKeyDown = (e) => {
@@ -38,20 +35,23 @@ const handleKeyDown = (e) => {
                    activeElement.tagName === 'TEXTAREA' ||
                    activeElement.classList.contains('cm-content')
 
-  if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBoxId.value !== null && !isTyping) {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && canvasStore.selectedBoxId !== null && !isTyping) {
     // Prevent backspace from navigating back in browser
     e.preventDefault()
-
-    const index = sqlBoxes.value.findIndex(box => box.id === selectedBoxId.value)
-    if (index !== -1) {
-      sqlBoxes.value.splice(index, 1)
-      selectedBoxId.value = null
-    }
+    canvasStore.removeBox(canvasStore.selectedBoxId)
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // Load saved canvas state
+  canvasStore.loadState()
   window.addEventListener('keydown', handleKeyDown)
+
+  // Wait for boxes to render, then fit to view
+  await nextTick()
+  if (canvasRef.value) {
+    canvasRef.value.fitToView()
+  }
 })
 
 onUnmounted(() => {
@@ -73,17 +73,24 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <InfiniteCanvas @canvas-click="deselectBox">
+    <InfiniteCanvas
+      ref="canvasRef"
+      :boxes="canvasStore.boxes"
+      @canvas-click="deselectBox"
+    >
       <SqlBox
-        v-for="box in sqlBoxes"
+        v-for="box in canvasStore.boxes"
         :key="box.id"
         :box-id="box.id"
         :initial-x="box.x"
         :initial-y="box.y"
         :initial-width="box.width"
         :initial-height="box.height"
-        :is-selected="selectedBoxId === box.id"
+        :initial-query="box.query"
+        :is-selected="canvasStore.selectedBoxId === box.id"
         @select="selectBox(box.id)"
+        @update:position="handleUpdatePosition(box.id, $event)"
+        @update:size="handleUpdateSize(box.id, $event)"
       />
     </InfiniteCanvas>
   </div>

@@ -3,6 +3,10 @@ import { ref, onMounted, onUnmounted } from 'vue'
 
 const emit = defineEmits(['canvas-click'])
 
+const props = defineProps({
+  boxes: { type: Array, default: () => [] }
+})
+
 const canvasRef = ref(null)
 const viewportRef = ref(null)
 
@@ -12,6 +16,71 @@ const zoom = ref(1)
 const isPanning = ref(false)
 const isActuallyPanning = ref(false)
 const panStart = ref({ x: 0, y: 0 })
+
+const PADDING = 100 // Padding around boxes in pixels
+
+// Calculate bounding box of all boxes
+const calculateBoundingBox = (boxes) => {
+  if (!boxes || boxes.length === 0) {
+    return { minX: 0, minY: 0, maxX: 800, maxY: 600 }
+  }
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+
+  boxes.forEach(box => {
+    minX = Math.min(minX, box.x)
+    minY = Math.min(minY, box.y)
+    maxX = Math.max(maxX, box.x + box.width)
+    maxY = Math.max(maxY, box.y + box.height)
+  })
+
+  return { minX, minY, maxX, maxY }
+}
+
+// Fit all boxes into view
+const fitToView = () => {
+  if (!canvasRef.value || !props.boxes || props.boxes.length === 0) {
+    return
+  }
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const viewportWidth = rect.width
+  const viewportHeight = rect.height
+
+  const { minX, minY, maxX, maxY } = calculateBoundingBox(props.boxes)
+
+  const contentWidth = maxX - minX
+  const contentHeight = maxY - minY
+
+  // Calculate zoom to fit (with padding)
+  const zoomX = (viewportWidth - PADDING * 2) / contentWidth
+  const zoomY = (viewportHeight - PADDING * 2) / contentHeight
+  const newZoom = Math.min(zoomX, zoomY, 1) // Don't zoom in beyond 1x
+
+  // Clamp zoom to limits
+  const clampedZoom = Math.min(Math.max(newZoom, 0.1), 5)
+
+  // Calculate center of content
+  const contentCenterX = (minX + maxX) / 2
+  const contentCenterY = (minY + maxY) / 2
+
+  // Calculate pan to center content in viewport
+  const newPan = {
+    x: viewportWidth / 2 - contentCenterX * clampedZoom,
+    y: viewportHeight / 2 - contentCenterY * clampedZoom
+  }
+
+  zoom.value = clampedZoom
+  pan.value = newPan
+}
+
+// Expose fitToView method
+defineExpose({
+  fitToView
+})
 
 // Check if element is or is inside a SQL box
 const isOverSqlBox = (element) => {

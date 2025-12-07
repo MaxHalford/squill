@@ -1,0 +1,176 @@
+import { defineStore } from 'pinia'
+import { ref, watch } from 'vue'
+
+const STORAGE_KEY = 'sqlshell_canvas_state'
+
+export const useCanvasStore = defineStore('canvas', () => {
+  const boxes = ref([])
+  const selectedBoxId = ref(null)
+  const nextBoxId = ref(1)
+
+  // Load state from localStorage
+  const loadState = () => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const state = JSON.parse(saved)
+        boxes.value = state.boxes || []
+        nextBoxId.value = state.nextBoxId || 1
+
+        // Ensure all boxes have required properties
+        boxes.value = boxes.value.map(box => ({
+          id: box.id,
+          x: box.x || 100,
+          y: box.y || 100,
+          width: box.width || 600,
+          height: box.height || 500,
+          query: box.query || 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+        }))
+      } else {
+        // Initialize with default boxes if no saved state
+        initializeDefaultBoxes()
+      }
+    } catch (error) {
+      console.error('Failed to load canvas state:', error)
+      initializeDefaultBoxes()
+    }
+  }
+
+  // Initialize with default boxes
+  const initializeDefaultBoxes = () => {
+    boxes.value = [
+      {
+        id: 1,
+        x: 100,
+        y: 100,
+        width: 600,
+        height: 500,
+        query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+      },
+      {
+        id: 2,
+        x: 750,
+        y: 100,
+        width: 600,
+        height: 500,
+        query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+      },
+      {
+        id: 3,
+        x: 100,
+        y: 650,
+        width: 600,
+        height: 500,
+        query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+      }
+    ]
+    nextBoxId.value = 4
+  }
+
+  // Save state to localStorage
+  const saveState = () => {
+    try {
+      const state = {
+        boxes: boxes.value,
+        nextBoxId: nextBoxId.value
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    } catch (error) {
+      console.error('Failed to save canvas state:', error)
+    }
+  }
+
+  // Watch for changes and auto-save
+  watch([boxes, nextBoxId], () => {
+    saveState()
+  }, { deep: true })
+
+  // Add a new SQL box
+  const addBox = () => {
+    const newBox = {
+      id: nextBoxId.value++,
+      x: 100 + Math.random() * 200,
+      y: 100 + Math.random() * 200,
+      width: 600,
+      height: 500,
+      query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+    }
+    boxes.value.push(newBox)
+    return newBox.id
+  }
+
+  // Remove a SQL box
+  const removeBox = (id) => {
+    const index = boxes.value.findIndex(box => box.id === id)
+    if (index !== -1) {
+      boxes.value.splice(index, 1)
+      if (selectedBoxId.value === id) {
+        selectedBoxId.value = null
+      }
+    }
+  }
+
+  // Select a box
+  const selectBox = (id) => {
+    selectedBoxId.value = id
+  }
+
+  // Deselect all boxes
+  const deselectBox = () => {
+    selectedBoxId.value = null
+  }
+
+  // Update box position
+  const updateBoxPosition = (id, position) => {
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      box.x = position.x
+      box.y = position.y
+    }
+  }
+
+  // Update box size
+  const updateBoxSize = (id, size) => {
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      box.width = size.width
+      box.height = size.height
+    }
+  }
+
+  // Update box query
+  const updateBoxQuery = (id, query) => {
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      box.query = query
+    }
+  }
+
+  // Clear all boxes
+  const clearAll = () => {
+    boxes.value = []
+    selectedBoxId.value = null
+    nextBoxId.value = 1
+  }
+
+  // Reset to default state
+  const resetToDefault = () => {
+    initializeDefaultBoxes()
+    selectedBoxId.value = null
+  }
+
+  return {
+    boxes,
+    selectedBoxId,
+    loadState,
+    addBox,
+    removeBox,
+    selectBox,
+    deselectBox,
+    updateBoxPosition,
+    updateBoxSize,
+    updateBoxQuery,
+    clearAll,
+    resetToDefault
+  }
+})
