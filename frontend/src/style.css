@@ -1,0 +1,409 @@
+:root {
+  /* ===== TYPOGRAPHY ===== */
+
+  /* Font Families */
+  --font-family-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* Font Sizes - Modular scale based on 14px base */
+  --font-size-caption: 11px;      /* Captions, metadata */
+  --font-size-body-sm: 12px;      /* Small body text, table data */
+  --font-size-body: 14px;         /* Default body text */
+  --font-size-body-lg: 16px;      /* Large body text */
+  --font-size-heading: 18px;      /* Headings, modal titles */
+
+  /* Line Heights */
+  --line-height-tight: 1.2;       /* Headings, compact UI */
+  --line-height-normal: 1.5;      /* Body text */
+  --line-height-relaxed: 1.75;    /* Comfortable reading */
+
+  /* ===== COLORS ===== */
+
+  /* Surface Colors */
+  --surface-primary: white;       /* Main background */
+  --surface-secondary: #f9fafb;   /* Subtle backgrounds, hover states */
+  --surface-tertiary: #e8e8e8;    /* Deeper backgrounds, active states */
+  --surface-inverse: black;       /* Inverse backgrounds (headers) */
+
+  /* Text Colors */
+  --text-primary: black;          /* Primary text */
+  --text-secondary: #6b7280;      /* Secondary text, metadata */
+  --text-tertiary: #9ca3af;       /* Disabled, placeholder text */
+  --text-inverse: white;          /* Text on dark backgrounds */
+
+  /* Border Colors */
+  --border-primary: black;        /* Primary borders, dividers */
+  --border-secondary: #d1d5db;    /* Subtle borders */
+  --border-tertiary: #eee;        /* Very subtle borders, table row separators */
+  --border-error: #c62828;        /* Error borders */
+
+  /* Semantic Colors */
+  --color-accent: #42b883;        /* Accent color */
+  --color-error: #c62828;         /* Error states */
+  --color-error-bg: #ffebee;      /* Error backgrounds */
+  --color-success: #10b981;       /* Success states */
+  --color-warning: #f59e0b;       /* Warning states */
+  --color-purple: rgb(147, 51, 234);  /* Purple accent for selections and overlays */
+  --color-selection: rgba(147, 51, 234, 0.3);  /* Text selection highlight */
+
+  /* Engine Badge Colors */
+  --color-bigquery: #4285f4;
+  --color-duckdb: #ffc107;
+  --color-postgres: #336791;
+
+  /* Primary action color */
+  --color-primary: #4285f4;
+
+  /* ===== SPACING ===== */
+
+  /* Base spacing unit: 4px */
+  --space-1: 4px;    /* Tight spacing, between related items */
+  --space-2: 8px;    /* Small gaps, compact padding */
+  --space-3: 12px;   /* Default padding, comfortable gaps */
+  --space-4: 16px;   /* Generous padding, section spacing */
+  --space-5: 20px;   /* Large spacing, modal padding */
+  --space-6: 24px;   /* XL spacing, major sections */
+  --space-8: 32px;   /* XXL spacing, page-level gaps */
+
+  /* ===== BORDERS ===== */
+
+  --border-width-thin: 1px;       /* Subtle dividers */
+  --border-width-thick: 2px;      /* Prominent borders, box outlines */
+  --border-radius-none: 0;        /* Sharp corners */
+  --border-radius-sm: 2px;        /* Subtle rounding */
+  --border-radius-md: 4px;        /* Default rounding */
+  --border-radius-lg: 8px;        /* Generous rounding */
+
+  /* ===== SHADOWS ===== */
+
+  --shadow-sm: 2px 2px 0 0 rgba(0, 0, 0, 0.15);     /* Subtle elevation */
+  --shadow-md: 6px 6px 0 0 rgba(0, 0, 0, 0.25);     /* Default elevation */
+  --shadow-lg: 8px 8px 0 0 rgba(0, 0, 0, 0.3);      /* Prominent elevation */
+
+  /* ===== COMPONENT TOKENS ===== */
+
+  /* Box/Window */
+  --box-border-width: var(--border-width-thick);
+  --box-border-color: var(--border-primary);
+  --box-border-radius: var(--border-radius-none);
+  --box-shadow: var(--shadow-md);
+  --box-shadow-selected: var(--shadow-lg);
+  --box-header-bg: var(--surface-inverse);
+  --box-header-text: var(--text-inverse);
+  --box-header-padding: var(--space-2) var(--space-3);
+
+  /* Button */
+  --button-padding: var(--space-1) var(--space-3);
+  --button-border-width: var(--border-width-thin);
+  --button-border-radius: var(--border-radius-none);
+  --button-font-size: var(--font-size-body);
+
+  /* Input */
+  --input-padding: var(--space-2) var(--space-3);
+  --input-border-width: var(--border-width-thin);
+  --input-border-radius: var(--border-radius-none);
+  --input-font-size: var(--font-size-body);
+
+  /* Table - Compact TUI style */
+  --table-cell-padding: 3px 8px;
+  --table-border-width: var(--border-width-thin);
+  --table-font-size: 12px;
+  --table-row-hover-bg: #f5f5f5;
+  --table-row-stripe-bg: #fafafa;
+  --table-header-bg: var(--surface-primary);
+  --table-border-color: #d0d0d0;
+
+  /* Canvas */
+  --canvas-bg: #d4d4d4;
+  --canvas-dot-color: black;
+  --canvas-dot-size: 1.2px;
+  --canvas-dot-spacing: 7px;
+
+  /* Scrollbar */
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.2);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.35);
+
+  /* Editor (CodeMirror) */
+  --editor-bg: white;
+  --editor-selection-bg: #d7d7d7;
+  --editor-active-line-bg: #f5f5f5;
+  --editor-gutter-color: #999;
+
+  /* Syntax highlighting - light mode */
+  --syntax-keyword: #0033b3;
+  --syntax-string: #067d17;
+  --syntax-number: #1750eb;
+  --syntax-comment: #8c8c8c;
+  --syntax-operator: #000000;
+  --syntax-punctuation: #000000;
+  --syntax-function: #00627a;
+  --syntax-type: #000000;
+  --syntax-property: #871094;
+
+  /* Menu/Sidebar */
+  --menu-border-width: var(--border-width-thin);
+  --menu-item-padding: var(--space-2) var(--space-3);
+  --menu-section-padding: var(--space-3);
+
+  /* Dropdown */
+  --dropdown-bg: var(--surface-primary);
+  --dropdown-border: var(--border-width-thin) solid var(--border-primary);
+  --dropdown-border-radius: var(--border-radius-none);
+  --dropdown-shadow: var(--shadow-md);
+  --dropdown-z-index: 2000;
+  --dropdown-item-padding: var(--space-2) var(--space-3);
+  --dropdown-item-hover-bg: var(--surface-secondary);
+  --dropdown-item-border: var(--border-width-thin) solid var(--border-secondary);
+
+  /* Modal */
+  --modal-overlay-bg: color-mix(in srgb, var(--color-purple) 10%, transparent);
+  --modal-overlay-blur: 8px;
+  --modal-z-index: 10001;
+
+  /* Resize Handles */
+  --handle-size: 8px;
+
+  /* Sticky Note Colors */
+  --sticky-note-bg: #fffde7;
+  --sticky-note-border: #e0d87a;
+  --sticky-note-text: #5D4037;
+
+  /* Success background */
+  --color-success-bg: rgba(16, 185, 129, 0.1);
+
+  /* Inverted section borders (for dark sections in light mode) */
+  --border-on-inverse: rgba(255, 255, 255, 0.2);
+  --border-on-inverse-strong: rgba(255, 255, 255, 0.4);
+}
+
+/* ===== DARK MODE ===== */
+html.dark {
+  /* Surface Colors - inverted palette */
+  --surface-primary: #1a1a1a;
+  --surface-secondary: #242424;
+  --surface-tertiary: #333333;
+  --surface-inverse: #e8e8e8;
+
+  /* Text Colors */
+  --text-primary: #f0f0f0;
+  --text-secondary: #a0a0a0;
+  --text-tertiary: #666666;
+  --text-inverse: #1a1a1a;
+
+  /* Border Colors */
+  --border-primary: #555555;
+  --border-secondary: #3a3a3a;
+  --border-tertiary: #2a2a2a;
+  --border-error: #ef5350;
+
+  /* Semantic Colors - adjusted for dark backgrounds */
+  --color-error: #ef5350;
+  --color-error-bg: rgba(239, 83, 80, 0.15);
+  --color-success: #4ade80;
+  --color-success-bg: rgba(74, 222, 128, 0.15);
+  --color-warning: #fbbf24;
+  --color-selection: rgba(147, 51, 234, 0.4);
+  --color-primary: #64b5f6;
+
+  /* Table */
+  --table-row-hover-bg: #2a2a2a;
+  --table-row-stripe-bg: #222222;
+  --table-header-bg: #1a1a1a;
+  --table-border-color: #3a3a3a;
+
+  /* Canvas - darker dotted background */
+  --canvas-bg: #2a2a2a;
+  --canvas-dot-color: #444444;
+
+  /* Scrollbar */
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
+
+  /* Editor */
+  --editor-bg: #1e1e1e;
+  --editor-selection-bg: #3a3a5a;
+  --editor-active-line-bg: #2a2a2a;
+  --editor-gutter-color: #666666;
+
+  /* Syntax highlighting - dark mode */
+  --syntax-keyword: #569cd6;
+  --syntax-string: #ce9178;
+  --syntax-number: #b5cea8;
+  --syntax-comment: #6a9955;
+  --syntax-operator: #d4d4d4;
+  --syntax-punctuation: #d4d4d4;
+  --syntax-function: #dcdcaa;
+  --syntax-type: #4ec9b0;
+  --syntax-property: #9cdcfe;
+
+  /* Shadows - more prominent on dark backgrounds */
+  --shadow-sm: 2px 2px 0 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 6px 6px 0 0 rgba(0, 0, 0, 0.5);
+  --shadow-lg: 8px 8px 0 0 rgba(0, 0, 0, 0.6);
+
+  /* Sticky Note Colors - dark variant */
+  --sticky-note-bg: #3d3926;
+  --sticky-note-border: #5a5340;
+  --sticky-note-text: #d4c87a;
+
+  /* Inverted section borders (for light sections in dark mode) */
+  --border-on-inverse: rgba(0, 0, 0, 0.2);
+  --border-on-inverse-strong: rgba(0, 0, 0, 0.4);
+
+  /* Box/Window - keep headers dark for contrast */
+  --box-header-bg: #333333;
+  --box-header-text: #f0f0f0;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-ui);
+  line-height: var(--line-height-normal);
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--surface-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Column resize cursor override */
+body.resizing-column,
+body.resizing-column * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* ===== DROPDOWN UTILITIES ===== */
+
+/* Base dropdown container */
+.dropdown-menu {
+  position: absolute;
+  background: var(--dropdown-bg);
+  border: var(--dropdown-border);
+  border-radius: var(--dropdown-border-radius);
+  box-shadow: var(--dropdown-shadow);
+  z-index: var(--dropdown-z-index);
+}
+
+/* Standard dropdown item */
+.dropdown-menu-item {
+  width: 100%;
+  display: block;
+  padding: var(--dropdown-item-padding);
+  background: transparent;
+  border: none;
+  border-bottom: var(--dropdown-item-border);
+  text-align: left;
+  font-size: var(--font-size-body-sm);
+  font-family: var(--font-family-ui);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.dropdown-menu-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-menu-item:hover {
+  background: var(--dropdown-item-hover-bg);
+}
+
+/* Dropdown animation - appears below trigger (slides down) */
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* Dropdown animation - appears above trigger (slides up) */
+.dropdown-up-enter-active,
+.dropdown-up-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.dropdown-up-enter-from,
+.dropdown-up-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* ===== TOOLTIP ===== */
+
+.retro-tooltip {
+  position: fixed;
+  z-index: 100000;
+  padding: 4px 8px;
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+  white-space: pre-line;
+  pointer-events: none;
+  border: var(--border-width-thin) solid var(--border-primary);
+  box-shadow: 2px 2px 0 0 rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.1s ease, transform 0.1s ease;
+  display: none;
+}
+
+.retro-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ===== MODAL UTILITIES ===== */
+
+/* Base modal overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--modal-overlay-bg);
+  backdrop-filter: blur(var(--modal-overlay-blur));
+  -webkit-backdrop-filter: blur(var(--modal-overlay-blur));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--modal-z-index);
+  padding: var(--space-4);
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <script>
+      (function() {
+        try {
+          var settings = JSON.parse(localStorage.getItem('squill-settings') || '{}');
+          var theme = settings.themePreference || 'system';
+          if (theme === 'system') {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.classList.add(theme);
+        } catch (e) {
+          document.documentElement.classList.add('light');
+        }
+      })();
+    </script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✍️</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="google-site-verification" content="7DfdWB8AILKs4joDJC7JWoPQt06z3RMXAb-OpQMt0_k" />
+    <meta name="description" content="Squill is a browser-based SQL editor and data exploration tool. Run SQL queries on CSV files and databases directly in your browser with DuckDB. No data leaves your device." />
+    <meta name="keywords" content="SQL editor, DuckDB, browser SQL, data exploration, CSV viewer, database tool" />
+    <meta name="author" content="Max Halford" />
+    <meta name="application-name" content="Squill" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Squill - Browser-based SQL Editor" />
+    <meta property="og:description" content="Run SQL queries on CSV files and databases directly in your browser. No data leaves your device." />
+    <meta property="og:url" content="https://squill.dev" />
+    <meta property="og:site_name" content="Squill" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://squill.dev/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Squill - Browser-based SQL Editor for data exploration" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Squill - Browser-based SQL Editor" />
+    <meta name="twitter:description" content="Run SQL queries on CSV files and databases directly in your browser. No data leaves your device." />
+    <meta name="twitter:image" content="https://squill.dev/og-image.png" />
+    <meta name="twitter:image:alt" content="Squill - Browser-based SQL Editor for data exploration" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Patrick+Hand+SC&display=swap" rel="stylesheet">
+    <title>Squill | SQL editor</title>
+    <!-- Paddle.js for checkout -->
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "name": "squill",
+  "private": false,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite-ssg build",
+    "preview": "vite preview",
+    "type-check": "vue-tsc --noEmit",
+    "lint": "eslint . --ext .vue,.ts,.js,.tsx",
+    "lint:fix": "eslint . --ext .vue,.ts,.js,.tsx --fix",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.0",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@duckdb/duckdb-wasm": "^1.28.0",
+    "codemirror": "^6.0.2",
+    "marked": "^17.0.1",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.24",
+    "vue-router": "^4.6.3",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.3",
+    "jsdom": "^26.0.0",
+    "vitest": "^3.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.50.1",
+    "@typescript-eslint/parser": "^8.50.1",
+    "@unhead/vue": "^2.1.1",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "eslint": "^9.39.2",
+    "eslint-plugin-vue": "^9.33.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4",
+    "vite-ssg": "^28.2.2",
+    "vue-tsc": "^2.2.12"
+  }
+}
