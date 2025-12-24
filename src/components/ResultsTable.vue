@@ -6,8 +6,12 @@ const props = defineProps({
   error: { type: String, default: null }
 })
 
+// Configuration
+const ZOOM_MODIFIER_KEY = 'ctrlKey' // Can be 'ctrlKey', 'metaKey', 'altKey', or 'shiftKey'
+
 const currentPage = ref(1)
 const pageSize = ref(10)
+const zoomLevel = ref(1)
 
 const columns = computed(() => {
   if (!props.results || props.results.length === 0) return []
@@ -45,19 +49,53 @@ const resetPagination = () => {
   currentPage.value = 1
 }
 
+// Zoom functionality
+const handleWheel = (e) => {
+  if (e[ZOOM_MODIFIER_KEY]) {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? -0.1 : 0.1
+    zoomLevel.value = Math.max(0.5, Math.min(3, zoomLevel.value + delta))
+  }
+}
+
 defineExpose({
   resetPagination
 })
 </script>
 
 <template>
-  <div class="results-section" @mousedown.stop>
+  <div class="results-section">
     <div v-if="error" class="error-banner" @click.stop>
       {{ error }}
     </div>
-    <div class="results-header">
-      <span class="results-title">Results{{ results ? ` (${results.length} rows)` : '' }}</span>
-      <div class="pagination" v-if="results && results.length > 0">
+    <div
+      class="table-container"
+      @click.stop
+      @wheel="handleWheel"
+    >
+      <table
+        v-if="results && results.length > 0"
+        class="results-table"
+        :style="{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left' }"
+      >
+        <thead>
+          <tr>
+            <th v-for="column in columns" :key="column">{{ column }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(row, index) in paginatedData" :key="`row-${currentPage}-${index}`">
+            <td v-for="column in columns" :key="column">{{ row[column] }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else-if="results && results.length === 0" class="empty-state">
+        No results found
+      </div>
+    </div>
+    <div v-if="results && results.length > 0" class="results-footer">
+      <span class="results-title">Results ({{ results.length }} rows)</span>
+      <div class="pagination">
         <button
           @click="prevPage"
           :disabled="currentPage === 1"
@@ -73,23 +111,6 @@ defineExpose({
         >
           →
         </button>
-      </div>
-    </div>
-    <div class="table-container" @click.stop>
-      <table v-if="results && results.length > 0" class="results-table">
-        <thead>
-          <tr>
-            <th v-for="column in columns" :key="column">{{ column }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(row, index) in paginatedData" :key="`row-${currentPage}-${index}`">
-            <td v-for="column in columns" :key="column">{{ row[column] }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div v-else-if="results && results.length === 0" class="empty-state">
-        No results found
       </div>
     </div>
   </div>
@@ -108,17 +129,17 @@ defineExpose({
 .error-banner {
   padding: 10px 12px;
   background: #ffebee;
-  border-bottom: 2px solid #c62828;
+  border-bottom: 1px solid #c62828;
   color: #c62828;
   font-size: 12px;
   font-weight: bold;
   flex-shrink: 0;
 }
 
-.results-header {
+.results-footer {
   padding: 8px 12px;
   background: white;
-  border-bottom: 2px solid black;
+  border-top: 1px solid black;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -140,7 +161,7 @@ defineExpose({
 .pagination-btn {
   background: white;
   color: black;
-  border: 2px solid black;
+  border: 1px solid black;
   padding: 4px 8px;
   border-radius: 0;
   cursor: pointer;
@@ -199,7 +220,7 @@ defineExpose({
   text-align: left;
   padding: 8px 12px;
   font-weight: bold;
-  border-bottom: 2px solid black;
+  border-bottom: 1px solid black;
   white-space: nowrap;
   background: white;
   position: sticky;
@@ -208,12 +229,19 @@ defineExpose({
 
 .results-table td {
   padding: 8px 12px;
-  border-bottom: 1px solid #ddd;
   white-space: nowrap;
 }
 
-.results-table tbody tr:hover {
+.results-table tbody tr:nth-child(even) {
   background: #f5f5f5;
+}
+
+.results-table tbody tr:nth-child(odd) {
+  background: white;
+}
+
+.results-table tbody tr:hover {
+  background: #e8e8e8;
 }
 
 .empty-state {

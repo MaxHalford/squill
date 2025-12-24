@@ -21,10 +21,12 @@ const retroTheme = EditorView.theme({
     backgroundColor: 'white',
     color: 'black',
     fontFamily: '"JetBrains Mono", monospace',
+    textAlign: 'left',
   },
   '.cm-content': {
     caretColor: 'black',
     fontFamily: '"JetBrains Mono", monospace',
+    textAlign: 'left',
   },
   '.cm-cursor, .cm-dropCursor': {
     borderLeftColor: 'black',
@@ -39,15 +41,18 @@ const retroTheme = EditorView.theme({
     backgroundColor: 'white',
     color: '#999',
     border: 'none',
+    paddingRight: '8px',
   },
   '.cm-activeLineGutter': {
     backgroundColor: '#f5f5f5',
   },
   '.cm-scroller': {
     fontFamily: '"JetBrains Mono", monospace',
+    textAlign: 'left',
   },
   '.cm-line': {
     fontFamily: '"JetBrains Mono", monospace',
+    textAlign: 'left',
   },
 }, { dark: false })
 
@@ -70,7 +75,6 @@ onMounted(() => {
       basicSetup,
       sql(),
       retroTheme,
-      EditorView.lineWrapping,
       runShortcut,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
@@ -99,7 +103,6 @@ defineExpose({
   <div
     class="query-editor-wrapper"
     :style="{ height: `${height}px` }"
-    @mousedown.stop
   >
     <div
       ref="editorRef"
@@ -121,6 +124,8 @@ defineExpose({
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
+  cursor: text;
+  user-select: text;
 }
 
 .query-editor {

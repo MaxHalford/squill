@@ -42,6 +42,10 @@ const handleBoxClick = () => {
 
 // Handle dragging
 const handleHeaderMouseDown = (e) => {
+  // Only start dragging if clicking on the header itself
+  if (!headerRef.value || !headerRef.value.contains(e.target)) {
+    return
+  }
   e.stopPropagation()
   emit('select')
   isDragging.value = true
@@ -152,7 +156,7 @@ onUnmounted(() => {
       <slot name="header"></slot>
     </div>
 
-    <div class="box-content">
+    <div class="box-content" @mousedown.stop>
       <slot></slot>
     </div>
 
