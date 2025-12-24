@@ -187,6 +187,25 @@ export const useCanvasStore = defineStore('canvas', () => {
     selectedBoxId.value = null
   }
 
+  // Copy a box (duplicate with offset)
+  const copyBox = (id) => {
+    const originalBox = boxes.value.find(b => b.id === id)
+    if (!originalBox) return null
+
+    const OFFSET = 30 // Offset for copied box
+    const newBox = {
+      id: nextBoxId.value++,
+      x: originalBox.x + OFFSET,
+      y: originalBox.y + OFFSET,
+      width: originalBox.width,
+      height: originalBox.height,
+      zIndex: getMaxZIndex() + 1,
+      query: originalBox.query
+    }
+    boxes.value.push(newBox)
+    return newBox.id
+  }
+
   return {
     boxes,
     selectedBoxId,
@@ -201,6 +220,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     updateBoxZIndex,
     getMaxZIndex,
     clearAll,
-    resetToDefault
+    resetToDefault,
+    copyBox
   }
 })

@@ -7,6 +7,7 @@ import { useCanvasStore } from '../stores/canvas'
 
 const canvasStore = useCanvasStore()
 const canvasRef = ref(null)
+const copiedBoxId = ref(null)
 
 const addSqlBox = () => {
   canvasStore.addBox()
@@ -29,16 +30,34 @@ const handleUpdateSize = (id, size) => {
 }
 
 const handleKeyDown = (e) => {
-  // Don't delete if user is typing in an input/textarea or CodeMirror editor
+  // Don't handle shortcuts if user is typing in an input/textarea or CodeMirror editor
   const activeElement = document.activeElement
   const isTyping = activeElement.tagName === 'INPUT' ||
                    activeElement.tagName === 'TEXTAREA' ||
                    activeElement.classList.contains('cm-content')
 
+  // Delete/Backspace to remove selected box
   if ((e.key === 'Delete' || e.key === 'Backspace') && canvasStore.selectedBoxId !== null && !isTyping) {
     // Prevent backspace from navigating back in browser
     e.preventDefault()
     canvasStore.removeBox(canvasStore.selectedBoxId)
+  }
+
+  // Ctrl+C / Cmd+C to copy selected box
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && canvasStore.selectedBoxId !== null && !isTyping) {
+    e.preventDefault()
+    copiedBoxId.value = canvasStore.selectedBoxId
+    console.log('Box copied:', copiedBoxId.value)
+  }
+
+  // Ctrl+V / Cmd+V to paste copied box
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v' && copiedBoxId.value !== null && !isTyping) {
+    e.preventDefault()
+    const newBoxId = canvasStore.copyBox(copiedBoxId.value)
+    console.log('Box pasted:', newBoxId)
+    if (newBoxId) {
+      canvasStore.selectBox(newBoxId)
+    }
   }
 }
 
@@ -65,12 +84,6 @@ onUnmounted(() => {
 
     <div class="controls">
       <button @click="addSqlBox" class="add-button">+ Add SQL Box</button>
-      <div class="instructions">
-        <span>Drag to pan</span>
-        <span>Scroll to zoom (Shift to override)</span>
-        <span>Delete to remove</span>
-        <span>Drag splitter to resize</span>
-      </div>
     </div>
 
     <InfiniteCanvas
@@ -134,20 +147,5 @@ onUnmounted(() => {
 
 .add-button:active {
   transform: translateY(1px);
-}
-
-.instructions {
-  display: flex;
-  gap: 15px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 8px 16px;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.instructions span {
-  font-size: 12px;
-  color: #666;
-  font-family: monospace;
 }
 </style>
