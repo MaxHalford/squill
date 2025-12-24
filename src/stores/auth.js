@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
-const STORAGE_KEY = 'sqlshell-auth'
+const STORAGE_KEY = 'squill-auth'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
 // Token validity: 7 days
@@ -344,6 +344,11 @@ export const useAuthStore = defineStore('auth', () => {
 
     const data = await response.json()
 
+    // Extract statistics from BigQuery response
+    const stats = {
+      totalBytesProcessed: data.totalBytesProcessed || '0'
+    }
+
     // Transform BigQuery response to table format
     if (data.schema && data.rows) {
       const fieldNames = data.schema.fields.map(f => f.name)
@@ -354,10 +359,10 @@ export const useAuthStore = defineStore('auth', () => {
         })
         return obj
       })
-      return rows
+      return { rows, stats }
     }
 
-    return []
+    return { rows: [], stats }
   }
 
   return {

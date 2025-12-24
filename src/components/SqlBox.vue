@@ -35,6 +35,7 @@ const dragStart = ref({ y: 0 })
 // Query state
 const queryText = ref(props.initialQuery)
 const queryResults = ref(null)
+const queryStats = ref(null)
 const isRunning = ref(false)
 const error = ref(null)
 
@@ -53,14 +54,26 @@ const runQuery = async () => {
 
   try {
     const query = editorRef.value.getQuery()
-    const results = await authStore.runQuery(query)
-    queryResults.value = results
+    const startTime = performance.now()
+    const result = await authStore.runQuery(query)
+    const endTime = performance.now()
+
+    // Calculate execution time
+    const executionTimeMs = endTime - startTime
+
+    queryResults.value = result.rows
+    queryStats.value = {
+      ...result.stats,
+      executionTimeMs: Math.round(executionTimeMs)
+    }
+
     if (resultsRef.value) {
       resultsRef.value.resetPagination()
     }
   } catch (err) {
     error.value = err.message || 'Query execution failed'
     queryResults.value = null
+    queryStats.value = null
   } finally {
     isRunning.value = false
   }
@@ -154,6 +167,7 @@ onUnmounted(() => {
     <ResultsTable
       ref="resultsRef"
       :results="queryResults"
+      :stats="queryStats"
       :error="error"
     />
   </ResizableBox>

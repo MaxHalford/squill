@@ -150,29 +150,35 @@ defineExpose({
 
 .run-button {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
-  background: white;
-  color: black;
-  border: 1px solid black;
-  padding: 4px 10px;
-  border-radius: 0;
-  font-size: 14px;
+  bottom: var(--spacing-sm);
+  right: var(--spacing-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-base);
   font-weight: bold;
+  font-family: var(--font-ui);
   cursor: pointer;
   transition: none;
   line-height: 1;
   z-index: 10;
+  outline: none;
 }
 
 .run-button:hover:not(:disabled) {
-  background: #f0f0f0;
+  background: var(--bg-secondary);
+}
+
+.run-button:focus {
+  outline: none;
 }
 
 .run-button:disabled {
-  background: #ccc;
-  color: #666;
-  border-color: #999;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
   cursor: not-allowed;
+  opacity: 0.5;
 }
 </style>

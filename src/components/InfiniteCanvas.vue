@@ -80,9 +80,25 @@ const fitToView = () => {
   pan.value = newPan
 }
 
-// Expose fitToView method
+// Get viewport center in canvas coordinates
+const getViewportCenter = () => {
+  if (!canvasRef.value) return { x: 400, y: 300 }
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const viewportCenterX = rect.width / 2
+  const viewportCenterY = rect.height / 2
+
+  // Convert viewport coordinates to canvas coordinates
+  const canvasX = (viewportCenterX - pan.value.x) / zoom.value
+  const canvasY = (viewportCenterY - pan.value.y) / zoom.value
+
+  return { x: canvasX, y: canvasY }
+}
+
+// Expose methods
 defineExpose({
-  fitToView
+  fitToView,
+  getViewportCenter
 })
 
 // Check if element is or is inside a SQL box

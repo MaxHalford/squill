@@ -10,7 +10,9 @@ const canvasRef = ref(null)
 const copiedBoxId = ref(null)
 
 const addSqlBox = () => {
-  canvasStore.addBox()
+  // Get the center of the current viewport in canvas coordinates
+  const center = canvasRef.value?.getViewportCenter()
+  canvasStore.addBox(center)
 }
 
 const selectBox = (id) => {
@@ -155,19 +157,23 @@ onUnmounted(() => {
   border: var(--border-width) solid var(--border-color);
   border-radius: var(--border-radius);
   padding: var(--spacing-sm) var(--spacing-xl);
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   cursor: pointer;
-  box-shadow: var(--shadow);
   transition: none;
+  outline: none;
+  font-family: var(--font-ui);
 }
 
 .add-button:hover {
-  box-shadow: var(--shadow-lg);
+  background: var(--bg-secondary);
+}
+
+.add-button:focus {
+  outline: none;
 }
 
 .add-button:active {
-  transform: translate(2px, 2px);
-  box-shadow: 4px 4px 0 0 rgba(0, 0, 0, 0.25);
+  background: var(--bg-secondary);
 }
 </style>

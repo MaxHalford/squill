@@ -3,8 +3,28 @@ import { ref, computed } from 'vue'
 
 const props = defineProps({
   results: { type: Array, default: null },
+  stats: { type: Object, default: null },
   error: { type: String, default: null }
 })
+
+// Format bytes to human-readable format
+const formatBytes = (bytes) => {
+  if (!bytes || bytes === '0') return '0 B'
+  const num = parseInt(bytes)
+  if (num === 0) return '0 B'
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const k = 1024
+  const i = Math.floor(Math.log(num) / Math.log(k))
+  return Math.round(num / Math.pow(k, i) * 100) / 100 + ' ' + units[i]
+}
+
+// Format milliseconds to human-readable format
+const formatTime = (ms) => {
+  if (!ms) return '0ms'
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(2)}s`
+}
 
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -76,7 +96,17 @@ defineExpose({
       </div>
     </div>
     <div v-if="results && results.length > 0" class="results-footer">
-      <span class="results-title">Results ({{ results.length }} rows)</span>
+      <div class="results-info">
+        <span class="results-title">{{ results.length }} {{ results.length === 1 ? 'row' : 'rows' }}</span>
+        <span v-if="stats" class="stats-divider">•</span>
+        <span v-if="stats && stats.executionTimeMs" class="results-stat">
+          {{ formatTime(stats.executionTimeMs) }}
+        </span>
+        <span v-if="stats && stats.totalBytesProcessed" class="stats-divider">•</span>
+        <span v-if="stats && stats.totalBytesProcessed" class="results-stat">
+          {{ formatBytes(stats.totalBytesProcessed) }} processed
+        </span>
+      </div>
       <div class="pagination">
         <button
           @click.stop="prevPage"
@@ -128,9 +158,27 @@ defineExpose({
   flex-shrink: 0;
 }
 
+.results-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .results-title {
-  color: black;
-  font-size: 12px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: bold;
+}
+
+.results-stat {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: normal;
+}
+
+.stats-divider {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
   font-weight: bold;
 }
 
@@ -141,30 +189,36 @@ defineExpose({
 }
 
 .pagination-btn {
-  background: white;
-  color: black;
-  border: 1px solid black;
-  padding: 4px 8px;
-  border-radius: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: bold;
   transition: none;
+  outline: none;
+  font-family: var(--font-ui);
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background: #f0f0f0;
+  background: var(--bg-secondary);
+}
+
+.pagination-btn:focus {
+  outline: none;
 }
 
 .pagination-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
-  background: #e0e0e0;
+  background: var(--bg-secondary);
 }
 
 .page-info {
-  color: black;
-  font-size: 12px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
   font-weight: bold;
   min-width: 50px;
   text-align: center;
@@ -182,16 +236,16 @@ defineExpose({
   width: 100%;
   border-collapse: collapse;
   border-spacing: 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-family: var(--font-results);
-  color: black;
+  color: var(--text-primary);
 }
 
 .results-table thead {
   position: sticky;
   top: 0;
-  background: white;
-  z-index: 2;
+  background: var(--bg-primary);
+  z-index: 10;
 }
 
 .results-table thead tr {
@@ -202,11 +256,13 @@ defineExpose({
   text-align: left;
   padding: 8px 12px;
   font-weight: bold;
-  border-bottom: 1px solid black;
   white-space: nowrap;
-  background: white;
+  background: var(--bg-primary);
   position: sticky;
-  top: 0;
+  top: -1px;
+  z-index: 10;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .results-table td {

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
-const STORAGE_KEY = 'sqlshell_canvas_state'
+const STORAGE_KEY = 'squill_canvas_state'
 
 export const useCanvasStore = defineStore('canvas', () => {
   const boxes = ref([])
@@ -151,12 +151,17 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Add a new SQL box
-  const addBox = () => {
+  const addBox = (position = null) => {
     saveToUndoStack()
+
+    // Default position if none provided
+    const defaultX = 100 + Math.random() * 200
+    const defaultY = 100 + Math.random() * 200
+
     const newBox = {
       id: nextBoxId.value++,
-      x: 100 + Math.random() * 200,
-      y: 100 + Math.random() * 200,
+      x: position ? position.x - 300 : defaultX, // Center the 600px wide box
+      y: position ? position.y - 250 : defaultY, // Center the 500px tall box
       width: 600,
       height: 500,
       zIndex: getMaxZIndex() + 1,

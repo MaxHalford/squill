@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "sqlshell",
+      "name": "squill",
       "dependencies": {
         "vue": "^3.5.24",
       },
