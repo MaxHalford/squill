@@ -9,6 +9,15 @@ const isSigningIn = ref(false)
 const projects = ref([])
 const isLoadingProjects = ref(false)
 
+// Schema browser state
+const datasets = ref([])
+const selectedDataset = ref('')
+const tables = ref([])
+const expandedTables = ref({})
+const tableSchemas = ref({})
+const isLoadingDatasets = ref(false)
+const isLoadingTables = ref(false)
+
 const toggleSidebar = () => {
   isOpen.value = !isOpen.value
 }
@@ -45,14 +54,89 @@ const loadProjects = async () => {
   }
 }
 
-const handleProjectChange = (event) => {
+const handleProjectChange = async (event) => {
   authStore.setProjectId(event.target.value)
+  // Load datasets for the new project
+  if (event.target.value) {
+    await loadDatasets()
+  }
+}
+
+// Load datasets for current project
+const loadDatasets = async () => {
+  if (!authStore.projectId) return
+
+  try {
+    isLoadingDatasets.value = true
+    datasets.value = await authStore.fetchDatasets()
+    // Clear tables and selection when datasets change
+    selectedDataset.value = ''
+    tables.value = []
+    expandedTables.value = {}
+  } catch (err) {
+    console.error('Failed to load datasets:', err)
+  } finally {
+    isLoadingDatasets.value = false
+  }
+}
+
+// Handle dataset change
+const handleDatasetChange = async (event) => {
+  selectedDataset.value = event.target.value
+  if (selectedDataset.value) {
+    await loadTables()
+  } else {
+    tables.value = []
+    expandedTables.value = {}
+  }
+}
+
+// Load tables for selected dataset
+const loadTables = async () => {
+  if (!selectedDataset.value) return
+
+  try {
+    isLoadingTables.value = true
+    const datasetId = selectedDataset.value.split('.').pop() // Get dataset ID from full reference
+    tables.value = await authStore.fetchTables(datasetId)
+    expandedTables.value = {}
+  } catch (err) {
+    console.error('Failed to load tables:', err)
+  } finally {
+    isLoadingTables.value = false
+  }
+}
+
+// Toggle table expansion and load schema if needed
+const toggleTable = async (tableRef) => {
+  const tableId = tableRef.tableId.split('.').pop()
+  const datasetId = selectedDataset.value.split('.').pop()
+  const key = `${datasetId}.${tableId}`
+
+  if (expandedTables.value[key]) {
+    expandedTables.value[key] = false
+  } else {
+    expandedTables.value[key] = true
+
+    // Load schema if not already loaded
+    if (!tableSchemas.value[key]) {
+      try {
+        const schema = await authStore.fetchTableSchema(datasetId, tableId)
+        tableSchemas.value[key] = schema
+      } catch (err) {
+        console.error('Failed to load table schema:', err)
+      }
+    }
+  }
 }
 
 onMounted(() => {
-  // If already authenticated, load projects
+  // If already authenticated, load projects and datasets
   if (authStore.isAuthenticated) {
     loadProjects()
+    if (authStore.projectId) {
+      loadDatasets()
+    }
   }
 })
 </script>
@@ -142,6 +226,74 @@ onMounted(() => {
 
           <div v-if="error" class="error-message">
             {{ error }}
+          </div>
+        </section>
+
+        <!-- Schema Browser -->
+        <section v-if="authStore.isAuthenticated && authStore.projectId" class="config-section">
+          <h3>Schema Browser</h3>
+
+          <!-- Dataset selector -->
+          <div class="dataset-selector">
+            <label for="dataset-select" class="dataset-label">
+              Dataset
+            </label>
+            <select
+              id="dataset-select"
+              v-model="selectedDataset"
+              @change="handleDatasetChange"
+              class="dataset-select"
+              :disabled="isLoadingDatasets"
+            >
+              <option value="">
+                {{ isLoadingDatasets ? 'Loading datasets...' : 'Select a dataset' }}
+              </option>
+              <option
+                v-for="dataset in datasets"
+                :key="dataset.datasetReference.datasetId"
+                :value="dataset.datasetReference.datasetId"
+              >
+                {{ dataset.datasetReference.datasetId }}
+              </option>
+            </select>
+          </div>
+
+          <!-- Tables list -->
+          <div v-if="selectedDataset" class="tables-list">
+            <div v-if="isLoadingTables" class="loading-state">
+              Loading tables...
+            </div>
+            <div v-else-if="tables.length === 0" class="empty-state">
+              No tables found
+            </div>
+            <div v-else>
+              <div
+                v-for="table in tables"
+                :key="table.tableReference.tableId"
+                class="table-item"
+              >
+                <div
+                  class="table-header"
+                  @click="toggleTable(table.tableReference)"
+                >
+                  <span class="table-caret">{{ expandedTables[`${selectedDataset}.${table.tableReference.tableId.split('.').pop()}`] ? '▼' : '▶' }}</span>
+                  <span class="table-name">{{ table.tableReference.tableId.split('.').pop() }}</span>
+                </div>
+                <div
+                  v-if="expandedTables[`${selectedDataset}.${table.tableReference.tableId.split('.').pop()}`]"
+                  class="columns-list"
+                >
+                  <div
+                    v-for="column in tableSchemas[`${selectedDataset}.${table.tableReference.tableId.split('.').pop()}`] || []"
+                    :key="column.name"
+                    class="column-item"
+                  >
+                    <span class="column-name">{{ column.name }}</span>
+                    <span class="column-type">{{ column.type }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -402,5 +554,130 @@ h3 {
   border-radius: 4px;
   color: #dc2626;
   font-size: 13px;
+}
+
+/* Schema Browser */
+.dataset-selector {
+  margin-bottom: 16px;
+}
+
+.dataset-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.dataset-select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  color: #1f2937;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.dataset-select:hover:not(:disabled) {
+  border-color: #9ca3af;
+}
+
+.dataset-select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.dataset-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.tables-list {
+  margin-top: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #f9fafb;
+}
+
+.loading-state,
+.empty-state {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.table-item {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.table-item:last-child {
+  border-bottom: none;
+}
+
+.table-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  user-select: none;
+}
+
+.table-header:hover {
+  background: #f3f4f6;
+}
+
+.table-caret {
+  font-size: 10px;
+  color: #6b7280;
+  width: 12px;
+  display: inline-block;
+}
+
+.table-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  font-family: monospace;
+}
+
+.columns-list {
+  padding: 8px 12px 8px 32px;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+}
+
+.column-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.column-item:last-child {
+  border-bottom: none;
+}
+
+.column-name {
+  font-family: monospace;
+  color: #374151;
+  font-weight: 500;
+}
+
+.column-type {
+  font-family: monospace;
+  color: #6b7280;
+  font-size: 11px;
+  text-transform: uppercase;
 }
 </style>

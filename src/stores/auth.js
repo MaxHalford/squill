@@ -223,6 +223,90 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // Fetch datasets for a project
+  const fetchDatasets = async (targetProjectId = null) => {
+    if (!isAuthenticated.value) {
+      throw new Error('Not authenticated')
+    }
+
+    const project = targetProjectId || projectId.value
+    if (!project) {
+      throw new Error('No project specified')
+    }
+
+    const response = await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken.value}`
+        }
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch datasets')
+    }
+
+    const data = await response.json()
+    return data.datasets || []
+  }
+
+  // Fetch tables for a dataset
+  const fetchTables = async (datasetId, targetProjectId = null) => {
+    if (!isAuthenticated.value) {
+      throw new Error('Not authenticated')
+    }
+
+    const project = targetProjectId || projectId.value
+    if (!project) {
+      throw new Error('No project specified')
+    }
+
+    const response = await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken.value}`
+        }
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch tables')
+    }
+
+    const data = await response.json()
+    return data.tables || []
+  }
+
+  // Fetch table schema
+  const fetchTableSchema = async (datasetId, tableId, targetProjectId = null) => {
+    if (!isAuthenticated.value) {
+      throw new Error('Not authenticated')
+    }
+
+    const project = targetProjectId || projectId.value
+    if (!project) {
+      throw new Error('No project specified')
+    }
+
+    const response = await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables/${tableId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken.value}`
+        }
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch table schema')
+    }
+
+    const data = await response.json()
+    return data.schema?.fields || []
+  }
+
   // Run BigQuery query
   const runQuery = async (query) => {
     if (!isAuthenticated.value) {
@@ -287,6 +371,9 @@ export const useAuthStore = defineStore('auth', () => {
     signOut,
     fetchProjects,
     setProjectId,
+    fetchDatasets,
+    fetchTables,
+    fetchTableSchema,
     runQuery,
   }
 })
