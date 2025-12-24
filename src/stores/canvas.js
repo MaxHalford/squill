@@ -24,6 +24,7 @@ export const useCanvasStore = defineStore('canvas', () => {
           y: box.y || 100,
           width: box.width || 600,
           height: box.height || 500,
+          zIndex: box.zIndex || 1,
           query: box.query || 'SELECT * FROM `project.dataset.table` LIMIT 10;'
         }))
       } else {
@@ -45,6 +46,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         y: 100,
         width: 600,
         height: 500,
+        zIndex: 1,
         query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
       },
       {
@@ -53,6 +55,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         y: 100,
         width: 600,
         height: 500,
+        zIndex: 2,
         query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
       },
       {
@@ -61,6 +64,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         y: 650,
         width: 600,
         height: 500,
+        zIndex: 3,
         query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
       }
     ]
@@ -85,6 +89,12 @@ export const useCanvasStore = defineStore('canvas', () => {
     saveState()
   }, { deep: true })
 
+  // Get max z-index
+  const getMaxZIndex = () => {
+    if (boxes.value.length === 0) return 0
+    return Math.max(...boxes.value.map(box => box.zIndex || 0))
+  }
+
   // Add a new SQL box
   const addBox = () => {
     const newBox = {
@@ -93,6 +103,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       y: 100 + Math.random() * 200,
       width: 600,
       height: 500,
+      zIndex: getMaxZIndex() + 1,
       query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
     }
     boxes.value.push(newBox)
@@ -110,9 +121,18 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
-  // Select a box
+  // Select a box and bring to front
   const selectBox = (id) => {
     selectedBoxId.value = id
+
+    // Bring selected box to front
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      const maxZ = getMaxZIndex()
+      if (box.zIndex < maxZ) {
+        box.zIndex = maxZ + 1
+      }
+    }
   }
 
   // Deselect all boxes
@@ -146,6 +166,14 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
+  // Update box z-index
+  const updateBoxZIndex = (id, zIndex) => {
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      box.zIndex = zIndex
+    }
+  }
+
   // Clear all boxes
   const clearAll = () => {
     boxes.value = []
@@ -170,6 +198,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     updateBoxPosition,
     updateBoxSize,
     updateBoxQuery,
+    updateBoxZIndex,
+    getMaxZIndex,
     clearAll,
     resetToDefault
   }

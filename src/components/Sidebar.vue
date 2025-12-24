@@ -1,45 +1,60 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import { useSettingsStore } from '../stores/settings'
 
 const authStore = useAuthStore()
-const settingsStore = useSettingsStore()
 const isOpen = ref(false)
-const fileInputRef = ref(null)
 const error = ref(null)
-const isUploading = ref(false)
+const isSigningIn = ref(false)
+const projects = ref([])
+const isLoadingProjects = ref(false)
 
 const toggleSidebar = () => {
   isOpen.value = !isOpen.value
 }
 
-const handleFileUpload = async (event) => {
-  const file = event.target.files[0]
-  if (!file) return
-
+const handleSignIn = async () => {
   try {
-    isUploading.value = true
+    isSigningIn.value = true
     error.value = null
+    await authStore.signInWithGoogle()
 
-    const text = await file.text()
-    const credentials = JSON.parse(text)
-
-    await authStore.loadServiceAccount(credentials)
+    // Load projects after sign in
+    await loadProjects()
   } catch (err) {
-    error.value = err.message || 'Failed to load credentials'
+    error.value = err.message || 'Failed to sign in with Google'
   } finally {
-    isUploading.value = false
+    isSigningIn.value = false
   }
 }
 
-const handleClearCredentials = () => {
-  authStore.clearCredentials()
+const handleSignOut = () => {
+  authStore.signOut()
+  projects.value = []
   error.value = null
-  if (fileInputRef.value) {
-    fileInputRef.value.value = ''
+}
+
+const loadProjects = async () => {
+  try {
+    isLoadingProjects.value = true
+    projects.value = await authStore.fetchProjects()
+  } catch (err) {
+    console.error('Failed to load projects:', err)
+  } finally {
+    isLoadingProjects.value = false
   }
 }
+
+const handleProjectChange = (event) => {
+  authStore.setProjectId(event.target.value)
+}
+
+onMounted(() => {
+  // If already authenticated, load projects
+  if (authStore.isAuthenticated) {
+    loadProjects()
+  }
+})
 </script>
 
 <template>
@@ -56,79 +71,77 @@ const handleClearCredentials = () => {
 
         <!-- BigQuery Configuration -->
         <section class="config-section">
-          <h3>BigQuery Configuration</h3>
+          <h3>BigQuery Authentication</h3>
 
           <div v-if="authStore.isAuthenticated" class="auth-status">
-            <div class="status-row">
-              <span class="status-indicator authenticated">●</span>
-              <span class="status-text">Connected</span>
+            <!-- User info -->
+            <div class="user-info">
+              <img
+                v-if="authStore.userPhoto"
+                :src="authStore.userPhoto"
+                :alt="authStore.userName"
+                class="user-photo"
+              />
+              <div class="user-details">
+                <div class="user-name">{{ authStore.userName }}</div>
+                <div class="user-email">{{ authStore.userEmail }}</div>
+              </div>
             </div>
-            <div class="project-id">
-              Project: <strong>{{ authStore.projectId }}</strong>
+
+            <!-- Project selector -->
+            <div class="project-selector">
+              <label for="project-select" class="project-label">
+                BigQuery Project
+              </label>
+              <select
+                id="project-select"
+                :value="authStore.projectId"
+                @change="handleProjectChange"
+                class="project-select"
+                :disabled="isLoadingProjects"
+              >
+                <option value="" disabled>
+                  {{ isLoadingProjects ? 'Loading projects...' : 'Select a project' }}
+                </option>
+                <option
+                  v-for="project in projects"
+                  :key="project.projectId"
+                  :value="project.projectId"
+                >
+                  {{ project.name || project.projectId }}
+                </option>
+              </select>
             </div>
-            <button @click="handleClearCredentials" class="clear-btn">
-              Clear Credentials
+
+            <button @click="handleSignOut" class="sign-out-btn">
+              Sign Out
             </button>
           </div>
 
-          <div v-else class="auth-upload">
-            <label for="sidebar-credentials-file" class="upload-label">
-              Service Account JSON
-            </label>
-            <input
-              id="sidebar-credentials-file"
-              ref="fileInputRef"
-              type="file"
-              accept=".json"
-              @change="handleFileUpload"
-              class="file-input"
-            />
+          <div v-else class="auth-prompt">
+            <p class="auth-description">
+              Sign in with your Google account to run BigQuery queries.
+            </p>
+            <button
+              @click="handleSignIn"
+              :disabled="isSigningIn"
+              class="google-sign-in-btn"
+            >
+              <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+              </svg>
+              <span>{{ isSigningIn ? 'Signing in...' : 'Sign in with Google' }}</span>
+            </button>
             <p class="help-text">
-              Upload your BigQuery service account JSON file to enable querying.
+              You'll be asked to grant access to BigQuery and your Google Cloud projects.
             </p>
           </div>
 
           <div v-if="error" class="error-message">
             {{ error }}
-          </div>
-        </section>
-
-        <!-- Font Configuration -->
-        <section class="config-section">
-          <h3>Font Settings</h3>
-
-          <div class="font-option">
-            <label for="editor-font" class="font-label">SQL Editor Font</label>
-            <select
-              id="editor-font"
-              v-model="settingsStore.editorFont"
-              class="font-select"
-            >
-              <option
-                v-for="option in settingsStore.editorFontOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </div>
-
-          <div class="font-option">
-            <label for="table-font" class="font-label">Data Table Font</label>
-            <select
-              id="table-font"
-              v-model="settingsStore.tableFont"
-              class="font-select"
-            >
-              <option
-                v-for="option in settingsStore.tableFontOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
-            </select>
           </div>
         </section>
       </div>
@@ -213,6 +226,12 @@ h2 {
 
 .config-section {
   margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.config-section:last-child {
+  border-bottom: none;
 }
 
 h3 {
@@ -223,79 +242,153 @@ h3 {
 }
 
 .auth-status {
-  padding: 12px;
+  padding: 16px;
   background: #f0fdf4;
   border: 1px solid #86efac;
   border-radius: 6px;
 }
 
-.status-row {
+.user-info {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #86efac;
 }
 
-.status-indicator {
+.user-photo {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid #10b981;
+}
+
+.user-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #065f46;
+  margin-bottom: 2px;
+}
+
+.user-email {
   font-size: 12px;
+  color: #059669;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.status-indicator.authenticated {
-  color: #10b981;
+.project-selector {
+  margin-bottom: 16px;
 }
 
-.status-text {
+.project-label {
+  display: block;
+  font-size: 13px;
   font-weight: 500;
   color: #065f46;
+  margin-bottom: 6px;
 }
 
-.project-id {
+.project-select {
+  width: 100%;
+  padding: 8px 10px;
   font-size: 13px;
-  color: #065f46;
-  margin-bottom: 12px;
+  border: 1px solid #86efac;
+  border-radius: 4px;
+  background: white;
+  color: #1f2937;
+  cursor: pointer;
+  transition: border-color 0.2s;
 }
 
-.clear-btn {
+.project-select:hover:not(:disabled) {
+  border-color: #4ade80;
+}
+
+.project-select:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.project-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.sign-out-btn {
+  width: 100%;
   background: #ef4444;
   color: white;
   border: none;
-  padding: 6px 12px;
+  padding: 8px 12px;
   border-radius: 4px;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
 }
 
-.clear-btn:hover {
+.sign-out-btn:hover {
   background: #dc2626;
 }
 
-.auth-upload {
-  padding: 12px;
+.auth-prompt {
+  padding: 16px;
   background: #f9fafb;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
 }
 
-.upload-label {
-  display: block;
+.auth-description {
+  margin: 0 0 16px 0;
   font-size: 13px;
-  font-weight: 500;
   color: #374151;
-  margin-bottom: 8px;
+  line-height: 1.5;
 }
 
-.file-input {
+.google-sign-in-btn {
   width: 100%;
-  padding: 8px;
-  font-size: 13px;
-  border: 1px solid #d1d5db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: white;
+  border: 1px solid #dadce0;
   border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #3c4043;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.google-sign-in-btn:hover:not(:disabled) {
+  background: #f8f9fa;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.google-sign-in-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.google-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 .help-text {
-  margin: 8px 0 0 0;
+  margin: 12px 0 0 0;
   font-size: 12px;
   color: #6b7280;
   line-height: 1.4;
@@ -309,43 +402,5 @@ h3 {
   border-radius: 4px;
   color: #dc2626;
   font-size: 13px;
-}
-
-.font-option {
-  margin-bottom: 16px;
-}
-
-.font-option:last-child {
-  margin-bottom: 0;
-}
-
-.font-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  margin-bottom: 6px;
-}
-
-.font-select {
-  width: 100%;
-  padding: 8px 10px;
-  font-size: 13px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: white;
-  color: #1f2937;
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-
-.font-select:hover {
-  border-color: #9ca3af;
-}
-
-.font-select:focus {
-  outline: none;
-  border-color: #42b883;
-  box-shadow: 0 0 0 3px rgba(66, 184, 131, 0.1);
 }
 </style>

@@ -1,12 +1,8 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { EditorView, basicSetup } from 'codemirror'
-import { Compartment } from '@codemirror/state'
 import { sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { useSettingsStore } from '../stores/settings'
-
-const settingsStore = useSettingsStore()
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -17,22 +13,19 @@ const emit = defineEmits(['update:modelValue', 'run'])
 
 const editorRef = ref(null)
 let editorView = null
-const fontThemeCompartment = new Compartment()
 
-// Create font theme
-const createFontTheme = (fontFamily) => {
-  return EditorView.theme({
-    '&': {
-      fontFamily: fontFamily,
-    },
-    '.cm-content, .cm-line': {
-      fontFamily: fontFamily,
-    },
-    '.cm-scroller': {
-      fontFamily: fontFamily,
-    },
-  })
-}
+// Opinionated font theme using JetBrains Mono
+const fontTheme = EditorView.theme({
+  '&': {
+    fontFamily: '"JetBrains Mono", monospace',
+  },
+  '.cm-content, .cm-line': {
+    fontFamily: '"JetBrains Mono", monospace',
+  },
+  '.cm-scroller': {
+    fontFamily: '"JetBrains Mono", monospace',
+  },
+})
 
 onMounted(() => {
   // Keyboard shortcut for running query
@@ -53,7 +46,7 @@ onMounted(() => {
       basicSetup,
       sql(),
       oneDark,
-      fontThemeCompartment.of(createFontTheme(settingsStore.editorFont)),
+      fontTheme,
       EditorView.lineWrapping,
       runShortcut,
       EditorView.updateListener.of((update) => {
@@ -64,15 +57,6 @@ onMounted(() => {
     ],
     parent: editorRef.value,
     doc: props.modelValue
-  })
-
-  // Watch for font changes and update editor
-  watch(() => settingsStore.editorFont, (newFont) => {
-    if (editorView) {
-      editorView.dispatch({
-        effects: fontThemeCompartment.reconfigure(createFontTheme(newFont))
-      })
-    }
   })
 })
 

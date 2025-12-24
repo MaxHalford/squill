@@ -1,141 +1,249 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
-import { SignJWT, importPKCS8 } from 'jose'
+import { ref, computed } from 'vue'
 
 const STORAGE_KEY = 'sqlshell-auth'
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
-// Load auth data from localStorage
+// Token validity: 7 days
+const TOKEN_EXPIRY_DAYS = 7
+const TOKEN_EXPIRY_MS = TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000
+
+// Google OAuth configuration
+const SCOPES = [
+  'https://www.googleapis.com/auth/bigquery',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/cloud-platform.read-only' // To list projects
+].join(' ')
+
 const loadAuthData = () => {
   try {
+    // Try localStorage first (for 7-day persistence)
     const saved = localStorage.getItem(STORAGE_KEY)
     return saved ? JSON.parse(saved) : {}
   } catch (err) {
-    console.error('Failed to load auth data from localStorage:', err)
+    console.error('Failed to load auth data:', err)
     return {}
   }
 }
 
-// Save auth data to localStorage
 const saveAuthData = (data) => {
   try {
+    // Use localStorage for 7-day persistence
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
   } catch (err) {
-    console.error('Failed to save auth data to localStorage:', err)
+    console.error('Failed to save auth data:', err)
   }
 }
 
 export const useAuthStore = defineStore('auth', () => {
   const savedAuth = loadAuthData()
 
-  const serviceAccountData = ref(savedAuth.serviceAccountData || null)
-  const accessToken = ref(null) // Don't persist tokens
-  const tokenExpiry = ref(null) // Don't persist expiry
+  // OAuth state
+  const accessToken = ref(savedAuth.accessToken || null)
+  const tokenExpiry = ref(savedAuth.tokenExpiry || null)
+  const userEmail = ref(savedAuth.userEmail || null)
+  const userName = ref(savedAuth.userName || null)
+  const userPhoto = ref(savedAuth.userPhoto || null)
   const projectId = ref(savedAuth.projectId || null)
 
-  const isAuthenticated = computed(() => !!serviceAccountData.value)
+  const isAuthenticated = computed(() => {
+    // Check if token exists and hasn't expired (7 days)
+    return !!accessToken.value && tokenExpiry.value && Date.now() < tokenExpiry.value
+  })
 
-  // Get access token using service account
-  const getAccessToken = async () => {
-    if (!serviceAccountData.value) {
-      throw new Error('No service account credentials loaded')
-    }
+  // Initialize Google Sign-In
+  let tokenClient = null
 
-    // Check if we have a valid token
-    if (accessToken.value && tokenExpiry.value && Date.now() < tokenExpiry.value) {
-      return accessToken.value
-    }
+  const initGoogleAuth = () => {
+    return new Promise((resolve) => {
+      // Load Google Identity Services library
+      if (window.google?.accounts?.oauth2) {
+        resolve()
+        return
+      }
 
-    const sa = serviceAccountData.value
-    const now = Math.floor(Date.now() / 1000)
-
-    // Create JWT
-    const privateKey = await importPKCS8(sa.private_key, 'RS256')
-
-    const jwt = await new SignJWT({
-      scope: 'https://www.googleapis.com/auth/bigquery',
+      const script = document.createElement('script')
+      script.src = 'https://accounts.google.com/gsi/client'
+      script.async = true
+      script.defer = true
+      script.onload = resolve
+      document.head.appendChild(script)
     })
-      .setProtectedHeader({ alg: 'RS256' })
-      .setIssuer(sa.client_email)
-      .setSubject(sa.client_email)
-      .setAudience('https://oauth2.googleapis.com/token')
-      .setIssuedAt(now)
-      .setExpirationTime(now + 3600)
-      .sign(privateKey)
+  }
 
-    // Exchange JWT for access token
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
+  // Sign in with Google
+  const signInWithGoogle = async () => {
+    if (!GOOGLE_CLIENT_ID) {
+      throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
+    }
+
+    await initGoogleAuth()
+
+    return new Promise((resolve, reject) => {
+      tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: SCOPES,
+        callback: async (response) => {
+          if (response.error) {
+            reject(new Error(response.error))
+            return
+          }
+
+          try {
+            // Store access token
+            accessToken.value = response.access_token
+            // Set expiry to 7 days from now
+            tokenExpiry.value = Date.now() + TOKEN_EXPIRY_MS
+
+            // Get user info
+            await fetchUserInfo()
+
+            // Try to get default project
+            await fetchDefaultProject()
+
+            // Save to localStorage (for 7-day persistence)
+            saveAuthData({
+              accessToken: accessToken.value,
+              tokenExpiry: tokenExpiry.value,
+              userEmail: userEmail.value,
+              userName: userName.value,
+              userPhoto: userPhoto.value,
+              projectId: projectId.value
+            })
+
+            resolve()
+          } catch (err) {
+            reject(err)
+          }
+        },
+      })
+
+      tokenClient.requestAccessToken()
+    })
+  }
+
+  // Fetch user info from Google
+  const fetchUserInfo = async () => {
+    if (!accessToken.value) return
+
+    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: jwt,
-      }),
+        'Authorization': `Bearer ${accessToken.value}`
+      }
     })
+
+    if (response.ok) {
+      const data = await response.json()
+      userEmail.value = data.email
+      userName.value = data.name
+      userPhoto.value = data.picture
+    }
+  }
+
+  // Fetch default project (first accessible project)
+  const fetchDefaultProject = async () => {
+    if (!accessToken.value) return
+
+    try {
+      const response = await fetch(
+        'https://cloudresourcemanager.googleapis.com/v1/projects?pageSize=1',
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken.value}`
+          }
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.projects && data.projects.length > 0) {
+          projectId.value = data.projects[0].projectId
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch default project:', err)
+      // Not critical - user can set project manually
+    }
+  }
+
+  // Fetch list of available projects
+  const fetchProjects = async () => {
+    if (!accessToken.value) {
+      throw new Error('Not authenticated')
+    }
+
+    const response = await fetch(
+      'https://cloudresourcemanager.googleapis.com/v1/projects',
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken.value}`
+        }
+      }
+    )
 
     if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error_description || 'Failed to get access token')
+      throw new Error('Failed to fetch projects')
     }
 
     const data = await response.json()
-    accessToken.value = data.access_token
-    tokenExpiry.value = Date.now() + (data.expires_in * 1000) - 60000 // Refresh 1 min early
-
-    return accessToken.value
+    return data.projects || []
   }
 
-  // Load service account from JSON
-  const loadServiceAccount = async (credentialsJson) => {
-    // Validate it's a service account
-    if (!credentialsJson.private_key || !credentialsJson.client_email || !credentialsJson.project_id) {
-      throw new Error('Invalid service account JSON file')
-    }
-
-    serviceAccountData.value = credentialsJson
-    projectId.value = credentialsJson.project_id
-
-    // Get initial access token
-    await getAccessToken()
+  // Set active project
+  const setProjectId = (newProjectId) => {
+    projectId.value = newProjectId
+    saveAuthData({
+      accessToken: accessToken.value,
+      tokenExpiry: tokenExpiry.value,
+      userEmail: userEmail.value,
+      userName: userName.value,
+      userPhoto: userPhoto.value,
+      projectId: projectId.value
+    })
   }
 
-  // Watch for changes and persist to localStorage
-  watch([serviceAccountData, projectId], () => {
-    if (serviceAccountData.value) {
-      saveAuthData({
-        serviceAccountData: serviceAccountData.value,
-        projectId: projectId.value,
-      })
-    } else {
-      // Clear localStorage when credentials are cleared
-      localStorage.removeItem(STORAGE_KEY)
-    }
-  })
+  // Sign out
+  const signOut = () => {
+    const currentToken = accessToken.value
 
-  // Clear credentials
-  const clearCredentials = () => {
-    serviceAccountData.value = null
     accessToken.value = null
     tokenExpiry.value = null
+    userEmail.value = null
+    userName.value = null
+    userPhoto.value = null
     projectId.value = null
+    localStorage.removeItem(STORAGE_KEY)
+
+    // Revoke Google token
+    if (currentToken && window.google?.accounts?.oauth2) {
+      window.google.accounts.oauth2.revoke(currentToken, () => {
+        console.log('Token revoked')
+      })
+    }
   }
 
   // Run BigQuery query
   const runQuery = async (query) => {
     if (!isAuthenticated.value) {
-      throw new Error('Please upload service account credentials first')
+      throw new Error('Please sign in with Google first')
     }
 
-    const token = await getAccessToken()
+    if (!projectId.value) {
+      throw new Error('No project selected. Please select a project in the sidebar.')
+    }
 
-    // Call BigQuery REST API
+    // Check if token is expired
+    if (Date.now() >= tokenExpiry.value) {
+      throw new Error('Session expired. Please sign in again.')
+    }
+
     const response = await fetch(
       `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId.value}/queries`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${accessToken.value}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -169,11 +277,16 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
-    serviceAccountData,
+    accessToken,
+    userEmail,
+    userName,
+    userPhoto,
     projectId,
     isAuthenticated,
-    loadServiceAccount,
-    clearCredentials,
+    signInWithGoogle,
+    signOut,
+    fetchProjects,
+    setProjectId,
     runQuery,
   }
 })

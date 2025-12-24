@@ -1,8 +1,5 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { useSettingsStore } from '../stores/settings'
-
-const settingsStore = useSettingsStore()
 
 const props = defineProps({
   results: { type: Array, default: null },
@@ -79,7 +76,7 @@ defineExpose({
       </div>
     </div>
     <div class="table-container" @click.stop>
-      <table v-if="results && results.length > 0" class="results-table" :style="{ fontFamily: settingsStore.tableFont }">
+      <table v-if="results && results.length > 0" class="results-table">
         <thead>
           <tr>
             <th v-for="column in columns" :key="column">{{ column }}</th>
@@ -179,6 +176,7 @@ defineExpose({
   border-collapse: collapse;
   border-spacing: 0;
   font-size: 12px;
+  font-family: system-ui;
   color: #abb2bf;
 }
 

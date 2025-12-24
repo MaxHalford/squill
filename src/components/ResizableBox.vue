@@ -10,6 +10,7 @@ const props = defineProps({
   initialY: { type: Number, default: 100 },
   initialWidth: { type: Number, default: 600 },
   initialHeight: { type: Number, default: 500 },
+  initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false }
 })
 
@@ -20,12 +21,19 @@ const headerRef = ref(null)
 
 const position = ref({ x: props.initialX, y: props.initialY })
 const size = ref({ width: props.initialWidth, height: props.initialHeight })
+const zIndex = ref(props.initialZIndex)
 const isDragging = ref(false)
 const isResizing = ref(false)
 const resizeDirection = ref(null)
 const dragStart = ref({ x: 0, y: 0 })
 const initialSize = ref({ width: 0, height: 0 })
 const initialPosition = ref({ x: 0, y: 0 })
+
+// Watch for z-index changes from parent
+import { watch } from 'vue'
+watch(() => props.initialZIndex, (newZIndex) => {
+  zIndex.value = newZIndex
+})
 
 // Handle selection
 const handleBoxClick = () => {
@@ -131,7 +139,8 @@ onUnmounted(() => {
       left: `${position.x}px`,
       top: `${position.y}px`,
       width: `${size.width}px`,
-      height: `${size.height}px`
+      height: `${size.height}px`,
+      zIndex: zIndex
     }"
     @click="handleBoxClick"
   >

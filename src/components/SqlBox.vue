@@ -13,6 +13,7 @@ const props = defineProps({
   initialY: { type: Number, default: 100 },
   initialWidth: { type: Number, default: 600 },
   initialHeight: { type: Number, default: 500 },
+  initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
   initialQuery: { type: String, default: 'SELECT * FROM `project.dataset.table` LIMIT 10;' }
 })
@@ -121,6 +122,7 @@ onUnmounted(() => {
     :initial-y="initialY"
     :initial-width="initialWidth"
     :initial-height="initialHeight"
+    :initial-z-index="initialZIndex"
     :is-selected="isSelected"
     @select="handleSelect"
     @update:position="handleUpdatePosition"

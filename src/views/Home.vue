@@ -86,6 +86,7 @@ onUnmounted(() => {
         :initial-y="box.y"
         :initial-width="box.width"
         :initial-height="box.height"
+        :initial-z-index="box.zIndex"
         :initial-query="box.query"
         :is-selected="canvasStore.selectedBoxId === box.id"
         @select="selectBox(box.id)"
