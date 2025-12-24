@@ -1,11 +1,14 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 import ResizableBox from './ResizableBox.vue'
 import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
 import { useAuthStore } from '../stores/auth'
 
 const authStore = useAuthStore()
+
+// Inject canvas zoom for splitter dragging
+const canvasZoom = inject('canvasZoom', ref(1))
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -73,7 +76,8 @@ const handleSplitterMouseDown = (e) => {
 
 const handleMouseMove = (e) => {
   if (isDraggingSplitter.value) {
-    const deltaY = e.clientY - dragStart.value.y
+    const zoom = canvasZoom.value
+    const deltaY = (e.clientY - dragStart.value.y) / zoom
     const newHeight = editorHeight.value + deltaY
     const maxEditorHeight = boxHeight.value - MIN_RESULTS_HEIGHT
 

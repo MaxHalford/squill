@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, provide } from 'vue'
 
 const emit = defineEmits(['canvas-click'])
 
@@ -16,6 +16,9 @@ const zoom = ref(1)
 const isPanning = ref(false)
 const isActuallyPanning = ref(false)
 const panStart = ref({ x: 0, y: 0 })
+
+// Provide zoom to child components
+provide('canvasZoom', zoom)
 
 const PADDING = 100 // Padding around boxes in pixels
 

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, inject } from 'vue'
 
 const MIN_WIDTH = 300
 const MIN_HEIGHT = 400
@@ -13,6 +13,9 @@ const props = defineProps({
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false }
 })
+
+// Inject canvas zoom to adjust mouse coordinates
+const canvasZoom = inject('canvasZoom', ref(1))
 
 const emit = defineEmits(['select', 'update:position', 'update:size'])
 
@@ -49,9 +52,10 @@ const handleHeaderMouseDown = (e) => {
   e.stopPropagation()
   emit('select')
   isDragging.value = true
+  const zoom = canvasZoom.value
   dragStart.value = {
-    x: e.clientX - position.value.x,
-    y: e.clientY - position.value.y
+    x: e.clientX - position.value.x * zoom,
+    y: e.clientY - position.value.y * zoom
   }
 }
 
@@ -68,16 +72,18 @@ const handleResizeStart = (e, direction) => {
 }
 
 const handleMouseMove = (e) => {
+  const zoom = canvasZoom.value
+
   if (isDragging.value) {
     const newPosition = {
-      x: e.clientX - dragStart.value.x,
-      y: e.clientY - dragStart.value.y
+      x: (e.clientX - dragStart.value.x) / zoom,
+      y: (e.clientY - dragStart.value.y) / zoom
     }
     position.value = newPosition
     emit('update:position', newPosition)
   } else if (isResizing.value) {
-    const deltaX = e.clientX - dragStart.value.x
-    const deltaY = e.clientY - dragStart.value.y
+    const deltaX = (e.clientX - dragStart.value.x) / zoom
+    const deltaY = (e.clientY - dragStart.value.y) / zoom
     const dir = resizeDirection.value
 
     let newWidth = initialSize.value.width
