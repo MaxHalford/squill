@@ -158,12 +158,6 @@ onUnmounted(() => {
 
     <!-- Resize handles - only show when selected -->
     <template v-if="isSelected">
-      <!-- Corner handles -->
-      <div class="resize-handle nw" @mousedown="handleResizeStart($event, 'nw')"></div>
-      <div class="resize-handle ne" @mousedown="handleResizeStart($event, 'ne')"></div>
-      <div class="resize-handle sw" @mousedown="handleResizeStart($event, 'sw')"></div>
-      <div class="resize-handle se" @mousedown="handleResizeStart($event, 'se')"></div>
-
       <!-- Edge handles -->
       <div class="resize-handle n" @mousedown="handleResizeStart($event, 'n')"></div>
       <div class="resize-handle e" @mousedown="handleResizeStart($event, 'e')"></div>
@@ -176,21 +170,21 @@ onUnmounted(() => {
 <style scoped>
 .resizable-box {
   position: absolute;
-  background: #282c34;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: white;
+  border-radius: 0;
+  box-shadow: 6px 6px 0 0 rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 2px solid transparent;
-  transition: border-color 0.2s;
+  border: 3px solid black;
+  transition: none;
   isolation: isolate;
   z-index: 1;
 }
 
 .resizable-box.selected {
-  border-color: #42b883;
-  box-shadow: 0 4px 16px rgba(66, 184, 131, 0.4);
+  border: 4px solid black;
+  box-shadow: 8px 8px 0 0 rgba(0, 0, 0, 0.3);
   z-index: 10;
 }
 
@@ -199,15 +193,17 @@ onUnmounted(() => {
 }
 
 .box-header {
-  background: #21252b;
-  padding: 12px 16px;
+  background: black;
+  color: white;
+  padding: 8px 12px;
   cursor: grab;
   user-select: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #181a1f;
+  border-bottom: none;
   flex-shrink: 0;
+  font-size: 14px;
 }
 
 .box-header:active {
@@ -225,58 +221,24 @@ onUnmounted(() => {
 /* Resize handles */
 .resize-handle {
   position: absolute;
-  background: #42b883;
+  background: black;
   z-index: 10;
-}
-
-/* Corner handles */
-.resize-handle.nw,
-.resize-handle.ne,
-.resize-handle.sw,
-.resize-handle.se {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.resize-handle.nw {
-  top: -4px;
-  left: -4px;
-  cursor: nw-resize;
-}
-
-.resize-handle.ne {
-  top: -4px;
-  right: -4px;
-  cursor: ne-resize;
-}
-
-.resize-handle.sw {
-  bottom: -4px;
-  left: -4px;
-  cursor: sw-resize;
-}
-
-.resize-handle.se {
-  bottom: -4px;
-  right: -4px;
-  cursor: se-resize;
 }
 
 /* Edge handles */
 .resize-handle.n,
 .resize-handle.s {
   height: 4px;
-  left: 8px;
-  right: 8px;
+  left: 0;
+  right: 0;
   cursor: ns-resize;
 }
 
 .resize-handle.e,
 .resize-handle.w {
   width: 4px;
-  top: 8px;
-  bottom: 8px;
+  top: 0;
+  bottom: 0;
   cursor: ew-resize;
 }
 
@@ -297,6 +259,6 @@ onUnmounted(() => {
 }
 
 .resize-handle:hover {
-  background: #35a372;
+  background: #333;
 }
 </style>

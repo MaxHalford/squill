@@ -25,7 +25,7 @@ export const useCanvasStore = defineStore('canvas', () => {
           width: box.width || 600,
           height: box.height || 500,
           zIndex: box.zIndex || 1,
-          query: box.query || 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+          query: box.query || 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
         }))
       } else {
         // Initialize with default boxes if no saved state
@@ -47,7 +47,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         width: 600,
         height: 500,
         zIndex: 1,
-        query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
       },
       {
         id: 2,
@@ -56,7 +56,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         width: 600,
         height: 500,
         zIndex: 2,
-        query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
       },
       {
         id: 3,
@@ -65,7 +65,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         width: 600,
         height: 500,
         zIndex: 3,
-        query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
       }
     ]
     nextBoxId.value = 4
@@ -104,7 +104,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       width: 600,
       height: 500,
       zIndex: getMaxZIndex() + 1,
-      query: 'SELECT * FROM `project.dataset.table` LIMIT 10;'
+      query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
     }
     boxes.value.push(newBox)
     return newBox.id

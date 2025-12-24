@@ -15,7 +15,7 @@ const props = defineProps({
   initialHeight: { type: Number, default: 500 },
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
-  initialQuery: { type: String, default: 'SELECT * FROM `project.dataset.table` LIMIT 10;' }
+  initialQuery: { type: String, default: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' }
 })
 
 const emit = defineEmits(['select', 'update:position', 'update:size'])
@@ -130,23 +130,14 @@ onUnmounted(() => {
   >
     <template #header>
       <span>SQL Query</span>
-      <div class="header-actions">
-        <button
-          @click.stop="runQuery"
-          :disabled="isRunning || !authStore.isAuthenticated"
-          class="run-button"
-          :title="authStore.isAuthenticated ? 'Run query (Ctrl + Enter)' : 'Upload credentials in sidebar first'"
-        >
-          {{ isRunning ? '...' : '▶' }}
-        </button>
-        <div class="drag-indicator">⋮⋮</div>
-      </div>
     </template>
 
     <QueryEditor
       ref="editorRef"
       v-model="queryText"
       :height="editorHeight"
+      :is-running="isRunning"
+      :is-authenticated="authStore.isAuthenticated"
       @run="runQuery"
     />
 
@@ -154,9 +145,7 @@ onUnmounted(() => {
     <div
       class="splitter"
       @mousedown="handleSplitterMouseDown"
-    >
-      <div class="splitter-line"></div>
-    </div>
+    ></div>
 
     <ResultsTable
       ref="resultsRef"
@@ -167,60 +156,22 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.run-button {
-  background: #42b883;
-  color: white;
-  border: none;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  line-height: 1;
-}
-
-.run-button:hover:not(:disabled) {
-  background: #35a372;
-  transform: scale(1.05);
-}
-
-.run-button:disabled {
-  background: #4a5568;
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.drag-indicator {
-  color: #5c6370;
-  font-size: 12px;
-  letter-spacing: -2px;
-}
-
 /* Splitter */
 .splitter {
-  height: 8px;
-  background: #21252b;
+  height: 1px;
+  background: black;
   cursor: ns-resize;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
+  position: relative;
 }
 
-.splitter:hover {
-  background: #2c313a;
-}
-
-.splitter-line {
-  width: 40px;
-  height: 2px;
-  background: #5c6370;
-  border-radius: 1px;
+/* Invisible larger hit area for easier dragging */
+.splitter::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: 0;
+  right: 0;
 }
 </style>

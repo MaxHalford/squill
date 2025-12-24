@@ -51,7 +51,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="results-section">
+  <div class="results-section" @mousedown.stop>
     <div v-if="error" class="error-banner" @click.stop>
       {{ error }}
     </div>
@@ -102,22 +102,23 @@ defineExpose({
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #1e2227;
+  background: white;
 }
 
 .error-banner {
   padding: 10px 12px;
-  background: #3f1f1f;
-  border-bottom: 1px solid #7f1d1d;
-  color: #fca5a5;
+  background: #ffebee;
+  border-bottom: 2px solid #c62828;
+  color: #c62828;
   font-size: 12px;
+  font-weight: bold;
   flex-shrink: 0;
 }
 
 .results-header {
   padding: 8px 12px;
-  background: #21252b;
-  border-bottom: 1px solid #181a1f;
+  background: white;
+  border-bottom: 2px solid black;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -125,9 +126,9 @@ defineExpose({
 }
 
 .results-title {
-  color: #abb2bf;
+  color: black;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: bold;
 }
 
 .pagination {
@@ -137,28 +138,31 @@ defineExpose({
 }
 
 .pagination-btn {
-  background: #2c313a;
-  color: #abb2bf;
-  border: none;
+  background: white;
+  color: black;
+  border: 2px solid black;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: 0;
   cursor: pointer;
   font-size: 12px;
-  transition: background 0.2s;
+  font-weight: bold;
+  transition: none;
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background: #3e4451;
+  background: #f0f0f0;
 }
 
 .pagination-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+  background: #e0e0e0;
 }
 
 .page-info {
-  color: #abb2bf;
+  color: black;
   font-size: 12px;
+  font-weight: bold;
   min-width: 50px;
   text-align: center;
 }
@@ -177,13 +181,13 @@ defineExpose({
   border-spacing: 0;
   font-size: 12px;
   font-family: system-ui;
-  color: #abb2bf;
+  color: black;
 }
 
 .results-table thead {
   position: sticky;
   top: 0;
-  background: #282c34;
+  background: white;
   z-index: 2;
 }
 
@@ -194,22 +198,22 @@ defineExpose({
 .results-table th {
   text-align: left;
   padding: 8px 12px;
-  font-weight: 600;
-  border-bottom: 2px solid #181a1f;
+  font-weight: bold;
+  border-bottom: 2px solid black;
   white-space: nowrap;
-  background: #282c34;
+  background: white;
   position: sticky;
   top: 0;
 }
 
 .results-table td {
   padding: 8px 12px;
-  border-bottom: 1px solid #181a1f;
+  border-bottom: 1px solid #ddd;
   white-space: nowrap;
 }
 
 .results-table tbody tr:hover {
-  background: #2c313a;
+  background: #f5f5f5;
 }
 
 .empty-state {
@@ -217,7 +221,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #5c6370;
+  color: #666;
   font-size: 14px;
 }
 </style>

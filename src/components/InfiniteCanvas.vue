@@ -231,11 +231,9 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   overflow: hidden;
-  background:
-    linear-gradient(90deg, rgba(200, 200, 200, 0.1) 1px, transparent 1px),
-    linear-gradient(rgba(200, 200, 200, 0.1) 1px, transparent 1px);
-  background-size: 50px 50px;
-  background-position: 0 0;
+  background-color: #d4d4d4;
+  background-image: radial-gradient(circle, #000 1.2px, transparent 1.2px);
+  background-size: 7px 7px;
   cursor: grab;
 }
 
