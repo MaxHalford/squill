@@ -315,9 +315,9 @@ onMounted(() => {
   right: -320px;
   width: 320px;
   height: 100vh;
-  background: white;
-  border-left: 1px solid #e0e0e0;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  background: var(--bg-primary);
+  border-left: var(--border-width) solid var(--border-color);
+  box-shadow: -6px 6px 0 0 rgba(0, 0, 0, 0.25);
   transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow-y: auto;
 }
@@ -332,16 +332,16 @@ onMounted(() => {
   top: 20px;
   width: 32px;
   height: 48px;
-  background: white;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-primary);
+  border: var(--border-width) solid var(--border-color);
   border-right: none;
-  border-radius: 6px 0 0 6px;
+  border-radius: var(--border-radius);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: -2px 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: -4px 4px 0 0 rgba(0, 0, 0, 0.25);
   z-index: 1001;
 }
 
@@ -477,19 +477,20 @@ h3 {
 
 .sign-out-btn {
   width: 100%;
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 8px 12px;
-  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-sm) var(--spacing-md);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  box-shadow: var(--shadow);
+  transition: none;
 }
 
 .sign-out-btn:hover {
-  background: #dc2626;
+  box-shadow: var(--shadow-lg);
 }
 
 .auth-prompt {
@@ -512,20 +513,20 @@ h3 {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 10px 16px;
-  background: white;
-  border: 1px solid #dadce0;
-  border-radius: 4px;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--bg-primary);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
   font-size: 14px;
   font-weight: 500;
-  color: #3c4043;
+  color: var(--text-primary);
   cursor: pointer;
-  transition: all 0.2s;
+  box-shadow: var(--shadow);
+  transition: none;
 }
 
 .google-sign-in-btn:hover:not(:disabled) {
-  background: #f8f9fa;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-lg);
 }
 
 .google-sign-in-btn:disabled {
@@ -646,7 +647,7 @@ h3 {
   font-size: 13px;
   font-weight: 500;
   color: #1f2937;
-  font-family: monospace;
+  font-family: var(--font-results);
 }
 
 .columns-list {
@@ -669,13 +670,13 @@ h3 {
 }
 
 .column-name {
-  font-family: monospace;
+  font-family: var(--font-results);
   color: #374151;
   font-weight: 500;
 }
 
 .column-type {
-  font-family: monospace;
+  font-family: var(--font-results);
   color: #6b7280;
   font-size: 11px;
   text-transform: uppercase;

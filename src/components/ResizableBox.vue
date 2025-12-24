@@ -180,21 +180,23 @@ onUnmounted(() => {
 <style scoped>
 .resizable-box {
   position: absolute;
-  background: white;
-  border-radius: 0;
-  box-shadow: 6px 6px 0 0 rgba(0, 0, 0, 0.25);
+  background: var(--bg-primary);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 3px solid black;
+  border: var(--border-width) solid var(--border-color);
+  outline: none;
   transition: none;
   isolation: isolate;
   z-index: 1;
 }
 
 .resizable-box.selected {
-  border: 4px solid black;
-  box-shadow: 8px 8px 0 0 rgba(0, 0, 0, 0.3);
+  outline: 2px solid var(--border-color);
+  outline-offset: -2px;
+  box-shadow: var(--shadow-lg);
   z-index: 10;
 }
 
@@ -203,9 +205,9 @@ onUnmounted(() => {
 }
 
 .box-header {
-  background: black;
-  color: white;
-  padding: 8px 12px;
+  background: var(--border-color);
+  color: var(--bg-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
   cursor: grab;
   user-select: none;
   display: flex;

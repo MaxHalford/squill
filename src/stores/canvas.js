@@ -8,6 +8,10 @@ export const useCanvasStore = defineStore('canvas', () => {
   const selectedBoxId = ref(null)
   const nextBoxId = ref(1)
 
+  // Undo/Redo stacks
+  const undoStack = ref([])
+  const redoStack = ref([])
+
   // Load state from localStorage
   const loadState = () => {
     try {
@@ -95,8 +99,60 @@ export const useCanvasStore = defineStore('canvas', () => {
     return Math.max(...boxes.value.map(box => box.zIndex || 0))
   }
 
+  // Save current state to undo stack
+  const saveToUndoStack = () => {
+    undoStack.value.push({
+      boxes: JSON.parse(JSON.stringify(boxes.value)),
+      selectedBoxId: selectedBoxId.value,
+      nextBoxId: nextBoxId.value
+    })
+    // Limit undo stack size to 50 items
+    if (undoStack.value.length > 50) {
+      undoStack.value.shift()
+    }
+    // Clear redo stack when new action is performed
+    redoStack.value = []
+  }
+
+  // Undo last action
+  const undo = () => {
+    if (undoStack.value.length === 0) return
+
+    // Save current state to redo stack
+    redoStack.value.push({
+      boxes: JSON.parse(JSON.stringify(boxes.value)),
+      selectedBoxId: selectedBoxId.value,
+      nextBoxId: nextBoxId.value
+    })
+
+    // Restore previous state
+    const previousState = undoStack.value.pop()
+    boxes.value = previousState.boxes
+    selectedBoxId.value = previousState.selectedBoxId
+    nextBoxId.value = previousState.nextBoxId
+  }
+
+  // Redo last undone action
+  const redo = () => {
+    if (redoStack.value.length === 0) return
+
+    // Save current state to undo stack
+    undoStack.value.push({
+      boxes: JSON.parse(JSON.stringify(boxes.value)),
+      selectedBoxId: selectedBoxId.value,
+      nextBoxId: nextBoxId.value
+    })
+
+    // Restore next state
+    const nextState = redoStack.value.pop()
+    boxes.value = nextState.boxes
+    selectedBoxId.value = nextState.selectedBoxId
+    nextBoxId.value = nextState.nextBoxId
+  }
+
   // Add a new SQL box
   const addBox = () => {
+    saveToUndoStack()
     const newBox = {
       id: nextBoxId.value++,
       x: 100 + Math.random() * 200,
@@ -114,6 +170,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   const removeBox = (id) => {
     const index = boxes.value.findIndex(box => box.id === id)
     if (index !== -1) {
+      saveToUndoStack()
       boxes.value.splice(index, 1)
       if (selectedBoxId.value === id) {
         selectedBoxId.value = null
@@ -192,6 +249,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     const originalBox = boxes.value.find(b => b.id === id)
     if (!originalBox) return null
 
+    saveToUndoStack()
     const OFFSET = 30 // Offset for copied box
     const newBox = {
       id: nextBoxId.value++,
@@ -221,6 +279,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     getMaxZIndex,
     clearAll,
     resetToDefault,
-    copyBox
+    copyBox,
+    undo,
+    redo
   }
 })

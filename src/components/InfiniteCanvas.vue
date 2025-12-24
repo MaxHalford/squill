@@ -114,14 +114,12 @@ const isOverScrollableArea = (element) => {
 
 // Handle mouse wheel for zoom - zoom to cursor position
 const handleWheel = (e) => {
-  // If Shift is pressed, always zoom regardless of what we're hovering over
-  if (!e.shiftKey) {
-    // Allow native scrolling if over a scrollable area and not holding Shift
-    if (isOverScrollableArea(e.target)) {
-      return
-    }
+  // Allow native scrolling in scrollable areas when Ctrl/Cmd is NOT pressed
+  if (isOverScrollableArea(e.target) && !(e.ctrlKey || e.metaKey)) {
+    return
   }
 
+  // Otherwise, zoom (either not over scrollable area, or Ctrl/Cmd is pressed to override)
   e.preventDefault()
 
   const rect = canvasRef.value.getBoundingClientRect()
@@ -193,7 +191,7 @@ const handleMouseUp = (e) => {
 
 onMounted(() => {
   const canvas = canvasRef.value
-  canvas.addEventListener('wheel', handleWheel, { passive: false })
+  canvas.addEventListener('wheel', handleWheel, { passive: false, capture: true })
   window.addEventListener('mousemove', handleMouseMove)
   window.addEventListener('mouseup', handleMouseUp)
 })

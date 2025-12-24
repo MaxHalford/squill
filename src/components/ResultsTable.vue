@@ -6,12 +6,8 @@ const props = defineProps({
   error: { type: String, default: null }
 })
 
-// Configuration
-const ZOOM_MODIFIER_KEY = 'ctrlKey' // Can be 'ctrlKey', 'metaKey', 'altKey', or 'shiftKey'
-
 const currentPage = ref(1)
 const pageSize = ref(10)
-const zoomLevel = ref(1)
 
 const columns = computed(() => {
   if (!props.results || props.results.length === 0) return []
@@ -49,15 +45,6 @@ const resetPagination = () => {
   currentPage.value = 1
 }
 
-// Zoom functionality
-const handleWheel = (e) => {
-  if (e[ZOOM_MODIFIER_KEY]) {
-    e.preventDefault()
-    const delta = e.deltaY > 0 ? -0.1 : 0.1
-    zoomLevel.value = Math.max(0.5, Math.min(3, zoomLevel.value + delta))
-  }
-}
-
 defineExpose({
   resetPagination
 })
@@ -65,18 +52,13 @@ defineExpose({
 
 <template>
   <div class="results-section">
-    <div v-if="error" class="error-banner" @click.stop>
+    <div v-if="error" class="error-banner">
       {{ error }}
     </div>
-    <div
-      class="table-container"
-      @click.stop
-      @wheel="handleWheel"
-    >
+    <div class="table-container">
       <table
         v-if="results && results.length > 0"
         class="results-table"
-        :style="{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left' }"
       >
         <thead>
           <tr>
@@ -97,7 +79,7 @@ defineExpose({
       <span class="results-title">Results ({{ results.length }} rows)</span>
       <div class="pagination">
         <button
-          @click="prevPage"
+          @click.stop="prevPage"
           :disabled="currentPage === 1"
           class="pagination-btn"
         >
@@ -105,7 +87,7 @@ defineExpose({
         </button>
         <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
         <button
-          @click="nextPage"
+          @click.stop="nextPage"
           :disabled="currentPage === totalPages"
           class="pagination-btn"
         >
@@ -201,7 +183,7 @@ defineExpose({
   border-collapse: collapse;
   border-spacing: 0;
   font-size: 12px;
-  font-family: system-ui;
+  font-family: var(--font-results);
   color: black;
 }
 

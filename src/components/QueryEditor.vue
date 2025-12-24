@@ -20,12 +20,12 @@ const retroTheme = EditorView.theme({
   '&': {
     backgroundColor: 'white',
     color: 'black',
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-editor)',
     textAlign: 'left',
   },
   '.cm-content': {
     caretColor: 'black',
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-editor)',
     textAlign: 'left',
   },
   '.cm-cursor, .cm-dropCursor': {
@@ -47,11 +47,11 @@ const retroTheme = EditorView.theme({
     backgroundColor: '#f5f5f5',
   },
   '.cm-scroller': {
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-editor)',
     textAlign: 'left',
   },
   '.cm-line': {
-    fontFamily: '"JetBrains Mono", monospace',
+    fontFamily: 'var(--font-editor)',
     textAlign: 'left',
   },
 }, { dark: false })

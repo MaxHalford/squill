@@ -59,6 +59,28 @@ const handleKeyDown = (e) => {
       canvasStore.selectBox(newBoxId)
     }
   }
+
+  // Ctrl+Z / Cmd+Z to undo
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+    if (!isTyping) {
+      e.preventDefault()
+      console.log('Undo triggered')
+      canvasStore.undo()
+    } else {
+      console.log('Undo blocked - typing detected')
+    }
+  }
+
+  // Ctrl+Shift+Z / Cmd+Shift+Z to redo
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && e.shiftKey) {
+    if (!isTyping) {
+      e.preventDefault()
+      console.log('Redo triggered')
+      canvasStore.redo()
+    } else {
+      console.log('Redo blocked - typing detected')
+    }
+  }
 }
 
 onMounted(async () => {
@@ -128,24 +150,24 @@ onUnmounted(() => {
 }
 
 .add-button {
-  background: #42b883;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-sm) var(--spacing-xl);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(66, 184, 131, 0.3);
-  transition: all 0.2s;
+  box-shadow: var(--shadow);
+  transition: none;
 }
 
 .add-button:hover {
-  background: #35a372;
-  box-shadow: 0 4px 12px rgba(66, 184, 131, 0.4);
+  box-shadow: var(--shadow-lg);
 }
 
 .add-button:active {
-  transform: translateY(1px);
+  transform: translate(2px, 2px);
+  box-shadow: 4px 4px 0 0 rgba(0, 0, 0, 0.25);
 }
 </style>
