@@ -57,6 +57,14 @@ const handleMaximize = (id) => {
   canvasStore.updateBoxSize(id, { width: targetWidth, height: targetHeight })
 }
 
+const handleUpdateName = (id, name) => {
+  canvasStore.updateBoxName(id, name)
+}
+
+const handleUpdateQuery = (id, query) => {
+  canvasStore.updateBoxQuery(id, query)
+}
+
 const handleKeyDown = (e) => {
   // Don't handle shortcuts if user is typing in an input/textarea or CodeMirror editor
   const activeElement = document.activeElement
@@ -147,10 +155,13 @@ onUnmounted(() => {
         :initial-height="box.height"
         :initial-z-index="box.zIndex"
         :initial-query="box.query"
+        :initial-name="box.name"
         :is-selected="canvasStore.selectedBoxId === box.id"
         @select="selectBox(box.id)"
         @update:position="handleUpdatePosition(box.id, $event)"
         @update:size="handleUpdateSize(box.id, $event)"
+        @update:name="handleUpdateName(box.id, $event)"
+        @update:query="handleUpdateQuery(box.id, $event)"
         @delete="handleDelete(box.id)"
         @maximize="handleMaximize(box.id)"
       />

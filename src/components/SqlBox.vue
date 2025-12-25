@@ -18,10 +18,16 @@ const props = defineProps({
   initialHeight: { type: Number, default: 500 },
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
-  initialQuery: { type: String, default: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' }
+  initialQuery: { type: String, default: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' },
+  initialName: { type: String, default: 'SQL Query' }
 })
 
-const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize'])
+const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query'])
+
+// Editable name state
+const isEditingName = ref(false)
+const boxName = ref(props.initialName)
+const nameInputRef = ref(null)
 
 const MIN_EDITOR_HEIGHT = 100
 const MIN_RESULTS_HEIGHT = 200
@@ -41,6 +47,32 @@ const error = ref(null)
 
 const editorRef = ref(null)
 const resultsRef = ref(null)
+
+// Watch for prop changes (e.g., when loading from localStorage)
+import { watch } from 'vue'
+
+let isUpdatingFromProp = false
+
+watch(() => props.initialName, (newName) => {
+  boxName.value = newName
+})
+
+watch(() => props.initialQuery, (newQuery) => {
+  isUpdatingFromProp = true
+  queryText.value = newQuery
+  setTimeout(() => { isUpdatingFromProp = false }, 0)
+})
+
+// Emit query changes to parent for persistence (debounced)
+let queryTimeout = null
+watch(queryText, (newQuery) => {
+  if (isUpdatingFromProp) return
+
+  if (queryTimeout) clearTimeout(queryTimeout)
+  queryTimeout = setTimeout(() => {
+    emit('update:query', newQuery)
+  }, 500)
+})
 
 // Run query
 const runQuery = async () => {
@@ -130,8 +162,40 @@ const handleDelete = (e) => {
   emit('delete')
 }
 
+// Handle name editing
+const startEditingName = (e) => {
+  e.stopPropagation()
+  isEditingName.value = true
+  nextTick(() => {
+    if (nameInputRef.value) {
+      nameInputRef.value.focus()
+      nameInputRef.value.select()
+    }
+  })
+}
+
+const finishEditingName = () => {
+  isEditingName.value = false
+  if (boxName.value.trim()) {
+    emit('update:name', boxName.value.trim())
+  } else {
+    boxName.value = props.initialName
+  }
+}
+
+const handleNameKeydown = (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    finishEditingName()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    boxName.value = props.initialName
+    isEditingName.value = false
+  }
+}
+
 // Add global mouse listeners for splitter
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, nextTick } from 'vue'
 
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
@@ -158,7 +222,22 @@ onUnmounted(() => {
     @update:size="handleUpdateSize"
   >
     <template #header>
-      <span>SQL Query</span>
+      <input
+        v-if="isEditingName"
+        ref="nameInputRef"
+        v-model="boxName"
+        @blur="finishEditingName"
+        @keydown="handleNameKeydown"
+        @click.stop
+        class="name-input"
+        type="text"
+      />
+      <span
+        v-else
+        class="box-name"
+        @dblclick="startEditingName"
+        title="Double-click to edit"
+      >{{ boxName }}</span>
       <div class="header-buttons">
         <button
           class="header-btn maximize-btn"
@@ -215,6 +294,38 @@ onUnmounted(() => {
   bottom: -4px;
   left: 0;
   right: 0;
+}
+
+/* Header name */
+.box-name {
+  cursor: pointer;
+  user-select: none;
+  margin-right: auto;
+  line-height: 1;
+  height: 14px;
+  display: inline-block;
+}
+
+.box-name:hover {
+  opacity: 0.7;
+}
+
+.name-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: inherit;
+  padding: 0;
+  margin: 0;
+  margin-right: auto;
+  min-width: 100px;
+  max-width: 400px;
+  line-height: 1;
+  height: 14px;
+  display: inline-block;
 }
 
 /* Header buttons */

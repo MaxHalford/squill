@@ -29,7 +29,8 @@ export const useCanvasStore = defineStore('canvas', () => {
           width: box.width || 600,
           height: box.height || 500,
           zIndex: box.zIndex || 1,
-          query: box.query || 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
+          query: box.query || 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
+          name: box.name || `Query ${box.id}`
         }))
       } else {
         // Initialize with default boxes if no saved state
@@ -51,7 +52,8 @@ export const useCanvasStore = defineStore('canvas', () => {
         width: 600,
         height: 500,
         zIndex: 1,
-        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
+        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
+        name: 'Query 1'
       },
       {
         id: 2,
@@ -60,7 +62,8 @@ export const useCanvasStore = defineStore('canvas', () => {
         width: 600,
         height: 500,
         zIndex: 2,
-        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
+        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
+        name: 'Query 2'
       },
       {
         id: 3,
@@ -69,7 +72,8 @@ export const useCanvasStore = defineStore('canvas', () => {
         width: 600,
         height: 500,
         zIndex: 3,
-        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
+        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
+        name: 'Query 3'
       }
     ]
     nextBoxId.value = 4
@@ -158,14 +162,16 @@ export const useCanvasStore = defineStore('canvas', () => {
     const defaultX = 100 + Math.random() * 200
     const defaultY = 100 + Math.random() * 200
 
+    const boxId = nextBoxId.value++
     const newBox = {
-      id: nextBoxId.value++,
+      id: boxId,
       x: position ? position.x - 300 : defaultX, // Center the 600px wide box
       y: position ? position.y - 250 : defaultY, // Center the 500px tall box
       width: 600,
       height: 500,
       zIndex: getMaxZIndex() + 1,
-      query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50'
+      query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
+      name: `Query ${boxId}`
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -228,6 +234,14 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
+  // Update box name
+  const updateBoxName = (id, name) => {
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      box.name = name
+    }
+  }
+
   // Update box z-index
   const updateBoxZIndex = (id, zIndex) => {
     const box = boxes.value.find(b => b.id === id)
@@ -256,14 +270,16 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     saveToUndoStack()
     const OFFSET = 30 // Offset for copied box
+    const boxId = nextBoxId.value++
     const newBox = {
-      id: nextBoxId.value++,
+      id: boxId,
       x: originalBox.x + OFFSET,
       y: originalBox.y + OFFSET,
       width: originalBox.width,
       height: originalBox.height,
       zIndex: getMaxZIndex() + 1,
-      query: originalBox.query
+      query: originalBox.query,
+      name: `${originalBox.name} (copy)`
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -280,6 +296,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     updateBoxPosition,
     updateBoxSize,
     updateBoxQuery,
+    updateBoxName,
     updateBoxZIndex,
     getMaxZIndex,
     clearAll,

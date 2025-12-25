@@ -34,6 +34,39 @@ const columns = computed(() => {
   return Object.keys(props.results[0])
 })
 
+// Detect if a column contains numeric data
+const isNumericColumn = computed(() => {
+  if (!props.results || props.results.length === 0) return {}
+
+  const numericColumns = {}
+  columns.value.forEach(column => {
+    // Sample first 10 rows to determine if column is numeric
+    const sampleSize = Math.min(10, props.results.length)
+    let numericCount = 0
+
+    for (let i = 0; i < sampleSize; i++) {
+      const value = props.results[i][column]
+      if (value === null || value === undefined || value === '') continue
+
+      // Check if value is a number or can be parsed as number
+      const numValue = Number(value)
+      if (!isNaN(numValue) && isFinite(numValue)) {
+        numericCount++
+      }
+    }
+
+    // If more than 80% of sampled values are numeric, treat as numeric column
+    numericColumns[column] = (numericCount / sampleSize) > 0.8
+  })
+
+  return numericColumns
+})
+
+// Get CSS class for column alignment
+const getColumnClass = (column) => {
+  return isNumericColumn.value[column] ? 'numeric-column' : 'text-column'
+}
+
 const totalPages = computed(() => {
   if (!props.results) return 0
   return Math.ceil(props.results.length / pageSize.value)
@@ -82,12 +115,24 @@ defineExpose({
       >
         <thead>
           <tr>
-            <th v-for="column in columns" :key="column">{{ column }}</th>
+            <th
+              v-for="column in columns"
+              :key="column"
+              :class="getColumnClass(column)"
+            >
+              {{ column }}
+            </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(row, index) in paginatedData" :key="`row-${currentPage}-${index}`">
-            <td v-for="column in columns" :key="column">{{ row[column] }}</td>
+            <td
+              v-for="column in columns"
+              :key="column"
+              :class="getColumnClass(column)"
+            >
+              {{ row[column] }}
+            </td>
           </tr>
         </tbody>
       </table>
@@ -247,7 +292,6 @@ defineExpose({
 }
 
 .results-table th {
-  text-align: left;
   padding: 8px 12px;
   font-weight: bold;
   white-space: nowrap;
@@ -258,12 +302,35 @@ defineExpose({
   border-top: 1px solid var(--border-color);
   border-bottom: 1px solid var(--border-color);
   min-width: 150px;
+  vertical-align: bottom;
 }
 
 .results-table td {
   padding: 8px 12px;
   white-space: nowrap;
   min-width: 150px;
+  vertical-align: baseline;
+}
+
+/* Text columns: left-aligned */
+.text-column {
+  text-align: left;
+}
+
+/* Numeric columns: right-aligned with monospace font */
+.numeric-column {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-results);
+}
+
+/* Headers always align with their column content */
+.results-table th.text-column {
+  text-align: left;
+}
+
+.results-table th.numeric-column {
+  text-align: left;
 }
 
 .results-table tbody tr:nth-child(even) {
