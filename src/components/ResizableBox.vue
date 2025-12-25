@@ -173,6 +173,11 @@ onUnmounted(() => {
       <div class="resize-handle e" @mousedown="handleResizeStart($event, 'e')"></div>
       <div class="resize-handle s" @mousedown="handleResizeStart($event, 's')"></div>
       <div class="resize-handle w" @mousedown="handleResizeStart($event, 'w')"></div>
+      <!-- Corner handles -->
+      <div class="resize-handle ne" @mousedown="handleResizeStart($event, 'ne')"></div>
+      <div class="resize-handle se" @mousedown="handleResizeStart($event, 'se')"></div>
+      <div class="resize-handle sw" @mousedown="handleResizeStart($event, 'sw')"></div>
+      <div class="resize-handle nw" @mousedown="handleResizeStart($event, 'nw')"></div>
     </template>
   </div>
 </template>
@@ -240,7 +245,7 @@ onUnmounted(() => {
 /* Edge handles */
 .resize-handle.n,
 .resize-handle.s {
-  height: 4px;
+  height: var(--handle-size);
   left: 0;
   right: 0;
   cursor: ns-resize;
@@ -248,26 +253,80 @@ onUnmounted(() => {
 
 .resize-handle.e,
 .resize-handle.w {
-  width: 4px;
+  width: var(--handle-size);
   top: 0;
   bottom: 0;
   cursor: ew-resize;
 }
 
+/* Invisible larger hit area for easier resizing */
+.resize-handle.n::before,
+.resize-handle.s::before {
+  content: '';
+  position: absolute;
+  top: calc(var(--handle-size) / -2);
+  bottom: calc(var(--handle-size) / -2);
+  left: 0;
+  right: 0;
+}
+
+.resize-handle.e::before,
+.resize-handle.w::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--handle-size) / -2);
+  right: calc(var(--handle-size) / -2);
+  top: 0;
+  bottom: 0;
+}
+
 .resize-handle.n {
-  top: -2px;
+  top: calc(var(--handle-size) / -2);
 }
 
 .resize-handle.s {
-  bottom: -2px;
+  bottom: calc(var(--handle-size) / -2);
 }
 
 .resize-handle.e {
-  right: -2px;
+  right: calc(var(--handle-size) / -2);
 }
 
 .resize-handle.w {
-  left: -2px;
+  left: calc(var(--handle-size) / -2);
+}
+
+/* Corner handles */
+.resize-handle.ne,
+.resize-handle.se,
+.resize-handle.sw,
+.resize-handle.nw {
+  width: var(--handle-size);
+  height: var(--handle-size);
+}
+
+.resize-handle.ne {
+  top: calc(var(--handle-size) / -2);
+  right: calc(var(--handle-size) / -2);
+  cursor: nesw-resize;
+}
+
+.resize-handle.se {
+  bottom: calc(var(--handle-size) / -2);
+  right: calc(var(--handle-size) / -2);
+  cursor: nwse-resize;
+}
+
+.resize-handle.sw {
+  bottom: calc(var(--handle-size) / -2);
+  left: calc(var(--handle-size) / -2);
+  cursor: nesw-resize;
+}
+
+.resize-handle.nw {
+  top: calc(var(--handle-size) / -2);
+  left: calc(var(--handle-size) / -2);
+  cursor: nwse-resize;
 }
 
 .resize-handle:hover {

@@ -233,7 +233,8 @@ defineExpose({
 }
 
 .results-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   border-spacing: 0;
   font-size: var(--font-size-sm);
@@ -263,11 +264,13 @@ defineExpose({
   z-index: 10;
   border-top: 1px solid var(--border-color);
   border-bottom: 1px solid var(--border-color);
+  min-width: 150px;
 }
 
 .results-table td {
   padding: 8px 12px;
   white-space: nowrap;
+  min-width: 150px;
 }
 
 .results-table tbody tr:nth-child(even) {

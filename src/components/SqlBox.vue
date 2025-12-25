@@ -176,7 +176,7 @@ onUnmounted(() => {
 <style scoped>
 /* Splitter */
 .splitter {
-  height: 1px;
+  height: var(--border-width);
   background: black;
   cursor: ns-resize;
   flex-shrink: 0;

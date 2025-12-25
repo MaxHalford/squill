@@ -41,7 +41,6 @@ const retroTheme = EditorView.theme({
     backgroundColor: 'white',
     color: '#999',
     border: 'none',
-    paddingRight: '8px',
   },
   '.cm-activeLineGutter': {
     backgroundColor: '#f5f5f5',

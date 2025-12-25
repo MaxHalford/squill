@@ -119,7 +119,8 @@ const isOverScrollableArea = (element) => {
   while (current && current !== canvasRef.value) {
     if (current.classList && (
       current.classList.contains('table-container') ||
-      current.classList.contains('sql-editor')
+      current.classList.contains('sql-editor') ||
+      current.classList.contains('query-editor')
     )) {
       return true
     }
