@@ -1,7 +1,7 @@
 <script setup>
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import SqlBox from '../components/SqlBox.vue'
-import Sidebar from '../components/Sidebar.vue'
+import MenuBar from '../components/MenuBar.vue'
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
 
@@ -130,11 +130,7 @@ onUnmounted(() => {
 
 <template>
   <div class="page">
-    <Sidebar />
-
-    <div class="controls">
-      <button @click="addSqlBox" class="add-button">+ Add SQL Box</button>
-    </div>
+    <MenuBar @add-box="addSqlBox" />
 
     <InfiniteCanvas
       ref="canvasRef"
@@ -167,41 +163,6 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   height: 100vh;
-}
-
-.controls {
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 1000;
-  display: flex;
-  gap: 20px;
-  align-items: center;
-}
-
-.add-button {
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  border: var(--border-width) solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: var(--spacing-sm) var(--spacing-xl);
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  cursor: pointer;
-  transition: none;
-  outline: none;
-  font-family: var(--font-ui);
-}
-
-.add-button:hover {
-  background: var(--bg-secondary);
-}
-
-.add-button:focus {
-  outline: none;
-}
-
-.add-button:active {
-  background: var(--bg-secondary);
+  padding-top: 48px; /* Height of menu bar */
 }
 </style>
