@@ -215,10 +215,21 @@ onUnmounted(() => {
 }
 
 .resizable-box.selected {
-  outline: 2px solid var(--border-color);
-  outline-offset: -2px;
   box-shadow: var(--shadow-lg);
   z-index: 10;
+  position: relative;
+}
+
+.resizable-box.selected::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border: 2px solid var(--border-color);
+  border-radius: var(--border-radius);
+  pointer-events: none;
 }
 
 .resizable-box.dragging {
