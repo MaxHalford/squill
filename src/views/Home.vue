@@ -35,6 +35,28 @@ const handleDelete = (id) => {
   canvasStore.removeBox(id)
 }
 
+const handleMaximize = (id) => {
+  // Get the viewport center in canvas coordinates
+  const center = canvasRef.value?.getViewportCenter()
+  if (!center) return
+
+  // Calculate viewport size in canvas coordinates
+  const zoom = canvasRef.value?.zoom || 1
+  const viewportWidth = window.innerWidth / zoom
+  const viewportHeight = window.innerHeight / zoom
+
+  // Use 80% of viewport for the box size
+  const targetWidth = viewportWidth * 0.8
+  const targetHeight = viewportHeight * 0.8
+
+  // Position box centered horizontally, with 10% margin at top (and 10% at bottom)
+  const newX = center.x - targetWidth / 2
+  const newY = center.y - viewportHeight * 0.4
+
+  canvasStore.updateBoxPosition(id, { x: newX, y: newY })
+  canvasStore.updateBoxSize(id, { width: targetWidth, height: targetHeight })
+}
+
 const handleKeyDown = (e) => {
   // Don't handle shortcuts if user is typing in an input/textarea or CodeMirror editor
   const activeElement = document.activeElement
@@ -134,6 +156,7 @@ onUnmounted(() => {
         @update:position="handleUpdatePosition(box.id, $event)"
         @update:size="handleUpdateSize(box.id, $event)"
         @delete="handleDelete(box.id)"
+        @maximize="handleMaximize(box.id)"
       />
     </InfiniteCanvas>
   </div>

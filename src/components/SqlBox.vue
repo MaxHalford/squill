@@ -21,7 +21,7 @@ const props = defineProps({
   initialQuery: { type: String, default: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' }
 })
 
-const emit = defineEmits(['select', 'update:position', 'update:size', 'delete'])
+const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize'])
 
 const MIN_EDITOR_HEIGHT = 100
 const MIN_RESULTS_HEIGHT = 200
@@ -121,30 +121,7 @@ const handleUpdateSize = (newSize) => {
 // Handle maximize button
 const handleMaximize = (e) => {
   e.stopPropagation() // Prevent triggering header drag
-
-  // Calculate viewport size in canvas coordinates (accounting for zoom)
-  const zoom = canvasZoom.value
-  const viewportWidth = window.innerWidth / zoom
-  const viewportHeight = window.innerHeight / zoom
-
-  // Use 80% of viewport to leave some margin
-  const targetWidth = viewportWidth * 0.8
-  const targetHeight = viewportHeight * 0.8
-
-  // Get current box center in canvas coordinates
-  const currentX = props.initialX
-  const currentY = props.initialY
-  const currentWidth = props.initialWidth
-  const currentHeight = props.initialHeight
-  const centerX = currentX + currentWidth / 2
-  const centerY = currentY + currentHeight / 2
-
-  // Position the maximized box centered on the current box's center
-  const newX = centerX - targetWidth / 2
-  const newY = centerY - targetHeight / 2
-
-  emit('update:position', { x: newX, y: newY })
-  emit('update:size', { width: targetWidth, height: targetHeight })
+  emit('maximize')
 }
 
 // Handle delete button
