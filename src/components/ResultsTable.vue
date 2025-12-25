@@ -97,7 +97,7 @@ defineExpose({
     </div>
     <div v-if="results && results.length > 0" class="results-footer">
       <div class="results-info">
-        <span class="results-title">{{ results.length }} {{ results.length === 1 ? 'row' : 'rows' }}</span>
+        <span class="results-stat">{{ results.length }} {{ results.length === 1 ? 'row' : 'rows' }}</span>
         <span v-if="stats" class="stats-divider">•</span>
         <span v-if="stats && stats.executionTimeMs" class="results-stat">
           {{ formatTime(stats.executionTimeMs) }}
@@ -164,12 +164,6 @@ defineExpose({
   gap: 8px;
 }
 
-.results-title {
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: bold;
-}
-
 .results-stat {
   color: var(--text-primary);
   font-size: var(--font-size-sm);
@@ -219,7 +213,6 @@ defineExpose({
 .page-info {
   color: var(--text-primary);
   font-size: var(--font-size-sm);
-  font-weight: bold;
   min-width: 50px;
   text-align: center;
 }

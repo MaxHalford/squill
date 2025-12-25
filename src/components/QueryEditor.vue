@@ -1,7 +1,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { EditorView, basicSetup } from 'codemirror'
-import { sql } from '@codemirror/lang-sql'
+import { sql, SQLDialect } from '@codemirror/lang-sql'
+import { autocompletion } from '@codemirror/autocomplete'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -53,7 +54,55 @@ const retroTheme = EditorView.theme({
     fontFamily: 'var(--font-editor)',
     textAlign: 'left',
   },
+  '.cm-tooltip-autocomplete': {
+    backgroundColor: 'white',
+    border: '1px solid black',
+    fontFamily: 'var(--font-editor)',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+    backgroundColor: '#d7d7d7',
+    color: 'black',
+  },
 }, { dark: false })
+
+// Custom SQL completion source with uppercase keywords
+const uppercaseKeywords = (context) => {
+  const word = context.matchBefore(/\w*/)
+  if (!word) return null
+  if (word.from === word.to && !context.explicit) return null
+
+  // Common SQL keywords in uppercase
+  const keywords = [
+    'SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'CROSS',
+    'ON', 'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN', 'IS', 'NULL',
+    'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET',
+    'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE',
+    'CREATE', 'TABLE', 'VIEW', 'INDEX', 'DROP', 'ALTER',
+    'AS', 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN',
+    'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+    'UNION', 'ALL', 'EXCEPT', 'INTERSECT',
+    'WITH', 'RECURSIVE', 'CAST', 'EXISTS',
+    'ASC', 'DESC', 'NULLS', 'FIRST', 'LAST',
+    'TRUE', 'FALSE', 'ARRAY', 'STRUCT',
+    'INT64', 'FLOAT64', 'STRING', 'BOOL', 'DATE', 'TIMESTAMP', 'DATETIME',
+    'UNNEST', 'ARRAY_AGG', 'STRING_AGG',
+    'PARTITION', 'OVER', 'ROWS', 'RANGE', 'WINDOW',
+    'EXTRACT', 'DATE_TRUNC', 'CURRENT_DATE', 'CURRENT_TIMESTAMP'
+  ]
+
+  const options = keywords.map(keyword => ({
+    label: keyword,
+    type: 'keyword',
+    apply: keyword + ' ',
+    boost: keyword.toLowerCase().startsWith(word.text.toLowerCase()) ? 1 : 0
+  }))
+
+  return {
+    from: word.from,
+    options: options.filter(opt => opt.boost > 0 || context.explicit),
+    validFor: /^\w*$/
+  }
+}
 
 onMounted(() => {
   // Keyboard shortcut for running query
@@ -72,7 +121,16 @@ onMounted(() => {
   editorView = new EditorView({
     extensions: [
       basicSetup,
-      sql(),
+      sql({
+        upperCaseKeywords: true,
+        dialect: SQLDialect.define({})
+      }),
+      autocompletion({
+        override: [uppercaseKeywords],
+        activateOnTyping: true,
+        maxRenderedOptions: 20,
+        closeOnBlur: true
+      }),
       retroTheme,
       runShortcut,
       EditorView.updateListener.of((update) => {
