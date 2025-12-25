@@ -1,11 +1,12 @@
 {
   "name": "squill",
-  "private": true,
+  "private": false,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:deploy": "VITE_BASE_PATH=/squill/ vite build",
     "preview": "vite preview"
   },
   "dependencies": {
