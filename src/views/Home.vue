@@ -31,6 +31,10 @@ const handleUpdateSize = (id, size) => {
   canvasStore.updateBoxSize(id, size)
 }
 
+const handleDelete = (id) => {
+  canvasStore.removeBox(id)
+}
+
 const handleKeyDown = (e) => {
   // Don't handle shortcuts if user is typing in an input/textarea or CodeMirror editor
   const activeElement = document.activeElement
@@ -129,6 +133,7 @@ onUnmounted(() => {
         @select="selectBox(box.id)"
         @update:position="handleUpdatePosition(box.id, $event)"
         @update:size="handleUpdateSize(box.id, $event)"
+        @delete="handleDelete(box.id)"
       />
     </InfiniteCanvas>
   </div>

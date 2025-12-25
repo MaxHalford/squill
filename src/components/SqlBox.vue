@@ -21,7 +21,7 @@ const props = defineProps({
   initialQuery: { type: String, default: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' }
 })
 
-const emit = defineEmits(['select', 'update:position', 'update:size'])
+const emit = defineEmits(['select', 'update:position', 'update:size', 'delete'])
 
 const MIN_EDITOR_HEIGHT = 100
 const MIN_RESULTS_HEIGHT = 200
@@ -118,6 +118,19 @@ const handleUpdateSize = (newSize) => {
   emit('update:size', newSize)
 }
 
+// Handle maximize button
+const handleMaximize = (e) => {
+  e.stopPropagation() // Prevent triggering header drag
+  // Increase box size to a larger fixed size
+  emit('update:size', { width: 900, height: 700 })
+}
+
+// Handle delete button
+const handleDelete = (e) => {
+  e.stopPropagation() // Prevent triggering header drag
+  emit('delete')
+}
+
 // Add global mouse listeners for splitter
 import { onMounted, onUnmounted } from 'vue'
 
@@ -147,6 +160,18 @@ onUnmounted(() => {
   >
     <template #header>
       <span>SQL Query</span>
+      <div class="header-buttons">
+        <button
+          class="header-btn maximize-btn"
+          @click="handleMaximize"
+          title="Maximize"
+        >⛶</button>
+        <button
+          class="header-btn delete-btn"
+          @click="handleDelete"
+          title="Delete"
+        >✕</button>
+      </div>
     </template>
 
     <QueryEditor
@@ -191,5 +216,43 @@ onUnmounted(() => {
   bottom: -4px;
   left: 0;
   right: 0;
+}
+
+/* Header buttons */
+.header-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.header-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--text-color);
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.header-btn:focus {
+  outline: none;
+}
+
+.header-btn:hover {
+  background: var(--text-color);
+  color: var(--bg-color);
+}
+
+.delete-btn:hover {
+  background: #ff4444;
+  border-color: #ff4444;
+  color: white;
 }
 </style>

@@ -32,10 +32,18 @@ const dragStart = ref({ x: 0, y: 0 })
 const initialSize = ref({ width: 0, height: 0 })
 const initialPosition = ref({ x: 0, y: 0 })
 
-// Watch for z-index changes from parent
+// Watch for changes from parent
 import { watch } from 'vue'
 watch(() => props.initialZIndex, (newZIndex) => {
   zIndex.value = newZIndex
+})
+
+watch(() => props.initialWidth, (newWidth) => {
+  size.value.width = newWidth
+})
+
+watch(() => props.initialHeight, (newHeight) => {
+  size.value.height = newHeight
 })
 
 // Handle selection
