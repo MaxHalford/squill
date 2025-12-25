@@ -46,6 +46,14 @@ watch(() => props.initialHeight, (newHeight) => {
   size.value.height = newHeight
 })
 
+watch(() => props.initialX, (newX) => {
+  position.value.x = newX
+})
+
+watch(() => props.initialY, (newY) => {
+  position.value.y = newY
+})
+
 // Handle selection
 const handleBoxClick = () => {
   emit('select')

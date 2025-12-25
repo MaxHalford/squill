@@ -121,8 +121,30 @@ const handleUpdateSize = (newSize) => {
 // Handle maximize button
 const handleMaximize = (e) => {
   e.stopPropagation() // Prevent triggering header drag
-  // Increase box size to a larger fixed size
-  emit('update:size', { width: 900, height: 700 })
+
+  // Calculate viewport size in canvas coordinates (accounting for zoom)
+  const zoom = canvasZoom.value
+  const viewportWidth = window.innerWidth / zoom
+  const viewportHeight = window.innerHeight / zoom
+
+  // Use 80% of viewport to leave some margin
+  const targetWidth = viewportWidth * 0.8
+  const targetHeight = viewportHeight * 0.8
+
+  // Get current box center in canvas coordinates
+  const currentX = props.initialX
+  const currentY = props.initialY
+  const currentWidth = props.initialWidth
+  const currentHeight = props.initialHeight
+  const centerX = currentX + currentWidth / 2
+  const centerY = currentY + currentHeight / 2
+
+  // Position the maximized box centered on the current box's center
+  const newX = centerX - targetWidth / 2
+  const newY = centerY - targetHeight / 2
+
+  emit('update:position', { x: newX, y: newY })
+  emit('update:size', { width: targetWidth, height: targetHeight })
 }
 
 // Handle delete button
