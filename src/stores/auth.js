@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useSettingsStore } from './settings'
+import { applyAutoLimit } from '../utils/queryTransform'
 
 const STORAGE_KEY = 'squill-auth'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
@@ -322,6 +324,14 @@ export const useAuthStore = defineStore('auth', () => {
       throw new Error('Session expired. Please sign in again.')
     }
 
+    // Apply auto-limit transformation
+    const settingsStore = useSettingsStore()
+    const transformedQuery = applyAutoLimit(
+      query,
+      settingsStore.autoLimitEnabled,
+      settingsStore.autoLimitValue
+    )
+
     const fetchOptions = {
       method: 'POST',
       headers: {
@@ -329,7 +339,7 @@ export const useAuthStore = defineStore('auth', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        query,
+        query: transformedQuery,
         useLegacySql: false,
       }),
     }

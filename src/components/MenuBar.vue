@@ -1,13 +1,15 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
+import { useSettingsStore } from '../stores/settings'
 
 const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
+const settingsStore = useSettingsStore()
 
 // Dropdown states
-const activeDropdown = ref(null) // 'database', 'project', 'box', 'user'
+const activeDropdown = ref(null) // 'database', 'project', 'box', 'settings', 'user'
 
 // Database types
 const databases = [
@@ -23,6 +25,9 @@ const boxTypes = [
 // Projects loading state
 const isLoadingProjects = ref(false)
 const availableProjects = ref([])
+
+// Settings state
+const limitInputValue = ref(settingsStore.autoLimitValue)
 
 // Get current database
 const currentDatabase = computed(() => {
@@ -135,6 +140,27 @@ const userInitials = computed(() => {
   return authStore.userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 })
 
+// Handle limit value changes with debouncing
+let limitDebounceTimer = null
+const handleLimitChange = (e) => {
+  const value = e.target.value
+  limitInputValue.value = value
+
+  // Debounce setting the value
+  if (limitDebounceTimer) clearTimeout(limitDebounceTimer)
+  limitDebounceTimer = setTimeout(() => {
+    const numValue = parseInt(value, 10)
+    if (!isNaN(numValue) && numValue > 0) {
+      settingsStore.setAutoLimitValue(numValue)
+    }
+  }, 500)
+}
+
+// Sync limit input when store changes
+watch(() => settingsStore.autoLimitValue, (newValue) => {
+  limitInputValue.value = newValue
+})
+
 // Close dropdown when clicking outside
 import { onMounted, onUnmounted } from 'vue'
 
@@ -234,6 +260,50 @@ onUnmounted(() => {
               <span class="item-text">{{ boxType.name }}</span>
             </div>
           </button>
+        </div>
+      </div>
+
+      <!-- Settings Menu -->
+      <div class="menu-item" :class="{ active: activeDropdown === 'settings' }">
+        <button class="menu-button" @click.stop="toggleDropdown('settings')">
+          <span class="menu-text">Settings</span>
+          <span class="menu-caret">▼</span>
+        </button>
+
+        <div v-if="activeDropdown === 'settings'" class="dropdown settings-dropdown">
+          <div class="settings-section">
+            <div class="setting-header">Auto-limit Queries</div>
+            <div class="setting-description">
+              Automatically add LIMIT clause to queries without one
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">
+                <input
+                  type="checkbox"
+                  :checked="settingsStore.autoLimitEnabled"
+                  @change="settingsStore.toggleAutoLimit"
+                  class="setting-checkbox"
+                />
+                <span>Enable auto-limit</span>
+              </label>
+            </div>
+
+            <div class="setting-row" :class="{ disabled: !settingsStore.autoLimitEnabled }">
+              <label class="setting-label">
+                <span>Default LIMIT value</span>
+                <input
+                  type="number"
+                  :value="limitInputValue"
+                  @input="handleLimitChange"
+                  :disabled="!settingsStore.autoLimitEnabled"
+                  min="1"
+                  max="1000000"
+                  class="setting-input-number"
+                />
+              </label>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -523,5 +593,97 @@ onUnmounted(() => {
   box-shadow: var(--shadow-md);
   z-index: 2001;
   border-radius: 4px;
+}
+
+/* Settings Dropdown */
+.settings-dropdown {
+  min-width: 280px;
+  padding: 0;
+}
+
+.settings-section {
+  padding: var(--space-3);
+  border-bottom: var(--border-width-thin) solid var(--border-secondary);
+}
+
+.settings-section:last-child {
+  border-bottom: none;
+}
+
+.setting-header {
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.setting-description {
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+  line-height: var(--line-height-normal);
+}
+
+.setting-row {
+  margin-bottom: var(--space-2);
+}
+
+.setting-row:last-child {
+  margin-bottom: 0;
+}
+
+.setting-row.disabled {
+  opacity: 0.5;
+}
+
+.setting-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--font-size-body-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.setting-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  margin-right: var(--space-1);
+}
+
+.setting-input-number {
+  width: 80px;
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-width-thin) solid var(--border-primary);
+  background: var(--surface-primary);
+  font-size: var(--font-size-body-sm);
+  font-family: var(--font-family-mono);
+  color: var(--text-primary);
+  text-align: right;
+  outline: none;
+  transition: border-color 0.15s;
+  border-radius: 4px;
+}
+
+.setting-input-number:focus {
+  border-color: var(--color-accent);
+}
+
+.setting-input-number:disabled {
+  background: var(--surface-secondary);
+  cursor: not-allowed;
+}
+
+/* Remove number input spinners for cleaner look */
+.setting-input-number::-webkit-inner-spin-button,
+.setting-input-number::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.setting-input-number[type=number] {
+  -moz-appearance: textfield;
 }
 </style>
