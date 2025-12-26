@@ -330,7 +330,7 @@ onUnmounted(() => {
   right: 0;
   height: 48px;
   background: var(--bg-primary);
-  border-bottom: var(--border-width) solid var(--border-color);
+  border-bottom: var(--border-slim) solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -381,7 +381,7 @@ onUnmounted(() => {
   padding: var(--spacing-xs) var(--spacing-md);
   font-size: var(--font-size-sm);
   font-family: var(--font-ui);
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-slim) solid var(--border-color);
   border-radius: var(--border-radius);
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -412,7 +412,7 @@ onUnmounted(() => {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-slim) solid var(--border-color);
   background: var(--bg-primary);
   cursor: pointer;
   padding: 0;
@@ -450,7 +450,7 @@ onUnmounted(() => {
   right: 0;
   min-width: 200px;
   background: var(--bg-primary);
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-slim) solid var(--border-color);
   border-radius: var(--border-radius);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
@@ -458,7 +458,7 @@ onUnmounted(() => {
 
 .user-info {
   padding: var(--spacing-md);
-  border-bottom: var(--border-width) solid var(--border-color);
+  border-bottom: var(--border-slim) solid var(--border-color);
 }
 
 .user-name {
@@ -501,7 +501,7 @@ onUnmounted(() => {
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-md);
   background: var(--bg-primary);
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-slim) solid var(--border-color);
   border-radius: var(--border-radius);
   font-size: var(--font-size-sm);
   font-weight: 600;
@@ -538,7 +538,7 @@ onUnmounted(() => {
   max-width: 300px;
   padding: var(--spacing-md);
   background: #fef2f2;
-  border: var(--border-width) solid #fecaca;
+  border: var(--border-slim) solid #fecaca;
   border-radius: var(--border-radius);
   color: #dc2626;
   font-size: var(--font-size-sm);
@@ -565,7 +565,7 @@ onUnmounted(() => {
   max-width: 600px;
   max-height: 80vh;
   background: var(--bg-primary);
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-slim) solid var(--border-color);
   border-radius: var(--border-radius);
   box-shadow: var(--shadow-lg);
   display: flex;
@@ -577,7 +577,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: var(--border-width) solid var(--border-color);
+  border-bottom: var(--border-slim) solid var(--border-color);
 }
 
 .modal-header h2 {
@@ -590,7 +590,7 @@ onUnmounted(() => {
 .close-btn {
   width: 32px;
   height: 32px;
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-slim) solid var(--border-color);
   background: transparent;
   border-radius: var(--border-radius);
   cursor: pointer;
@@ -634,7 +634,7 @@ onUnmounted(() => {
   padding: var(--spacing-sm) var(--spacing-md);
   font-size: var(--font-size-base);
   font-family: var(--font-ui);
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-slim) solid var(--border-color);
   border-radius: var(--border-radius);
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -670,7 +670,7 @@ onUnmounted(() => {
 }
 
 .tables-list {
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-slim) solid var(--border-color);
   border-radius: var(--border-radius);
   max-height: 400px;
   overflow-y: auto;
@@ -685,7 +685,7 @@ onUnmounted(() => {
 }
 
 .table-item {
-  border-bottom: var(--border-width) solid var(--border-color);
+  border-bottom: var(--border-slim) solid var(--border-color);
 }
 
 .table-item:last-child {
@@ -722,7 +722,7 @@ onUnmounted(() => {
 .columns-list {
   padding: var(--spacing-sm) var(--spacing-md) var(--spacing-sm) calc(var(--spacing-md) + 20px);
   background: var(--bg-secondary);
-  border-top: var(--border-width) solid var(--border-color);
+  border-top: var(--border-slim) solid var(--border-color);
 }
 
 .column-item {

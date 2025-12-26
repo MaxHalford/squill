@@ -44,6 +44,7 @@ const queryResults = ref(null)
 const queryStats = ref(null)
 const isRunning = ref(false)
 const error = ref(null)
+let abortController = null
 
 const editorRef = ref(null)
 const resultsRef = ref(null)
@@ -83,11 +84,12 @@ const runQuery = async () => {
 
   isRunning.value = true
   error.value = null
+  abortController = new AbortController()
 
   try {
     const query = editorRef.value.getQuery()
     const startTime = performance.now()
-    const result = await authStore.runQuery(query)
+    const result = await authStore.runQuery(query, abortController.signal)
     const endTime = performance.now()
 
     // Calculate execution time
@@ -103,11 +105,23 @@ const runQuery = async () => {
       resultsRef.value.resetPagination()
     }
   } catch (err) {
-    error.value = err.message || 'Query execution failed'
+    if (err.name === 'AbortError') {
+      error.value = 'Query cancelled'
+    } else {
+      error.value = err.message || 'Query execution failed'
+    }
     queryResults.value = null
     queryStats.value = null
   } finally {
     isRunning.value = false
+    abortController = null
+  }
+}
+
+// Stop query
+const stopQuery = () => {
+  if (abortController) {
+    abortController.abort()
   }
 }
 
@@ -222,22 +236,25 @@ onUnmounted(() => {
     @update:size="handleUpdateSize"
   >
     <template #header>
-      <input
-        v-if="isEditingName"
-        ref="nameInputRef"
-        v-model="boxName"
-        @blur="finishEditingName"
-        @keydown="handleNameKeydown"
-        @click.stop
-        class="name-input"
-        type="text"
-      />
-      <span
-        v-else
-        class="box-name"
-        @dblclick="startEditingName"
-        title="Double-click to edit"
-      >{{ boxName }}</span>
+      <div class="box-name-container">
+        <img src="../assets/bigquery.svg" alt="BigQuery" class="box-icon" />
+        <input
+          v-if="isEditingName"
+          ref="nameInputRef"
+          v-model="boxName"
+          @blur="finishEditingName"
+          @keydown="handleNameKeydown"
+          @click.stop
+          class="name-input"
+          type="text"
+        />
+        <span
+          v-else
+          class="box-name"
+          @dblclick="startEditingName"
+          title="Double-click to edit"
+        >{{ boxName }}</span>
+      </div>
       <div class="header-buttons">
         <button
           class="header-btn maximize-btn"
@@ -259,6 +276,7 @@ onUnmounted(() => {
       :is-running="isRunning"
       :is-authenticated="authStore.isAuthenticated"
       @run="runQuery"
+      @stop="stopQuery"
     />
 
     <!-- Splitter -->
@@ -279,7 +297,7 @@ onUnmounted(() => {
 <style scoped>
 /* Splitter */
 .splitter {
-  height: var(--border-width);
+  height: var(--border-slim);
   background: black;
   cursor: ns-resize;
   flex-shrink: 0;
@@ -296,11 +314,23 @@ onUnmounted(() => {
   right: 0;
 }
 
-/* Header name */
+/* Header name container */
+.box-name-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+}
+
+.box-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 .box-name {
   cursor: pointer;
   user-select: none;
-  margin-right: auto;
   line-height: 1;
   height: 14px;
   display: inline-block;
@@ -320,7 +350,6 @@ onUnmounted(() => {
   font-weight: inherit;
   padding: 0;
   margin: 0;
-  margin-right: auto;
   min-width: 100px;
   max-width: 400px;
   line-height: 1;

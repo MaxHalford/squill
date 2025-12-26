@@ -207,7 +207,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-thick) solid var(--border-color);
   outline: none;
   transition: none;
   isolation: isolate;
@@ -264,9 +264,9 @@ onUnmounted(() => {
 
 /* Resize handles */
 .resize-handle {
-  position: absolute;
-  background: black;
-  z-index: 10;
+    position: absolute;
+    background: transparent;
+    z-index: 10;
 }
 
 /* Edge handles */
@@ -357,6 +357,6 @@ onUnmounted(() => {
 }
 
 .resize-handle:hover {
-  background: #333;
+  background: transparent;
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { EditorView, basicSetup } from 'codemirror'
 import { sql, SQLDialect } from '@codemirror/lang-sql'
 import { autocompletion } from '@codemirror/autocomplete'
@@ -11,10 +11,29 @@ const props = defineProps({
   isAuthenticated: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['update:modelValue', 'run'])
+const emit = defineEmits(['update:modelValue', 'run', 'stop'])
 
 const editorRef = ref(null)
 let editorView = null
+
+// Timer for query execution
+const elapsedTime = ref(0)
+let timerInterval = null
+
+// Watch isRunning to start/stop timer
+watch(() => props.isRunning, (running) => {
+  if (running) {
+    elapsedTime.value = 0
+    timerInterval = setInterval(() => {
+      elapsedTime.value += 0.1
+    }, 100)
+  } else {
+    if (timerInterval) {
+      clearInterval(timerInterval)
+      timerInterval = null
+    }
+  }
+})
 
 // Retro light theme
 const retroTheme = EditorView.theme({
@@ -148,6 +167,9 @@ onUnmounted(() => {
   if (editorView) {
     editorView.destroy()
   }
+  if (timerInterval) {
+    clearInterval(timerInterval)
+  }
 })
 
 // Expose method to get current query text
@@ -166,12 +188,13 @@ defineExpose({
       class="query-editor"
     ></div>
     <button
-      @click.stop="emit('run')"
-      :disabled="isRunning || !isAuthenticated"
+      @click.stop="isRunning ? emit('stop') : emit('run')"
+      :disabled="!isAuthenticated"
       class="run-button"
-      :title="isAuthenticated ? 'Run query (Ctrl + Enter)' : 'Upload credentials in sidebar first'"
+      :title="isRunning ? 'Stop query' : (isAuthenticated ? 'Run query (Ctrl + Enter)' : 'Upload credentials in sidebar first')"
     >
-      {{ isRunning ? '...' : '▶' }}
+      <span v-if="isRunning">■ {{ elapsedTime.toFixed(1) }}s</span>
+      <span v-else>▶</span>
     </button>
   </div>
 </template>
@@ -211,17 +234,18 @@ defineExpose({
   right: var(--spacing-sm);
   background: var(--bg-primary);
   color: var(--text-primary);
-  border: var(--border-width) solid var(--border-color);
+  border: var(--border-slim) solid var(--border-color);
   padding: var(--spacing-xs) var(--spacing-md);
   border-radius: var(--border-radius);
   font-size: var(--font-size-base);
   font-weight: bold;
-  font-family: var(--font-ui);
+  font-family: var(--font-editor);
   cursor: pointer;
   transition: none;
   line-height: 1;
   z-index: 10;
   outline: none;
+  text-align: center;
 }
 
 .run-button:hover:not(:disabled) {

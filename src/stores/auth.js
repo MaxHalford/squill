@@ -308,7 +308,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Run BigQuery query
-  const runQuery = async (query) => {
+  const runQuery = async (query, signal = null) => {
     if (!isAuthenticated.value) {
       throw new Error('Please sign in with Google first')
     }
@@ -322,19 +322,26 @@ export const useAuthStore = defineStore('auth', () => {
       throw new Error('Session expired. Please sign in again.')
     }
 
+    const fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken.value}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+      }),
+    }
+
+    // Add signal if provided
+    if (signal) {
+      fetchOptions.signal = signal
+    }
+
     const response = await fetch(
       `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId.value}/queries`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken.value}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query,
-          useLegacySql: false,
-        }),
-      }
+      fetchOptions
     )
 
     if (!response.ok) {
