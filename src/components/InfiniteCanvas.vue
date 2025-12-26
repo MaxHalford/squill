@@ -101,11 +101,11 @@ defineExpose({
   getViewportCenter
 })
 
-// Check if element is or is inside a SQL box
-const isOverSqlBox = (element) => {
+// Check if element is or is inside a box
+const isOverBox = (element) => {
   let current = element
   while (current && current !== canvasRef.value) {
-    if (current.classList && current.classList.contains('sql-box')) {
+    if (current.classList && current.classList.contains('resizable-box')) {
       return true
     }
     current = current.parentElement
@@ -120,7 +120,9 @@ const isOverScrollableArea = (element) => {
     if (current.classList && (
       current.classList.contains('table-container') ||
       current.classList.contains('sql-editor') ||
-      current.classList.contains('query-editor')
+      current.classList.contains('query-editor') ||
+      current.classList.contains('datasets-list') ||
+      current.classList.contains('schema-browser')
     )) {
       return true
     }
@@ -163,12 +165,12 @@ const handleWheel = (e) => {
   zoom.value = clampedZoom
 }
 
-// Handle panning - allow by default unless over SQL box
+// Handle panning - allow by default unless over a box
 const handleMouseDown = (e) => {
   // Left mouse button
   if (e.button === 0) {
-    // Don't pan if we're over a SQL box
-    if (isOverSqlBox(e.target)) {
+    // Don't pan if we're over a box
+    if (isOverBox(e.target)) {
       return
     }
 

@@ -1,149 +1,150 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { useCanvasStore } from '../stores/canvas'
 
 const authStore = useAuthStore()
-const emit = defineEmits(['add-box'])
+const canvasStore = useCanvasStore()
 
-const error = ref(null)
-const isSigningIn = ref(false)
-const projects = ref([])
+// Dropdown states
+const activeDropdown = ref(null) // 'database', 'project', 'box', 'user'
+
+// Database types
+const databases = [
+  { id: 'bigquery', name: 'BigQuery' }
+]
+
+// Box types
+const boxTypes = [
+  { id: 'sql', name: 'SQL editor', description: 'Execute SQL queries' },
+  { id: 'schema', name: 'Schema browser', description: 'Browse database schema' }
+]
+
+// Projects loading state
 const isLoadingProjects = ref(false)
+const availableProjects = ref([])
 
-// Schema browser modal state
-const showSchemaBrowser = ref(false)
-const datasets = ref([])
-const selectedDataset = ref('')
-const tables = ref([])
-const expandedTables = ref({})
-const tableSchemas = ref({})
-const isLoadingDatasets = ref(false)
-const isLoadingTables = ref(false)
+// Get current database
+const currentDatabase = computed(() => {
+  return databases.find(db => db.id === canvasStore.selectedDatabase)
+})
 
-// User dropdown state
-const showUserDropdown = ref(false)
+// Get current project name
+const currentProjectName = computed(() => {
+  if (!canvasStore.selectedProject) return 'No Project'
+  return canvasStore.selectedProject
+})
 
-const handleSignIn = async () => {
-  try {
-    isSigningIn.value = true
-    error.value = null
-    await authStore.signInWithGoogle()
-    await loadProjects()
-  } catch (err) {
-    error.value = err.message || 'Failed to sign in with Google'
-  } finally {
-    isSigningIn.value = false
+// Toggle dropdown
+const toggleDropdown = (dropdown) => {
+  if (activeDropdown.value === dropdown) {
+    activeDropdown.value = null
+  } else {
+    activeDropdown.value = dropdown
+
+    // Load projects when opening project dropdown
+    if (dropdown === 'project' && canvasStore.selectedDatabase === 'bigquery') {
+      loadProjects()
+    }
   }
 }
 
-const handleSignOut = () => {
-  authStore.signOut()
-  projects.value = []
-  error.value = null
-  showUserDropdown.value = false
+// Close dropdown
+const closeDropdown = () => {
+  activeDropdown.value = null
 }
 
+// Select database
+const selectDatabase = (databaseId) => {
+  canvasStore.setSelectedDatabase(databaseId)
+  canvasStore.setSelectedProject(null)
+  closeDropdown()
+}
+
+// Select project
+const selectProject = (projectId) => {
+  canvasStore.setSelectedProject(projectId)
+  authStore.setProjectId(projectId)
+  closeDropdown()
+}
+
+// Load projects for BigQuery
 const loadProjects = async () => {
+  if (!authStore.isAuthenticated) return
+
+  isLoadingProjects.value = true
   try {
-    isLoadingProjects.value = true
-    projects.value = await authStore.fetchProjects()
-  } catch (err) {
-    console.error('Failed to load projects:', err)
+    const projects = await authStore.fetchProjects()
+    availableProjects.value = projects.map(p => ({
+      id: p.projectId,
+      name: p.name || p.projectId
+    }))
+  } catch (error) {
+    console.error('Failed to load projects:', error)
   } finally {
     isLoadingProjects.value = false
   }
 }
 
-const handleProjectChange = async (event) => {
-  authStore.setProjectId(event.target.value)
-  if (event.target.value) {
-    await loadDatasets()
-  }
+// Add box
+const addBox = (boxType) => {
+  canvasStore.addBox(boxType)
+  closeDropdown()
 }
 
-const loadDatasets = async () => {
-  if (!authStore.projectId) return
+// Sign in
+const isSigningIn = ref(false)
+const signInError = ref(null)
+
+const signIn = async () => {
+  if (canvasStore.selectedDatabase !== 'bigquery') {
+    signInError.value = 'Sign in is only available for BigQuery'
+    setTimeout(() => signInError.value = null, 3000)
+    return
+  }
+
+  isSigningIn.value = true
+  signInError.value = null
 
   try {
-    isLoadingDatasets.value = true
-    datasets.value = await authStore.fetchDatasets()
-    selectedDataset.value = ''
-    tables.value = []
-    expandedTables.value = {}
-  } catch (err) {
-    console.error('Failed to load datasets:', err)
-  } finally {
-    isLoadingDatasets.value = false
-  }
-}
-
-const handleDatasetChange = async (event) => {
-  selectedDataset.value = event.target.value
-  if (selectedDataset.value) {
-    await loadTables()
-  } else {
-    tables.value = []
-    expandedTables.value = {}
-  }
-}
-
-const loadTables = async () => {
-  if (!selectedDataset.value) return
-
-  try {
-    isLoadingTables.value = true
-    const datasetId = selectedDataset.value.split('.').pop()
-    tables.value = await authStore.fetchTables(datasetId)
-    expandedTables.value = {}
-  } catch (err) {
-    console.error('Failed to load tables:', err)
-  } finally {
-    isLoadingTables.value = false
-  }
-}
-
-const toggleTable = async (tableRef) => {
-  const tableId = tableRef.tableId.split('.').pop()
-  const datasetId = selectedDataset.value.split('.').pop()
-  const key = `${datasetId}.${tableId}`
-
-  if (expandedTables.value[key]) {
-    expandedTables.value[key] = false
-  } else {
-    expandedTables.value[key] = true
-
-    if (!tableSchemas.value[key]) {
-      try {
-        const schema = await authStore.fetchTableSchema(datasetId, tableId)
-        tableSchemas.value[key] = schema
-      } catch (err) {
-        console.error('Failed to load table schema:', err)
-      }
+    await authStore.signInWithGoogle()
+    // Auto-load projects after sign in
+    await loadProjects()
+    // Auto-select first project if available
+    if (availableProjects.value.length > 0) {
+      selectProject(availableProjects.value[0].id)
     }
+  } catch (error) {
+    signInError.value = error.message || 'Failed to sign in'
+    setTimeout(() => signInError.value = null, 5000)
+  } finally {
+    isSigningIn.value = false
   }
 }
 
-const openSchemaBrowser = async () => {
-  showSchemaBrowser.value = true
-  if (authStore.projectId && datasets.value.length === 0) {
-    await loadDatasets()
-  }
+// Sign out
+const signOut = () => {
+  authStore.signOut()
+  canvasStore.setSelectedProject(null)
+  closeDropdown()
 }
+
+// Get user initials
+const userInitials = computed(() => {
+  if (!authStore.userName) return '?'
+  return authStore.userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+})
 
 // Close dropdown when clicking outside
-const handleClickOutside = (event) => {
-  if (showUserDropdown.value && !event.target.closest('.user-menu')) {
-    showUserDropdown.value = false
+import { onMounted, onUnmounted } from 'vue'
+
+const handleClickOutside = (e) => {
+  if (!e.target.closest('.menu-item')) {
+    closeDropdown()
   }
 }
 
 onMounted(() => {
-  if (authStore.isAuthenticated) {
-    loadProjects()
-    if (authStore.projectId) {
-      loadDatasets()
-    }
-  }
   document.addEventListener('click', handleClickOutside)
 })
 
@@ -154,168 +155,122 @@ onUnmounted(() => {
 
 <template>
   <div class="menu-bar">
-    <!-- Left section -->
     <div class="menu-left">
       <div class="app-name">Squill</div>
-      <button @click="emit('add-box')" class="menu-btn" title="Add SQL Box">
-        + SQL Box
-      </button>
-      <button
-        v-if="authStore.isAuthenticated && authStore.projectId"
-        @click="openSchemaBrowser"
-        class="menu-btn"
-        title="Browse schema"
-      >
-        Schema
-      </button>
-    </div>
 
-    <!-- Right section -->
-    <div class="menu-right">
-      <!-- Project selector -->
-      <select
-        v-if="authStore.isAuthenticated"
-        :value="authStore.projectId"
-        @change="handleProjectChange"
-        class="project-select"
-        :disabled="isLoadingProjects"
-        title="Select BigQuery project"
-      >
-        <option value="" disabled>
-          {{ isLoadingProjects ? 'Loading...' : 'Select project' }}
-        </option>
-        <option
-          v-for="project in projects"
-          :key="project.projectId"
-          :value="project.projectId"
-        >
-          {{ project.name || project.projectId }}
-        </option>
-      </select>
-
-      <!-- User profile / Sign in -->
-      <div v-if="authStore.isAuthenticated" class="user-menu">
-        <button
-          @click="showUserDropdown = !showUserDropdown"
-          class="user-button"
-          title="User menu"
-        >
-          <img
-            v-if="authStore.userPhoto"
-            :src="authStore.userPhoto"
-            :alt="authStore.userName"
-            class="user-avatar"
-          />
-          <span v-else class="user-initials">
-            {{ authStore.userName?.charAt(0).toUpperCase() }}
-          </span>
+      <!-- Database Selector -->
+      <div class="menu-item" :class="{ active: activeDropdown === 'database' }">
+        <button class="menu-button" @click.stop="toggleDropdown('database')">
+          <span class="menu-text">{{ currentDatabase?.name || 'Database' }}</span>
+          <span class="menu-caret">▼</span>
         </button>
 
-        <!-- User dropdown -->
-        <div v-if="showUserDropdown" class="user-dropdown">
-          <div class="user-info">
-            <div class="user-name">{{ authStore.userName }}</div>
-            <div class="user-email">{{ authStore.userEmail }}</div>
-          </div>
-          <button @click="handleSignOut" class="dropdown-item">
-            Sign Out
+        <div v-if="activeDropdown === 'database'" class="dropdown">
+          <button
+            v-for="db in databases"
+            :key="db.id"
+            class="dropdown-item"
+            :class="{ selected: db.id === canvasStore.selectedDatabase }"
+            @click="selectDatabase(db.id)"
+          >
+            <span class="item-text">{{ db.name }}</span>
+            <span v-if="db.id === canvasStore.selectedDatabase" class="item-check">✓</span>
           </button>
         </div>
       </div>
 
-      <button
-        v-else
-        @click="handleSignIn"
-        :disabled="isSigningIn"
-        class="sign-in-btn"
-        title="Sign in with Google"
-      >
-        <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-        </svg>
-        {{ isSigningIn ? 'Signing in...' : 'Sign in' }}
-      </button>
-    </div>
+      <!-- Project Selector -->
+      <div class="menu-item" :class="{ active: activeDropdown === 'project' }">
+        <button
+          class="menu-button"
+          :disabled="!authStore.isAuthenticated && canvasStore.selectedDatabase === 'bigquery'"
+          @click.stop="toggleDropdown('project')"
+        >
+          <span class="menu-text">{{ currentProjectName }}</span>
+          <span class="menu-caret">▼</span>
+        </button>
 
-    <!-- Error message -->
-    <div v-if="error" class="error-toast">
-      {{ error }}
-    </div>
-
-    <!-- Schema Browser Modal -->
-    <div v-if="showSchemaBrowser" class="modal-overlay" @click="showSchemaBrowser = false">
-      <div class="modal" @click.stop>
-        <div class="modal-header">
-          <h2>Schema Browser</h2>
-          <button @click="showSchemaBrowser = false" class="close-btn">✕</button>
-        </div>
-
-        <div class="modal-content">
-          <!-- Dataset selector -->
-          <div class="field">
-            <label for="dataset-select">Dataset</label>
-            <select
-              id="dataset-select"
-              v-model="selectedDataset"
-              @change="handleDatasetChange"
-              class="select"
-              :disabled="isLoadingDatasets"
-            >
-              <option value="">
-                {{ isLoadingDatasets ? 'Loading datasets...' : 'Select a dataset' }}
-              </option>
-              <option
-                v-for="dataset in datasets"
-                :key="dataset.datasetReference.datasetId"
-                :value="dataset.datasetReference.datasetId"
-              >
-                {{ dataset.datasetReference.datasetId }}
-              </option>
-            </select>
-          </div>
-
-          <!-- Tables list -->
-          <div v-if="selectedDataset" class="tables-section">
-            <label>Tables</label>
-            <div class="tables-list">
-              <div v-if="isLoadingTables" class="loading-state">
-                Loading tables...
-              </div>
-              <div v-else-if="tables.length === 0" class="empty-state">
-                No tables found
-              </div>
-              <div v-else>
-                <div
-                  v-for="table in tables"
-                  :key="table.tableReference.tableId"
-                  class="table-item"
-                >
-                  <div class="table-header" @click="toggleTable(table.tableReference)">
-                    <span class="table-caret">
-                      {{ expandedTables[`${selectedDataset}.${table.tableReference.tableId.split('.').pop()}`] ? '▼' : '▶' }}
-                    </span>
-                    <span class="table-name">{{ table.tableReference.tableId.split('.').pop() }}</span>
-                  </div>
-                  <div
-                    v-if="expandedTables[`${selectedDataset}.${table.tableReference.tableId.split('.').pop()}`]"
-                    class="columns-list"
-                  >
-                    <div
-                      v-for="column in tableSchemas[`${selectedDataset}.${table.tableReference.tableId.split('.').pop()}`] || []"
-                      :key="column.name"
-                      class="column-item"
-                    >
-                      <span class="column-name">{{ column.name }}</span>
-                      <span class="column-type">{{ column.type }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        <div v-if="activeDropdown === 'project'" class="dropdown">
+          <div v-if="canvasStore.selectedDatabase === 'bigquery'">
+            <div v-if="isLoadingProjects" class="dropdown-message">
+              Loading projects...
             </div>
+            <div v-else-if="availableProjects.length === 0" class="dropdown-message">
+              No projects available
+            </div>
+            <button
+              v-else
+              v-for="project in availableProjects"
+              :key="project.id"
+              class="dropdown-item"
+              :class="{ selected: project.id === canvasStore.selectedProject }"
+              @click="selectProject(project.id)"
+            >
+              <span class="item-text">{{ project.name }}</span>
+              <span v-if="project.id === canvasStore.selectedProject" class="item-check">✓</span>
+            </button>
           </div>
+          <div v-else class="dropdown-message">
+            Project selection not available for {{ currentDatabase?.name }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Box Menu -->
+      <div class="menu-item" :class="{ active: activeDropdown === 'box' }">
+        <button class="menu-button" @click.stop="toggleDropdown('box')">
+          <span class="menu-text">Add</span>
+          <span class="menu-caret">▼</span>
+        </button>
+
+        <div v-if="activeDropdown === 'box'" class="dropdown">
+          <button
+            v-for="boxType in boxTypes"
+            :key="boxType.id"
+            class="dropdown-item with-description"
+            @click="addBox(boxType.id)"
+          >
+            <div class="item-main">
+              <span class="item-text">{{ boxType.name }}</span>
+            </div>
+            <div class="item-description">{{ boxType.description }}</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="menu-right">
+      <!-- Error Toast -->
+      <div v-if="signInError" class="error-toast">
+        {{ signInError }}
+      </div>
+
+      <!-- Sign In / User Menu -->
+      <div v-if="!authStore.isAuthenticated" class="menu-item">
+        <button
+          class="sign-in-btn"
+          :disabled="isSigningIn || canvasStore.selectedDatabase !== 'bigquery'"
+          @click="signIn"
+        >
+          <span v-if="isSigningIn">Signing in...</span>
+          <span v-else>Sign in with Google</span>
+        </button>
+      </div>
+
+      <div v-else class="menu-item" :class="{ active: activeDropdown === 'user' }">
+        <button class="user-button" @click.stop="toggleDropdown('user')">
+          <img v-if="authStore.userPhoto" :src="authStore.userPhoto" alt="User" class="user-avatar" />
+          <span v-else class="user-initials">{{ userInitials }}</span>
+        </button>
+
+        <div v-if="activeDropdown === 'user'" class="dropdown user-dropdown">
+          <div class="user-info">
+            <div class="user-name">{{ authStore.userName }}</div>
+            <div class="user-email">{{ authStore.userEmail }}</div>
+          </div>
+          <button class="dropdown-item" @click="signOut">
+            Sign Out
+          </button>
         </div>
       </div>
     </div>
@@ -328,89 +283,174 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   right: 0;
-  height: 48px;
+  height: 32px;
   background: var(--surface-primary);
-  border-bottom: var(--menu-border-width) solid var(--border-primary);
+  border-bottom: var(--border-width-thin) solid var(--border-primary);
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0 var(--space-3);
   z-index: 1000;
   font-family: var(--font-family-ui);
+  font-size: var(--font-size-body-sm);
 }
 
 .menu-left,
 .menu-right {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 0;
+  height: 100%;
 }
 
 .app-name {
-  font-size: var(--font-size-heading);
+  font-size: var(--font-size-body);
   font-weight: 700;
   color: var(--text-primary);
-  margin-right: var(--space-3);
+  margin-right: var(--space-4);
   user-select: none;
+  display: flex;
+  align-items: center;
+  height: 100%;
 }
 
-.menu-btn {
-  background: transparent;
-  color: var(--text-primary);
-  border: none;
-  padding: var(--menu-item-padding);
-  font-size: var(--font-size-body);
-  font-weight: 600;
-  font-family: var(--font-family-ui);
-  cursor: pointer;
-  border-radius: var(--border-radius-none);
-  transition: background 0.2s;
-  outline: none;
+/* Menu Item Container */
+.menu-item {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 
-.menu-btn:hover {
+.menu-item.active .menu-button {
   background: var(--surface-secondary);
 }
 
-.menu-btn:focus {
-  outline: none;
-}
-
-.project-select {
-  min-width: 200px;
-  padding: var(--input-padding);
+/* Menu Button */
+.menu-button {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
   font-size: var(--font-size-body-sm);
   font-family: var(--font-family-ui);
-  border: var(--input-border-width) solid var(--border-primary);
-  border-radius: var(--input-border-radius);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s;
+}
+
+.menu-button:hover:not(:disabled) {
+  background: var(--surface-secondary);
+}
+
+.menu-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.menu-text {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.menu-caret {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* Dropdown */
+.dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
   background: var(--surface-primary);
+  border: var(--border-width-thin) solid var(--border-primary);
+  box-shadow: var(--shadow-md);
+  margin-top: 1px;
+  z-index: 2000;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.user-dropdown {
+  right: 0;
+  left: auto;
+}
+
+.dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  border-bottom: var(--border-width-thin) solid var(--border-secondary);
+  text-align: left;
+  font-size: var(--font-size-body-sm);
+  font-family: var(--font-family-ui);
   color: var(--text-primary);
   cursor: pointer;
-  font-weight: 600;
   outline: none;
+  transition: background 0.1s;
 }
 
-.project-select:hover:not(:disabled) {
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-item:hover {
   background: var(--surface-secondary);
 }
 
-.project-select:focus {
-  outline: none;
+.dropdown-item.selected {
   background: var(--surface-secondary);
 }
 
-.project-select:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+.dropdown-item.with-description {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
 }
 
-.user-menu {
-  position: relative;
+.item-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
 }
 
+.item-text {
+  flex: 1;
+}
+
+.item-description {
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  padding-left: calc(16px + var(--space-2));
+}
+
+.item-check {
+  color: var(--color-accent);
+  font-weight: bold;
+}
+
+.dropdown-message {
+  padding: var(--space-3);
+  text-align: center;
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
+}
+
+/* User Button */
 .user-button {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: var(--border-width-thin) solid var(--border-primary);
   background: var(--surface-primary);
@@ -420,15 +460,11 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   outline: none;
-  transition: background 0.2s;
+  transition: background 0.15s;
 }
 
 .user-button:hover {
   background: var(--surface-secondary);
-}
-
-.user-button:focus {
-  outline: none;
 }
 
 .user-avatar {
@@ -439,310 +475,66 @@ onUnmounted(() => {
 }
 
 .user-initials {
-  font-size: var(--font-size-body);
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.user-dropdown {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  min-width: 200px;
-  background: var(--surface-primary);
-  border: var(--border-width-thin) solid var(--border-primary);
-  border-radius: var(--border-radius-none);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-}
-
 .user-info {
-  padding: var(--menu-section-padding);
-  border-bottom: var(--menu-border-width) solid var(--border-primary);
+  padding: var(--space-3);
+  border-bottom: var(--border-width-thin) solid var(--border-secondary);
 }
 
 .user-name {
-  font-size: var(--font-size-body);
+  font-size: var(--font-size-body-sm);
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 2px;
 }
 
 .user-email {
-  font-size: var(--font-size-body-sm);
+  font-size: var(--font-size-caption);
   color: var(--text-secondary);
 }
 
-.dropdown-item {
-  width: 100%;
-  padding: var(--menu-item-padding);
-  background: transparent;
-  border: none;
-  text-align: left;
-  font-size: var(--font-size-body);
-  font-family: var(--font-family-ui);
-  color: var(--text-primary);
-  cursor: pointer;
-  outline: none;
-  transition: background 0.2s;
-}
-
-.dropdown-item:hover {
-  background: var(--surface-secondary);
-}
-
-.dropdown-item:focus {
-  outline: none;
-}
-
+/* Sign In Button */
 .sign-in-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--button-padding);
+  height: 24px;
+  padding: 0 var(--space-3);
   background: var(--surface-primary);
-  border: var(--button-border-width) solid var(--border-primary);
-  border-radius: var(--button-border-radius);
-  font-size: var(--font-size-body-sm);
-  font-weight: 600;
+  border: var(--border-width-thin) solid var(--border-primary);
+  border-radius: 4px;
+  font-size: var(--font-size-caption);
+  font-weight: 500;
   color: var(--text-primary);
   font-family: var(--font-family-ui);
   cursor: pointer;
   outline: none;
-  transition: background 0.2s;
+  transition: background 0.15s;
 }
 
 .sign-in-btn:hover:not(:disabled) {
   background: var(--surface-secondary);
 }
 
-.sign-in-btn:focus {
-  outline: none;
-}
-
 .sign-in-btn:disabled {
-  cursor: not-allowed;
   opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.google-icon {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
+/* Error Toast */
 .error-toast {
   position: fixed;
-  top: 60px;
-  right: var(--space-5);
+  top: 40px;
+  right: var(--space-3);
   max-width: 300px;
-  padding: var(--space-3);
-  background: #fef2f2;
-  border: var(--border-width-thin) solid #fecaca;
-  border-radius: var(--border-radius-none);
-  color: #dc2626;
-  font-size: var(--font-size-body-sm);
-  box-shadow: var(--shadow-lg);
-  z-index: 1001;
-}
-
-/* Modal */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.modal {
-  width: 90%;
-  max-width: 600px;
-  max-height: 80vh;
-  background: var(--surface-primary);
-  border: var(--border-width-thin) solid var(--border-primary);
-  border-radius: var(--border-radius-none);
-  box-shadow: var(--shadow-lg);
-  display: flex;
-  flex-direction: column;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: var(--border-width-thin) solid var(--border-primary);
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: var(--font-size-body-lg);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.close-btn {
-  width: 32px;
-  height: 32px;
-  border: var(--border-width-thin) solid var(--border-primary);
-  background: transparent;
-  border-radius: var(--border-radius-none);
-  cursor: pointer;
-  font-size: var(--font-size-heading);
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  outline: none;
-  transition: background 0.2s;
-}
-
-.close-btn:hover {
-  background: var(--surface-secondary);
-}
-
-.close-btn:focus {
-  outline: none;
-}
-
-.modal-content {
-  padding: var(--space-4);
-  overflow-y: auto;
-  flex: 1;
-}
-
-.field {
-  margin-bottom: var(--space-4);
-}
-
-.field label {
-  display: block;
-  font-size: var(--font-size-body-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--space-2);
-}
-
-.select {
-  width: 100%;
-  padding: var(--input-padding);
-  font-size: var(--input-font-size);
-  font-family: var(--font-family-ui);
-  border: var(--input-border-width) solid var(--border-primary);
-  border-radius: var(--input-border-radius);
-  background: var(--surface-primary);
-  color: var(--text-primary);
-  cursor: pointer;
-  font-weight: 600;
-  outline: none;
-}
-
-.select:hover:not(:disabled) {
-  background: var(--surface-secondary);
-}
-
-.select:focus {
-  outline: none;
-  background: var(--surface-secondary);
-}
-
-.select:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.tables-section {
-  margin-top: var(--space-4);
-}
-
-.tables-section > label {
-  display: block;
-  font-size: var(--font-size-body-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--space-2);
-}
-
-.tables-list {
-  border: var(--border-width-thin) solid var(--border-primary);
-  border-radius: var(--border-radius-none);
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.loading-state,
-.empty-state {
-  padding: var(--space-4);
-  text-align: center;
-  font-size: var(--font-size-body-sm);
-  color: var(--text-secondary);
-}
-
-.table-item {
-  border-bottom: var(--border-width-thin) solid var(--border-primary);
-}
-
-.table-item:last-child {
-  border-bottom: none;
-}
-
-.table-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.2s;
-}
-
-.table-header:hover {
-  background: var(--surface-secondary);
-}
-
-.table-caret {
-  font-size: 10px;
-  color: var(--text-secondary);
-  width: 12px;
-}
-
-.table-name {
-  font-size: var(--font-size-body-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  font-family: var(--font-family-mono);
-}
-
-.columns-list {
-  padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 20px);
-  background: var(--surface-secondary);
-  border-top: var(--border-width-thin) solid var(--border-primary);
-}
-
-.column-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--font-size-body-sm);
-}
-
-.column-name {
-  font-family: var(--font-family-mono);
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.column-type {
-  font-family: var(--font-family-mono);
-  color: var(--text-secondary);
+  background: var(--color-error-bg);
+  border: var(--border-width-thin) solid var(--border-error);
+  color: var(--color-error);
   font-size: var(--font-size-caption);
-  text-transform: uppercase;
+  box-shadow: var(--shadow-md);
+  z-index: 2001;
+  border-radius: 4px;
 }
 </style>

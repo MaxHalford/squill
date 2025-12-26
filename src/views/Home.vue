@@ -1,6 +1,7 @@
 <script setup>
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import SqlBox from '../components/SqlBox.vue'
+import SchemaBox from '../components/SchemaBox.vue'
 import MenuBar from '../components/MenuBar.vue'
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
@@ -8,12 +9,6 @@ import { useCanvasStore } from '../stores/canvas'
 const canvasStore = useCanvasStore()
 const canvasRef = ref(null)
 const copiedBoxId = ref(null)
-
-const addSqlBox = () => {
-  // Get the center of the current viewport in canvas coordinates
-  const center = canvasRef.value?.getViewportCenter()
-  canvasStore.addBox(center)
-}
 
 const selectBox = (id) => {
   canvasStore.selectBox(id)
@@ -124,6 +119,11 @@ onMounted(async () => {
   canvasStore.loadState()
   window.addEventListener('keydown', handleKeyDown)
 
+  // Set canvas ref in store so it can be used when adding boxes
+  if (canvasRef.value) {
+    canvasStore.setCanvasRef(canvasRef.value)
+  }
+
   // Wait for boxes to render, then fit to view
   await nextTick()
   if (canvasRef.value) {
@@ -138,33 +138,56 @@ onUnmounted(() => {
 
 <template>
   <div class="page">
-    <MenuBar @add-box="addSqlBox" />
+    <MenuBar />
 
     <InfiniteCanvas
       ref="canvasRef"
       :boxes="canvasStore.boxes"
       @canvas-click="deselectBox"
     >
-      <SqlBox
-        v-for="box in canvasStore.boxes"
-        :key="box.id"
-        :box-id="box.id"
-        :initial-x="box.x"
-        :initial-y="box.y"
-        :initial-width="box.width"
-        :initial-height="box.height"
-        :initial-z-index="box.zIndex"
-        :initial-query="box.query"
-        :initial-name="box.name"
-        :is-selected="canvasStore.selectedBoxId === box.id"
-        @select="selectBox(box.id)"
-        @update:position="handleUpdatePosition(box.id, $event)"
-        @update:size="handleUpdateSize(box.id, $event)"
-        @update:name="handleUpdateName(box.id, $event)"
-        @update:query="handleUpdateQuery(box.id, $event)"
-        @delete="handleDelete(box.id)"
-        @maximize="handleMaximize(box.id)"
-      />
+      <template v-for="box in canvasStore.boxes" :key="box.id">
+        <!-- SQL Editor Box -->
+        <SqlBox
+          v-if="box.type === 'sql'"
+          :box-id="box.id"
+          :initial-x="box.x"
+          :initial-y="box.y"
+          :initial-width="box.width"
+          :initial-height="box.height"
+          :initial-z-index="box.zIndex"
+          :initial-query="box.query"
+          :initial-name="box.name"
+          :database="box.database"
+          :is-selected="canvasStore.selectedBoxId === box.id"
+          @select="selectBox(box.id)"
+          @update:position="handleUpdatePosition(box.id, $event)"
+          @update:size="handleUpdateSize(box.id, $event)"
+          @update:name="handleUpdateName(box.id, $event)"
+          @update:query="handleUpdateQuery(box.id, $event)"
+          @delete="handleDelete(box.id)"
+          @maximize="handleMaximize(box.id)"
+        />
+
+        <!-- Schema Browser Box -->
+        <SchemaBox
+          v-else-if="box.type === 'schema'"
+          :box-id="box.id"
+          :initial-x="box.x"
+          :initial-y="box.y"
+          :initial-width="box.width"
+          :initial-height="box.height"
+          :initial-z-index="box.zIndex"
+          :initial-name="box.name"
+          :database="box.database"
+          :is-selected="canvasStore.selectedBoxId === box.id"
+          @select="selectBox(box.id)"
+          @update:position="handleUpdatePosition(box.id, $event)"
+          @update:size="handleUpdateSize(box.id, $event)"
+          @update:name="handleUpdateName(box.id, $event)"
+          @delete="handleDelete(box.id)"
+          @maximize="handleMaximize(box.id)"
+        />
+      </template>
     </InfiniteCanvas>
   </div>
 </template>
@@ -174,6 +197,6 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   height: 100vh;
-  padding-top: 48px; /* Height of menu bar */
+  padding-top: 32px; /* Height of macOS-style menu bar */
 }
 </style>

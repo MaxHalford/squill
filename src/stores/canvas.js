@@ -8,6 +8,13 @@ export const useCanvasStore = defineStore('canvas', () => {
   const selectedBoxId = ref(null)
   const nextBoxId = ref(1)
 
+  // Database configuration
+  const selectedDatabase = ref('bigquery') // 'bigquery', 'postgres', etc.
+  const selectedProject = ref(null) // Database-specific project/connection
+
+  // Canvas reference for getting viewport center
+  const canvasRef = ref(null)
+
   // Undo/Redo stacks
   const undoStack = ref([])
   const redoStack = ref([])
@@ -20,17 +27,21 @@ export const useCanvasStore = defineStore('canvas', () => {
         const state = JSON.parse(saved)
         boxes.value = state.boxes || []
         nextBoxId.value = state.nextBoxId || 1
+        selectedDatabase.value = state.selectedDatabase || 'bigquery'
+        selectedProject.value = state.selectedProject || null
 
         // Ensure all boxes have required properties
         boxes.value = boxes.value.map(box => ({
           id: box.id,
+          type: box.type || 'sql', // 'sql' or 'schema'
           x: box.x || 100,
           y: box.y || 100,
           width: box.width || 600,
           height: box.height || 500,
           zIndex: box.zIndex || 1,
           query: box.query || 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
-          name: box.name || `Query ${box.id}`
+          name: box.name || `Query ${box.id}`,
+          database: box.database || 'bigquery'
         }))
       } else {
         // Initialize with default boxes if no saved state
@@ -44,39 +55,10 @@ export const useCanvasStore = defineStore('canvas', () => {
 
   // Initialize with default boxes
   const initializeDefaultBoxes = () => {
-    boxes.value = [
-      {
-        id: 1,
-        x: 100,
-        y: 100,
-        width: 600,
-        height: 500,
-        zIndex: 1,
-        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
-        name: 'Query 1'
-      },
-      {
-        id: 2,
-        x: 750,
-        y: 100,
-        width: 600,
-        height: 500,
-        zIndex: 2,
-        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
-        name: 'Query 2'
-      },
-      {
-        id: 3,
-        x: 100,
-        y: 650,
-        width: 600,
-        height: 500,
-        zIndex: 3,
-        query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
-        name: 'Query 3'
-      }
-    ]
-    nextBoxId.value = 4
+    boxes.value = []
+    nextBoxId.value = 1
+    selectedDatabase.value = 'bigquery'
+    selectedProject.value = null
   }
 
   // Save state to localStorage
@@ -84,7 +66,9 @@ export const useCanvasStore = defineStore('canvas', () => {
     try {
       const state = {
         boxes: boxes.value,
-        nextBoxId: nextBoxId.value
+        nextBoxId: nextBoxId.value,
+        selectedDatabase: selectedDatabase.value,
+        selectedProject: selectedProject.value
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
     } catch (error) {
@@ -93,7 +77,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Watch for changes and auto-save
-  watch([boxes, nextBoxId], () => {
+  watch([boxes, nextBoxId, selectedDatabase, selectedProject], () => {
     saveState()
   }, { deep: true })
 
@@ -154,27 +138,53 @@ export const useCanvasStore = defineStore('canvas', () => {
     nextBoxId.value = nextState.nextBoxId
   }
 
-  // Add a new SQL box
-  const addBox = (position = null) => {
+  // Add a new box
+  const addBox = (type = 'sql', position = null) => {
     saveToUndoStack()
+
+    // Get viewport center if canvas ref is available
+    let centerPosition = null
+    if (!position && canvasRef.value) {
+      centerPosition = canvasRef.value.getViewportCenter()
+    }
 
     // Default position if none provided
     const defaultX = 100 + Math.random() * 200
     const defaultY = 100 + Math.random() * 200
 
     const boxId = nextBoxId.value++
+    const width = 600
+    const height = 500
+
     const newBox = {
       id: boxId,
-      x: position ? position.x - 300 : defaultX, // Center the 600px wide box
-      y: position ? position.y - 250 : defaultY, // Center the 500px tall box
-      width: 600,
-      height: 500,
+      type: type, // 'sql' or 'schema'
+      x: position ? position.x - width / 2 : (centerPosition ? centerPosition.x - width / 2 : defaultX),
+      y: position ? position.y - height / 2 : (centerPosition ? centerPosition.y - height / 2 : defaultY),
+      width: width,
+      height: height,
       zIndex: getMaxZIndex() + 1,
-      query: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
-      name: `Query ${boxId}`
+      query: type === 'sql' ? 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' : '',
+      name: type === 'sql' ? `Query ${boxId}` : `Schema ${boxId}`,
+      database: selectedDatabase.value
     }
     boxes.value.push(newBox)
     return newBox.id
+  }
+
+  // Set selected database
+  const setSelectedDatabase = (database) => {
+    selectedDatabase.value = database
+  }
+
+  // Set selected project
+  const setSelectedProject = (project) => {
+    selectedProject.value = project
+  }
+
+  // Set canvas ref
+  const setCanvasRef = (ref) => {
+    canvasRef.value = ref
   }
 
   // Remove a SQL box
@@ -273,13 +283,15 @@ export const useCanvasStore = defineStore('canvas', () => {
     const boxId = nextBoxId.value++
     const newBox = {
       id: boxId,
+      type: originalBox.type,
       x: originalBox.x + OFFSET,
       y: originalBox.y + OFFSET,
       width: originalBox.width,
       height: originalBox.height,
       zIndex: getMaxZIndex() + 1,
       query: originalBox.query,
-      name: `${originalBox.name} (copy)`
+      name: `${originalBox.name} (copy)`,
+      database: originalBox.database
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -288,6 +300,9 @@ export const useCanvasStore = defineStore('canvas', () => {
   return {
     boxes,
     selectedBoxId,
+    selectedDatabase,
+    selectedProject,
+    canvasRef,
     loadState,
     addBox,
     removeBox,
@@ -303,6 +318,9 @@ export const useCanvasStore = defineStore('canvas', () => {
     resetToDefault,
     copyBox,
     undo,
-    redo
+    redo,
+    setSelectedDatabase,
+    setSelectedProject,
+    setCanvasRef
   }
 })
