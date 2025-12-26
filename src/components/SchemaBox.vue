@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick, onMounted } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import ResizableBox from './ResizableBox.vue'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
@@ -191,11 +191,30 @@ const handleDelete = (e) => {
   emit('delete')
 }
 
+// Handle keyboard shortcuts
+const handleKeyDown = (e) => {
+  // Only handle shortcuts when this box is selected
+  if (!props.isSelected) return
+
+  // Ctrl+Enter / Cmd+Enter to refresh schema
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault()
+    if (props.database === 'bigquery' && authStore.isAuthenticated && canvasStore.selectedProject) {
+      loadDatasets()
+    }
+  }
+}
+
 // Load datasets on mount if authenticated and BigQuery
 onMounted(() => {
   if (props.database === 'bigquery' && authStore.isAuthenticated && canvasStore.selectedProject) {
     loadDatasets()
   }
+  window.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
 })
 </script>
 
@@ -271,7 +290,7 @@ onMounted(() => {
 
       <!-- Datasets List -->
       <div v-else class="datasets-list">
-        <div v-for="dataset in datasets" :key="dataset.id" class="dataset-item">
+        <div v-for="dataset in datasets" :key="dataset.id">
           <button
             class="dataset-header"
             @click="toggleDataset(dataset.id)"
@@ -288,7 +307,7 @@ onMounted(() => {
             <div v-else-if="!tables[dataset.id] || tables[dataset.id].length === 0" class="empty-message">
               No tables found
             </div>
-            <div v-else v-for="table in tables[dataset.id]" :key="table.id" class="table-item">
+            <div v-else v-for="table in tables[dataset.id]" :key="table.id">
               <button
                 class="table-header"
                 @click="toggleTableSchema(dataset.id, table.id)"
@@ -360,8 +379,21 @@ onMounted(() => {
   overflow-y: auto;
 }
 
-.dataset-item {
-  border-bottom: var(--border-width-thin) solid var(--border-secondary);
+/* Zebra striping for datasets */
+.datasets-list > div:nth-child(even) .dataset-header {
+  background: var(--table-row-stripe-bg);
+}
+
+.datasets-list > div:nth-child(odd) .dataset-header {
+  background: var(--surface-primary);
+}
+
+.datasets-list > div:nth-child(even) .dataset-header:hover {
+  background: var(--surface-secondary);
+}
+
+.datasets-list > div:nth-child(odd) .dataset-header:hover {
+  background: var(--surface-secondary);
 }
 
 .dataset-header {
@@ -370,7 +402,6 @@ onMounted(() => {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: transparent;
   border: none;
   text-align: left;
   font-size: var(--font-size-body-sm);
@@ -379,10 +410,6 @@ onMounted(() => {
   cursor: pointer;
   outline: none;
   transition: background 0.1s;
-}
-
-.dataset-header:hover {
-  background: var(--surface-secondary);
 }
 
 .caret {
@@ -399,15 +426,23 @@ onMounted(() => {
 
 .tables-list {
   background: var(--surface-secondary);
-  border-top: var(--border-width-thin) solid var(--border-secondary);
 }
 
-.table-item {
-  border-bottom: var(--border-width-thin) solid var(--border-secondary);
+/* Zebra striping for tables */
+.tables-list > div:nth-child(even) .table-header {
+  background: var(--table-row-stripe-bg);
 }
 
-.table-item:last-child {
-  border-bottom: none;
+.tables-list > div:nth-child(odd) .table-header {
+  background: var(--surface-primary);
+}
+
+.tables-list > div:nth-child(even) .table-header:hover {
+  background: var(--surface-tertiary);
+}
+
+.tables-list > div:nth-child(odd) .table-header:hover {
+  background: var(--surface-tertiary);
 }
 
 .table-header {
@@ -416,7 +451,6 @@ onMounted(() => {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 20px);
-  background: transparent;
   border: none;
   text-align: left;
   font-size: var(--font-size-body-sm);
@@ -425,10 +459,6 @@ onMounted(() => {
   cursor: pointer;
   outline: none;
   transition: background 0.1s;
-}
-
-.table-header:hover {
-  background: var(--surface-tertiary);
 }
 
 .table-name {
@@ -466,6 +496,15 @@ onMounted(() => {
   align-items: center;
   padding: var(--space-1) var(--space-3);
   font-size: var(--font-size-caption);
+}
+
+/* Zebra striping for columns */
+.column-item:nth-child(even) {
+  background: var(--table-row-stripe-bg);
+}
+
+.column-item:nth-child(odd) {
+  background: var(--surface-primary);
 }
 
 .column-name {

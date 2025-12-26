@@ -238,7 +238,6 @@ defineExpose({
   padding: var(--button-padding);
   border-radius: var(--button-border-radius);
   font-size: var(--button-font-size);
-  font-weight: bold;
   font-family: var(--font-family-mono);
   cursor: pointer;
   transition: none;

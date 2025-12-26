@@ -16,8 +16,8 @@ const databases = [
 
 // Box types
 const boxTypes = [
-  { id: 'sql', name: 'SQL editor', description: 'Execute SQL queries' },
-  { id: 'schema', name: 'Schema browser', description: 'Browse database schema' }
+  { id: 'sql', name: 'SQL editor' },
+  { id: 'schema', name: 'Schema browser' }
 ]
 
 // Projects loading state
@@ -227,13 +227,12 @@ onUnmounted(() => {
           <button
             v-for="boxType in boxTypes"
             :key="boxType.id"
-            class="dropdown-item with-description"
+            class="dropdown-item"
             @click="addBox(boxType.id)"
           >
             <div class="item-main">
               <span class="item-text">{{ boxType.name }}</span>
             </div>
-            <div class="item-description">{{ boxType.description }}</div>
           </button>
         </div>
       </div>
@@ -412,12 +411,6 @@ onUnmounted(() => {
   background: var(--surface-secondary);
 }
 
-.dropdown-item.with-description {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-}
-
 .item-main {
   display: flex;
   align-items: center;
@@ -427,12 +420,6 @@ onUnmounted(() => {
 
 .item-text {
   flex: 1;
-}
-
-.item-description {
-  font-size: var(--font-size-caption);
-  color: var(--text-secondary);
-  padding-left: calc(16px + var(--space-2));
 }
 
 .item-check {
