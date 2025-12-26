@@ -288,7 +288,7 @@ onUnmounted(() => {
 
         <div v-if="activeDropdown === 'settings'" class="dropdown settings-dropdown">
           <div class="settings-section">
-            <div class="setting-header">Auto-limit Queries</div>
+            <div class="setting-header">Auto-limit queries</div>
             <div class="setting-description">
               Automatically add LIMIT clause to queries without one
             </div>
@@ -640,7 +640,7 @@ onUnmounted(() => {
 .setting-input-number {
   width: 80px;
   padding: var(--space-1) var(--space-2);
-  border: var(--border-width-thin) solid var(--border-primary);
+  border: none;
   background: var(--surface-primary);
   font-size: var(--font-size-body-sm);
   font-family: var(--font-family-mono);
@@ -745,7 +745,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: var(--border-width-thin) solid currentColor;
+  border: none;
   color: inherit;
   cursor: pointer;
   font-size: 12px;

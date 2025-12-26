@@ -234,7 +234,7 @@ defineExpose({
   right: var(--space-2);
   background: var(--surface-primary);
   color: var(--text-primary);
-  border: var(--button-border-width) solid var(--border-primary);
+  border: none;
   padding: var(--button-padding);
   border-radius: var(--button-border-radius);
   font-size: var(--button-font-size);

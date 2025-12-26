@@ -331,8 +331,6 @@ onUnmounted(() => {
 .box-name {
   cursor: pointer;
   user-select: none;
-  line-height: var(--line-height-tight);
-  height: 16px;
   display: inline-block;
 }
 
@@ -370,10 +368,11 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: var(--border-width-thin) solid var(--text-inverse);
+  border: none;
   color: var(--text-inverse);
   cursor: pointer;
-  font-size: var(--font-size-body);
+  font-size: var(--font-size-body-lg);
+  font-weight: bold;
   padding: 0;
   line-height: 1;
   transition: all 0.2s;

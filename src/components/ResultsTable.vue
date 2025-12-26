@@ -230,7 +230,7 @@ defineExpose({
 .pagination-btn {
   background: var(--surface-primary);
   color: var(--text-primary);
-  border: var(--button-border-width) solid var(--border-primary);
+  border: none;
   padding: var(--button-padding);
   border-radius: var(--button-border-radius);
   cursor: pointer;
@@ -258,7 +258,7 @@ defineExpose({
 .page-info {
   color: var(--text-primary);
   font-size: var(--font-size-body-sm);
-  min-width: 50px;
+  min-width: 30px;
   text-align: center;
 }
 
