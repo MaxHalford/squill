@@ -10,7 +10,7 @@ const canvasStore = useCanvasStore()
 const canvasRef = ref(null)
 const copiedBoxId = ref(null)
 
-const selectBox = (id) => {
+const selectBox = (id, event) => {
   canvasStore.selectBox(id)
 }
 
@@ -24,6 +24,10 @@ const handleUpdatePosition = (id, position) => {
 
 const handleUpdateSize = (id, size) => {
   canvasStore.updateBoxSize(id, size)
+}
+
+const handleUpdateMultiPosition = (data) => {
+  canvasStore.updateBoxPosition(data.id, { x: data.x, y: data.y })
 }
 
 const handleDelete = (id) => {
@@ -157,13 +161,13 @@ onUnmounted(() => {
           :initial-z-index="box.zIndex"
           :initial-query="box.query"
           :initial-name="box.name"
-          :database="box.database"
-          :is-selected="canvasStore.selectedBoxId === box.id"
-          @select="selectBox(box.id)"
+          :is-selected="canvasStore.isBoxSelected(box.id)"
+          @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
           @update:name="handleUpdateName(box.id, $event)"
           @update:query="handleUpdateQuery(box.id, $event)"
+          @update:multi-position="handleUpdateMultiPosition"
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
         />
@@ -178,12 +182,12 @@ onUnmounted(() => {
           :initial-height="box.height"
           :initial-z-index="box.zIndex"
           :initial-name="box.name"
-          :database="box.database"
-          :is-selected="canvasStore.selectedBoxId === box.id"
-          @select="selectBox(box.id)"
+          :is-selected="canvasStore.isBoxSelected(box.id)"
+          @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
           @update:name="handleUpdateName(box.id, $event)"
+          @update:multi-position="handleUpdateMultiPosition"
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
         />

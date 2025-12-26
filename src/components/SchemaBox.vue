@@ -3,9 +3,11 @@ import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import ResizableBox from './ResizableBox.vue'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
+import { useConnectionsStore } from '../stores/connections'
 
 const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
+const connectionsStore = useConnectionsStore()
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -15,8 +17,7 @@ const props = defineProps({
   initialHeight: { type: Number, default: 600 },
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
-  initialName: { type: String, default: 'Schema Browser' },
-  database: { type: String, default: 'bigquery' }
+  initialName: { type: String, default: 'Schema Browser' }
 })
 
 const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name'])
@@ -50,8 +51,14 @@ const loadDatasets = async () => {
     return
   }
 
-  if (!canvasStore.selectedProject) {
+  if (!canvasStore.activeProjectId) {
     error.value = 'Please select a project'
+    return
+  }
+
+  // Check for expired token
+  if (connectionsStore.isActiveTokenExpired) {
+    error.value = 'Token expired - please reconnect'
     return
   }
 
@@ -88,6 +95,12 @@ const toggleDataset = async (datasetId) => {
 
 // Load tables for a dataset
 const loadTables = async (datasetId) => {
+  // Check for expired token
+  if (connectionsStore.isActiveTokenExpired) {
+    error.value = 'Token expired - please reconnect'
+    return
+  }
+
   isLoadingTables.value[datasetId] = true
   error.value = null
 
@@ -124,6 +137,12 @@ const toggleTableSchema = async (datasetId, tableId) => {
 
 // Load table schema
 const loadTableSchema = async (datasetId, tableId, key) => {
+  // Check for expired token
+  if (connectionsStore.isActiveTokenExpired) {
+    error.value = 'Token expired - please reconnect'
+    return
+  }
+
   isLoadingSchema.value[key] = true
   error.value = null
 
@@ -199,7 +218,8 @@ const handleKeyDown = (e) => {
   // Ctrl+Enter / Cmd+Enter to refresh schema
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault()
-    if (props.database === 'bigquery' && authStore.isAuthenticated && canvasStore.selectedProject) {
+    // Only load datasets if we have an active BigQuery connection
+    if (connectionsStore.activeConnection?.type === 'bigquery' && authStore.isAuthenticated && canvasStore.activeProjectId) {
       loadDatasets()
     }
   }
@@ -207,7 +227,8 @@ const handleKeyDown = (e) => {
 
 // Load datasets on mount if authenticated and BigQuery
 onMounted(() => {
-  if (props.database === 'bigquery' && authStore.isAuthenticated && canvasStore.selectedProject) {
+  // Only load datasets if we have an active BigQuery connection
+  if (connectionsStore.activeConnection?.type === 'bigquery' && authStore.isAuthenticated && canvasStore.activeProjectId) {
     loadDatasets()
   }
   window.addEventListener('keydown', handleKeyDown)

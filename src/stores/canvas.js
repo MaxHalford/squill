@@ -8,9 +8,8 @@ export const useCanvasStore = defineStore('canvas', () => {
   const selectedBoxId = ref(null)
   const nextBoxId = ref(1)
 
-  // Database configuration
-  const selectedDatabase = ref('bigquery') // 'bigquery', 'postgres', etc.
-  const selectedProject = ref(null) // Database-specific project/connection
+  // Active project ID (database type determined by active connection)
+  const activeProjectId = ref(null)
 
   // Canvas reference for getting viewport center
   const canvasRef = ref(null)
@@ -27,22 +26,22 @@ export const useCanvasStore = defineStore('canvas', () => {
         const state = JSON.parse(saved)
         boxes.value = state.boxes || []
         nextBoxId.value = state.nextBoxId || 1
-        selectedDatabase.value = state.selectedDatabase || 'bigquery'
-        selectedProject.value = state.selectedProject || null
+        activeProjectId.value = state.activeProjectId || state.selectedProject || null
 
-        // Ensure all boxes have required properties
-        boxes.value = boxes.value.map(box => ({
-          id: box.id,
-          type: box.type || 'sql', // 'sql' or 'schema'
-          x: box.x || 100,
-          y: box.y || 100,
-          width: box.width || 600,
-          height: box.height || 500,
-          zIndex: box.zIndex || 1,
-          query: box.query || 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
-          name: box.name || `Query ${box.id}`,
-          database: box.database || 'bigquery'
-        }))
+        // Ensure all boxes have required properties and filter out invalid boxes
+        boxes.value = boxes.value
+          .filter(box => box && box.id != null) // Filter out boxes with null/undefined IDs
+          .map(box => ({
+            id: box.id,
+            type: box.type || 'sql', // 'sql' or 'schema'
+            x: box.x || 100,
+            y: box.y || 100,
+            width: box.width || 600,
+            height: box.height || 500,
+            zIndex: box.zIndex || 1,
+            query: box.query || 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
+            name: box.name || `Query ${box.id}`
+          }))
       } else {
         // Initialize with default boxes if no saved state
         initializeDefaultBoxes()
@@ -57,8 +56,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   const initializeDefaultBoxes = () => {
     boxes.value = []
     nextBoxId.value = 1
-    selectedDatabase.value = 'bigquery'
-    selectedProject.value = null
+    activeProjectId.value = null
   }
 
   // Save state to localStorage
@@ -67,8 +65,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       const state = {
         boxes: boxes.value,
         nextBoxId: nextBoxId.value,
-        selectedDatabase: selectedDatabase.value,
-        selectedProject: selectedProject.value
+        activeProjectId: activeProjectId.value
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
     } catch (error) {
@@ -77,7 +74,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Watch for changes and auto-save
-  watch([boxes, nextBoxId, selectedDatabase, selectedProject], () => {
+  watch([boxes, nextBoxId, activeProjectId], () => {
     saveState()
   }, { deep: true })
 
@@ -165,21 +162,15 @@ export const useCanvasStore = defineStore('canvas', () => {
       height: height,
       zIndex: getMaxZIndex() + 1,
       query: type === 'sql' ? 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' : '',
-      name: type === 'sql' ? `Query ${boxId}` : `Schema ${boxId}`,
-      database: selectedDatabase.value
+      name: type === 'sql' ? `Query ${boxId}` : `Schema ${boxId}`
     }
     boxes.value.push(newBox)
     return newBox.id
   }
 
-  // Set selected database
-  const setSelectedDatabase = (database) => {
-    selectedDatabase.value = database
-  }
-
-  // Set selected project
-  const setSelectedProject = (project) => {
-    selectedProject.value = project
+  // Set active project ID
+  const setActiveProjectId = (projectId) => {
+    activeProjectId.value = projectId
   }
 
   // Set canvas ref
@@ -216,6 +207,11 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Deselect all boxes
   const deselectBox = () => {
     selectedBoxId.value = null
+  }
+
+  // Check if a box is selected
+  const isBoxSelected = (id) => {
+    return selectedBoxId.value === id
   }
 
   // Update box position
@@ -290,8 +286,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       height: originalBox.height,
       zIndex: getMaxZIndex() + 1,
       query: originalBox.query,
-      name: `${originalBox.name} (copy)`,
-      database: originalBox.database
+      name: `${originalBox.name} (copy)`
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -300,14 +295,14 @@ export const useCanvasStore = defineStore('canvas', () => {
   return {
     boxes,
     selectedBoxId,
-    selectedDatabase,
-    selectedProject,
+    activeProjectId,
     canvasRef,
     loadState,
     addBox,
     removeBox,
     selectBox,
     deselectBox,
+    isBoxSelected,
     updateBoxPosition,
     updateBoxSize,
     updateBoxQuery,
@@ -319,8 +314,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     copyBox,
     undo,
     redo,
-    setSelectedDatabase,
-    setSelectedProject,
+    setActiveProjectId,
     setCanvasRef
   }
 })

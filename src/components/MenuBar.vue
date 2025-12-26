@@ -2,19 +2,16 @@
 import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
+import { useConnectionsStore } from '../stores/connections'
 import { useSettingsStore } from '../stores/settings'
 
 const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
+const connectionsStore = useConnectionsStore()
 const settingsStore = useSettingsStore()
 
 // Dropdown states
-const activeDropdown = ref(null) // 'database', 'project', 'box', 'settings', 'user'
-
-// Database types
-const databases = [
-  { id: 'bigquery', name: 'BigQuery' }
-]
+const activeDropdown = ref(null) // 'connection', 'box', 'settings'
 
 // Box types
 const boxTypes = [
@@ -22,72 +19,92 @@ const boxTypes = [
   { id: 'schema', name: 'Schema browser' }
 ]
 
-// Projects loading state
-const isLoadingProjects = ref(false)
-const availableProjects = ref([])
+// Connection dropdown state
+const isConnectionDropdownOpen = ref(false)
+const addDatabaseMenuOpen = ref(false)
 
 // Settings state
 const limitInputValue = ref(settingsStore.autoLimitValue)
 
-// Get current database
-const currentDatabase = computed(() => {
-  return databases.find(db => db.id === canvasStore.selectedDatabase)
-})
-
-// Get current project name
-const currentProjectName = computed(() => {
-  if (!canvasStore.selectedProject) return 'No Project'
-  return canvasStore.selectedProject
-})
+// Connection display name
+const getConnectionDisplayName = (connection) => {
+  const dbName = connection.type === 'bigquery' ? 'BigQuery' : connection.type
+  return `${dbName} - ${connection.email}`
+}
 
 // Toggle dropdown
 const toggleDropdown = (dropdown) => {
+  if (dropdown === 'connection') {
+    isConnectionDropdownOpen.value = !isConnectionDropdownOpen.value
+    // Load projects when opening connection dropdown
+    if (isConnectionDropdownOpen.value && connectionsStore.activeConnection && !connectionsStore.isActiveTokenExpired) {
+      authStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
+    }
+    return
+  }
+
   if (activeDropdown.value === dropdown) {
     activeDropdown.value = null
   } else {
     activeDropdown.value = dropdown
-
-    // Load projects when opening project dropdown
-    if (dropdown === 'project' && canvasStore.selectedDatabase === 'bigquery') {
-      loadProjects()
-    }
   }
 }
 
 // Close dropdown
 const closeDropdown = () => {
   activeDropdown.value = null
+  isConnectionDropdownOpen.value = false
+  addDatabaseMenuOpen.value = false
 }
 
-// Select database
-const selectDatabase = (databaseId) => {
-  canvasStore.setSelectedDatabase(databaseId)
-  canvasStore.setSelectedProject(null)
+// Handle connection selection
+const handleConnectionSelect = async (connectionId) => {
+  connectionsStore.setActiveConnection(connectionId)
+  // Auto-load projects for the connection
+  await authStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
   closeDropdown()
 }
 
-// Select project
-const selectProject = (projectId) => {
-  canvasStore.setSelectedProject(projectId)
+// Handle project selection
+const handleProjectSelect = (projectId) => {
+  canvasStore.setActiveProjectId(projectId)
   authStore.setProjectId(projectId)
   closeDropdown()
 }
 
-// Load projects for BigQuery
-const loadProjects = async () => {
-  if (!authStore.isAuthenticated) return
+// Handle add database
+const handleAddDatabase = async (databaseType) => {
+  addDatabaseMenuOpen.value = false
+  isConnectionDropdownOpen.value = false
 
-  isLoadingProjects.value = true
+  if (databaseType === 'bigquery') {
+    try {
+      await authStore.signInWithGoogle()
+      await authStore.fetchProjects()
+      // Auto-select first project if available
+      if (authStore.projects.length > 0) {
+        handleProjectSelect(authStore.projects[0].projectId)
+      }
+    } catch (error) {
+      console.error('Failed to add database:', error)
+    }
+  }
+}
+
+// Handle delete connection
+const handleDeleteConnection = (connectionId, event) => {
+  event.stopPropagation()
+  connectionsStore.removeConnection(connectionId)
+}
+
+// Handle reconnect
+const handleReconnect = async (connectionId, event) => {
+  event.stopPropagation()
   try {
-    const projects = await authStore.fetchProjects()
-    availableProjects.value = projects.map(p => ({
-      id: p.projectId,
-      name: p.name || p.projectId
-    }))
+    await authStore.reconnectConnection(connectionId)
+    await authStore.fetchProjects()
   } catch (error) {
-    console.error('Failed to load projects:', error)
-  } finally {
-    isLoadingProjects.value = false
+    console.error('Failed to reconnect:', error)
   }
 }
 
@@ -96,49 +113,6 @@ const addBox = (boxType) => {
   canvasStore.addBox(boxType)
   closeDropdown()
 }
-
-// Sign in
-const isSigningIn = ref(false)
-const signInError = ref(null)
-
-const signIn = async () => {
-  if (canvasStore.selectedDatabase !== 'bigquery') {
-    signInError.value = 'Sign in is only available for BigQuery'
-    setTimeout(() => signInError.value = null, 3000)
-    return
-  }
-
-  isSigningIn.value = true
-  signInError.value = null
-
-  try {
-    await authStore.signInWithGoogle()
-    // Auto-load projects after sign in
-    await loadProjects()
-    // Auto-select first project if available
-    if (availableProjects.value.length > 0) {
-      selectProject(availableProjects.value[0].id)
-    }
-  } catch (error) {
-    signInError.value = error.message || 'Failed to sign in'
-    setTimeout(() => signInError.value = null, 5000)
-  } finally {
-    isSigningIn.value = false
-  }
-}
-
-// Sign out
-const signOut = () => {
-  authStore.signOut()
-  canvasStore.setSelectedProject(null)
-  closeDropdown()
-}
-
-// Get user initials
-const userInitials = computed(() => {
-  if (!authStore.userName) return '?'
-  return authStore.userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-})
 
 // Handle limit value changes with debouncing
 let limitDebounceTimer = null
@@ -184,60 +158,102 @@ onUnmounted(() => {
     <div class="menu-left">
       <div class="app-name">Squill</div>
 
-      <!-- Database Selector -->
-      <div class="menu-item" :class="{ active: activeDropdown === 'database' }">
-        <button class="menu-button" @click.stop="toggleDropdown('database')">
-          <span class="menu-text">{{ currentDatabase?.name || 'Database' }}</span>
+      <!-- Unified Connection Dropdown -->
+      <div class="menu-item" :class="{ active: isConnectionDropdownOpen }">
+        <button class="menu-button" @click.stop="toggleDropdown('connection')">
+          <span v-if="connectionsStore.activeConnection && canvasStore.activeProjectId" class="menu-text">
+            {{ getConnectionDisplayName(connectionsStore.activeConnection) }} / {{ canvasStore.activeProjectId }}
+          </span>
+          <span v-else-if="connectionsStore.activeConnection" class="menu-text">
+            {{ getConnectionDisplayName(connectionsStore.activeConnection) }}
+          </span>
+          <span v-else class="menu-text placeholder-text">
+            No connection
+          </span>
           <span class="menu-caret">▼</span>
         </button>
 
-        <div v-if="activeDropdown === 'database'" class="dropdown">
-          <button
-            v-for="db in databases"
-            :key="db.id"
-            class="dropdown-item"
-            :class="{ selected: db.id === canvasStore.selectedDatabase }"
-            @click="selectDatabase(db.id)"
-          >
-            <span class="item-text">{{ db.name }}</span>
-            <span v-if="db.id === canvasStore.selectedDatabase" class="item-check">✓</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Project Selector -->
-      <div class="menu-item" :class="{ active: activeDropdown === 'project' }">
-        <button
-          class="menu-button"
-          :disabled="!authStore.isAuthenticated && canvasStore.selectedDatabase === 'bigquery'"
-          @click.stop="toggleDropdown('project')"
-        >
-          <span class="menu-text">{{ currentProjectName }}</span>
-          <span class="menu-caret">▼</span>
-        </button>
-
-        <div v-if="activeDropdown === 'project'" class="dropdown">
-          <div v-if="canvasStore.selectedDatabase === 'bigquery'">
-            <div v-if="isLoadingProjects" class="dropdown-message">
-              Loading projects...
-            </div>
-            <div v-else-if="availableProjects.length === 0" class="dropdown-message">
-              No projects available
-            </div>
+        <div v-if="isConnectionDropdownOpen" class="dropdown connection-dropdown">
+          <!-- Connections Section -->
+          <div v-if="connectionsStore.connections.length > 0" class="dropdown-section">
+            <div class="section-label">Connections</div>
             <button
-              v-else
-              v-for="project in availableProjects"
-              :key="project.id"
-              class="dropdown-item"
-              :class="{ selected: project.id === canvasStore.selectedProject }"
-              @click="selectProject(project.id)"
+              v-for="connection in connectionsStore.connections"
+              :key="connection.id"
+              class="dropdown-item connection-item"
+              :class="{
+                selected: connectionsStore.activeConnectionId === connection.id,
+                expired: connectionsStore.isConnectionExpired(connection.id)
+              }"
+              @click="handleConnectionSelect(connection.id)"
             >
-              <span class="item-text">{{ project.name }}</span>
-              <span v-if="project.id === canvasStore.selectedProject" class="item-check">✓</span>
+              <img v-if="connection.photo" :src="connection.photo" class="connection-avatar" />
+              <div class="connection-info">
+                <div class="connection-name">{{ getConnectionDisplayName(connection) }}</div>
+                <div v-if="connectionsStore.isConnectionExpired(connection.id)" class="expired-badge">
+                  Token Expired
+                </div>
+              </div>
+              <div class="connection-actions" @click.stop>
+                <button
+                  v-if="connectionsStore.isConnectionExpired(connection.id)"
+                  class="reconnect-btn"
+                  @click="handleReconnect(connection.id, $event)"
+                  title="Reconnect"
+                >
+                  ↻
+                </button>
+                <button
+                  class="delete-btn"
+                  @click="handleDeleteConnection(connection.id, $event)"
+                  title="Delete"
+                >
+                  ✕
+                </button>
+              </div>
             </button>
           </div>
-          <div v-else class="dropdown-message">
-            Project selection not available for {{ currentDatabase?.name }}
+
+          <!-- Projects Section -->
+          <div v-if="connectionsStore.activeConnection && !connectionsStore.isActiveTokenExpired" class="dropdown-section">
+            <div class="section-label">Projects</div>
+            <div v-if="authStore.projects.length === 0" class="dropdown-message">
+              No projects found
+            </div>
+            <button
+              v-for="project in authStore.projects"
+              :key="project.projectId"
+              class="dropdown-item project-item"
+              :class="{ selected: project.projectId === canvasStore.activeProjectId }"
+              @click="handleProjectSelect(project.projectId)"
+            >
+              <span class="item-text">{{ project.name || project.projectId }}</span>
+              <span v-if="project.projectId === canvasStore.activeProjectId" class="item-check">✓</span>
+            </button>
+          </div>
+
+          <!-- Add Database Section -->
+          <div class="dropdown-section add-section">
+            <div class="section-divider"></div>
+            <button
+              class="dropdown-item add-item"
+              @click.stop="addDatabaseMenuOpen = !addDatabaseMenuOpen"
+            >
+              <span class="add-icon">+</span>
+              Add database
+              <span class="dropdown-arrow">{{ addDatabaseMenuOpen ? '▼' : '▶' }}</span>
+            </button>
+
+            <!-- Nested database type menu -->
+            <div v-if="addDatabaseMenuOpen" class="nested-menu" @click.stop>
+              <button
+                class="dropdown-item nested-item"
+                @click="handleAddDatabase('bigquery')"
+              >
+                <img src="../assets/bigquery.svg" class="db-icon" />
+                BigQuery
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -309,39 +325,7 @@ onUnmounted(() => {
     </div>
 
     <div class="menu-right">
-      <!-- Error Toast -->
-      <div v-if="signInError" class="error-toast">
-        {{ signInError }}
-      </div>
-
-      <!-- Sign In / User Menu -->
-      <div v-if="!authStore.isAuthenticated" class="menu-item">
-        <button
-          class="sign-in-btn"
-          :disabled="isSigningIn || canvasStore.selectedDatabase !== 'bigquery'"
-          @click="signIn"
-        >
-          <span v-if="isSigningIn">Signing in...</span>
-          <span v-else>Sign in with Google</span>
-        </button>
-      </div>
-
-      <div v-else class="menu-item" :class="{ active: activeDropdown === 'user' }">
-        <button class="user-button" @click.stop="toggleDropdown('user')">
-          <img v-if="authStore.userPhoto" :src="authStore.userPhoto" alt="User" class="user-avatar" />
-          <span v-else class="user-initials">{{ userInitials }}</span>
-        </button>
-
-        <div v-if="activeDropdown === 'user'" class="dropdown user-dropdown">
-          <div class="user-info">
-            <div class="user-name">{{ authStore.userName }}</div>
-            <div class="user-email">{{ authStore.userEmail }}</div>
-          </div>
-          <button class="dropdown-item" @click="signOut">
-            Sign Out
-          </button>
-        </div>
-      </div>
+      <!-- Placeholder for future right-side menu items -->
     </div>
   </div>
 </template>
@@ -685,5 +669,155 @@ onUnmounted(() => {
 
 .setting-input-number[type=number] {
   -moz-appearance: textfield;
+}
+
+/* Connection Dropdown Styles */
+.connection-dropdown {
+  min-width: 300px;
+  max-width: 400px;
+}
+
+.dropdown-section {
+  padding: 0;
+}
+
+.section-label {
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3) var(--space-1) var(--space-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--surface-secondary);
+}
+
+.connection-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.connection-item.expired {
+  opacity: 0.6;
+}
+
+.connection-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.connection-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.connection-name {
+  font-size: var(--font-size-body-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.expired-badge {
+  font-size: var(--font-size-caption);
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.connection-actions {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.reconnect-btn,
+.delete-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: var(--border-width-thin) solid currentColor;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  border-radius: 2px;
+  transition: all 0.2s;
+}
+
+.reconnect-btn:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.delete-btn:hover {
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: white;
+}
+
+.section-divider {
+  height: var(--border-width-thin);
+  background: var(--border-primary);
+  margin: var(--space-1) 0;
+}
+
+.add-section {
+  background: var(--surface-secondary);
+}
+
+.add-item {
+  color: var(--color-primary);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.add-icon {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.dropdown-arrow {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.nested-menu {
+  padding-left: var(--space-3);
+  background: var(--surface-tertiary);
+}
+
+.nested-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.db-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.project-item {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+}
+
+.placeholder-text {
+  color: var(--text-secondary);
+  font-style: italic;
 }
 </style>

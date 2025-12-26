@@ -1,14 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useSettingsStore } from './settings'
+import { useConnectionsStore } from './connections'
 import { applyAutoLimit } from '../utils/queryTransform'
 
-const STORAGE_KEY = 'squill-auth'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
-
-// Token validity: 7 days
-const TOKEN_EXPIRY_DAYS = 7
-const TOKEN_EXPIRY_MS = TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000
 
 // Google OAuth configuration
 const SCOPES = [
@@ -18,41 +14,39 @@ const SCOPES = [
   'https://www.googleapis.com/auth/cloud-platform.read-only' // To list projects
 ].join(' ')
 
-const loadAuthData = () => {
-  try {
-    // Try localStorage first (for 7-day persistence)
-    const saved = localStorage.getItem(STORAGE_KEY)
-    return saved ? JSON.parse(saved) : {}
-  } catch (err) {
-    console.error('Failed to load auth data:', err)
-    return {}
-  }
-}
-
-const saveAuthData = (data) => {
-  try {
-    // Use localStorage for 7-day persistence
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-  } catch (err) {
-    console.error('Failed to save auth data:', err)
-  }
-}
-
 export const useAuthStore = defineStore('auth', () => {
-  const savedAuth = loadAuthData()
+  // Delegate to connections store
+  const connectionsStore = useConnectionsStore()
 
-  // OAuth state
-  const accessToken = ref(savedAuth.accessToken || null)
-  const tokenExpiry = ref(savedAuth.tokenExpiry || null)
-  const userEmail = ref(savedAuth.userEmail || null)
-  const userName = ref(savedAuth.userName || null)
-  const userPhoto = ref(savedAuth.userPhoto || null)
-  const projectId = ref(savedAuth.projectId || null)
+  // Load connections on initialization
+  connectionsStore.loadState()
+
+  // Project ID is still managed locally
+  const projectId = ref(null)
+
+  // Load projectId from localStorage
+  try {
+    const saved = localStorage.getItem('squill-project')
+    if (saved) {
+      projectId.value = saved
+    }
+  } catch (err) {
+    console.error('Failed to load project:', err)
+  }
+
+  // Computed properties for backward compatibility
+  const accessToken = computed(() => connectionsStore.activeConnection?.token || null)
+  const userEmail = computed(() => connectionsStore.activeConnection?.email || null)
+  const userName = computed(() => connectionsStore.activeConnection?.name || null)
+  const userPhoto = computed(() => connectionsStore.activeConnection?.photo || null)
 
   const isAuthenticated = computed(() => {
-    // Check if token exists and hasn't expired (7 days)
-    return !!accessToken.value && tokenExpiry.value && Date.now() < tokenExpiry.value
+    return connectionsStore.activeConnection !== null &&
+           !connectionsStore.isActiveTokenExpired
   })
+
+  // For backward compatibility - projects list
+  const projects = ref([])
 
   // Initialize Google Sign-In
   let tokenClient = null
@@ -93,26 +87,16 @@ export const useAuthStore = defineStore('auth', () => {
           }
 
           try {
-            // Store access token
-            accessToken.value = response.access_token
-            // Set expiry to 7 days from now
-            tokenExpiry.value = Date.now() + TOKEN_EXPIRY_MS
+            const token = response.access_token
 
             // Get user info
-            await fetchUserInfo()
+            const userInfo = await fetchUserInfo(token)
+
+            // Add connection via connections store
+            connectionsStore.addConnection('bigquery', userInfo, token)
 
             // Try to get default project
             await fetchDefaultProject()
-
-            // Save to localStorage (for 7-day persistence)
-            saveAuthData({
-              accessToken: accessToken.value,
-              tokenExpiry: tokenExpiry.value,
-              userEmail: userEmail.value,
-              userName: userName.value,
-              userPhoto: userPhoto.value,
-              projectId: projectId.value
-            })
 
             resolve()
           } catch (err) {
@@ -126,21 +110,23 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Fetch user info from Google
-  const fetchUserInfo = async () => {
-    if (!accessToken.value) return
-
+  const fetchUserInfo = async (token) => {
     const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: {
-        'Authorization': `Bearer ${accessToken.value}`
+        'Authorization': `Bearer ${token}`
       }
     })
 
     if (response.ok) {
       const data = await response.json()
-      userEmail.value = data.email
-      userName.value = data.name
-      userPhoto.value = data.picture
+      return {
+        email: data.email,
+        name: data.name,
+        photo: data.picture
+      }
     }
+
+    throw new Error('Failed to fetch user info')
   }
 
   // Fetch default project (first accessible project)
@@ -189,19 +175,55 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     const data = await response.json()
-    return data.projects || []
+    projects.value = data.projects || []
+    return projects.value
   }
 
   // Set active project
   const setProjectId = (newProjectId) => {
     projectId.value = newProjectId
-    saveAuthData({
-      accessToken: accessToken.value,
-      tokenExpiry: tokenExpiry.value,
-      userEmail: userEmail.value,
-      userName: userName.value,
-      userPhoto: userPhoto.value,
-      projectId: projectId.value
+    try {
+      localStorage.setItem('squill-project', newProjectId)
+    } catch (err) {
+      console.error('Failed to save project:', err)
+    }
+  }
+
+  // Reconnect an existing connection
+  const reconnectConnection = async (connectionId) => {
+    if (!GOOGLE_CLIENT_ID) {
+      throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
+    }
+
+    await initGoogleAuth()
+
+    return new Promise((resolve, reject) => {
+      tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: SCOPES,
+        callback: async (response) => {
+          if (response.error) {
+            reject(new Error(response.error))
+            return
+          }
+
+          try {
+            const token = response.access_token
+
+            // Get user info
+            const userInfo = await fetchUserInfo(token)
+
+            // Update connection via connections store
+            connectionsStore.reconnectConnection(connectionId, token, userInfo)
+
+            resolve()
+          } catch (err) {
+            reject(err)
+          }
+        },
+      })
+
+      tokenClient.requestAccessToken()
     })
   }
 
@@ -209,13 +231,13 @@ export const useAuthStore = defineStore('auth', () => {
   const signOut = () => {
     const currentToken = accessToken.value
 
-    accessToken.value = null
-    tokenExpiry.value = null
-    userEmail.value = null
-    userName.value = null
-    userPhoto.value = null
+    // Remove connection via connections store
+    if (connectionsStore.activeConnectionId) {
+      connectionsStore.removeConnection(connectionsStore.activeConnectionId)
+    }
+
     projectId.value = null
-    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem('squill-project')
 
     // Revoke Google token
     if (currentToken && window.google?.accounts?.oauth2) {
@@ -320,8 +342,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     // Check if token is expired
-    if (Date.now() >= tokenExpiry.value) {
-      throw new Error('Session expired. Please sign in again.')
+    if (connectionsStore.isActiveTokenExpired) {
+      throw new Error('Session expired. Please reconnect your account.')
     }
 
     // Apply auto-limit transformation
@@ -388,8 +410,10 @@ export const useAuthStore = defineStore('auth', () => {
     userName,
     userPhoto,
     projectId,
+    projects,
     isAuthenticated,
     signInWithGoogle,
+    reconnectConnection,
     signOut,
     fetchProjects,
     setProjectId,
