@@ -297,8 +297,8 @@ onUnmounted(() => {
 <style scoped>
 /* Splitter */
 .splitter {
-  height: var(--border-slim);
-  background: black;
+  height: var(--border-width-thin);
+  background: var(--border-primary);
   cursor: ns-resize;
   flex-shrink: 0;
   position: relative;
@@ -308,8 +308,8 @@ onUnmounted(() => {
 .splitter::before {
   content: '';
   position: absolute;
-  top: -4px;
-  bottom: -4px;
+  top: calc(var(--space-1) * -1);
+  bottom: calc(var(--space-1) * -1);
   left: 0;
   right: 0;
 }
@@ -318,7 +318,7 @@ onUnmounted(() => {
 .box-name-container {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   margin-right: auto;
 }
 
@@ -331,8 +331,8 @@ onUnmounted(() => {
 .box-name {
   cursor: pointer;
   user-select: none;
-  line-height: 1;
-  height: 14px;
+  line-height: var(--line-height-tight);
+  height: 16px;
   display: inline-block;
 }
 
@@ -352,7 +352,7 @@ onUnmounted(() => {
   margin: 0;
   min-width: 100px;
   max-width: 400px;
-  line-height: 1;
+  line-height: var(--line-height-tight);
   height: 14px;
   display: inline-block;
 }
@@ -360,7 +360,7 @@ onUnmounted(() => {
 /* Header buttons */
 .header-buttons {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .header-btn {
@@ -370,10 +370,10 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid var(--text-color);
-  color: var(--text-color);
+  border: var(--border-width-thin) solid var(--text-inverse);
+  color: var(--text-inverse);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-body);
   padding: 0;
   line-height: 1;
   transition: all 0.2s;
@@ -385,13 +385,13 @@ onUnmounted(() => {
 }
 
 .header-btn:hover {
-  background: var(--text-color);
-  color: var(--bg-color);
+  background: var(--text-inverse);
+  color: var(--surface-inverse);
 }
 
 .delete-btn:hover {
-  background: #ff4444;
-  border-color: #ff4444;
-  color: white;
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: var(--text-inverse);
 }
 </style>

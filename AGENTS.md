@@ -1,0 +1,7 @@
+- This app is a web-based interface for querying and exploring databases.
+- The main functionality is to query databases using SQL.
+- The app is intended to look and feel like an operating system:
+  - There is a menu bar at the top.
+  - The user can move and resize windows.
+- Use the semantic design system in style.css for consistent styling.
+- Don't hesitate to refactor and improve the structure as needed.

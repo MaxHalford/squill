@@ -1,44 +1,118 @@
 :root {
-  /* Font Configuration */
-  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-editor: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --font-results: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  /* ===== TYPOGRAPHY ===== */
 
-  /* Design System - Single Source of Truth */
-  --border-slim: 1px;
-  --border-thick: 2px;
-  --border-color: black;
-  --border-radius: 0;
-  --shadow: 6px 6px 0 0 rgba(0, 0, 0, 0.25);
-  --shadow-lg: 8px 8px 0 0 rgba(0, 0, 0, 0.3);
+  /* Font Families */
+  --font-family-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* Font Sizes - Modular scale based on 14px base */
+  --font-size-caption: 11px;      /* Captions, metadata */
+  --font-size-body-sm: 12px;      /* Small body text, table data */
+  --font-size-body: 14px;         /* Default body text */
+  --font-size-body-lg: 16px;      /* Large body text */
+  --font-size-heading: 18px;      /* Headings, modal titles */
+
+  /* Line Heights */
+  --line-height-tight: 1.2;       /* Headings, compact UI */
+  --line-height-normal: 1.5;      /* Body text */
+  --line-height-relaxed: 1.75;    /* Comfortable reading */
+
+  /* ===== COLORS ===== */
+
+  /* Surface Colors */
+  --surface-primary: white;       /* Main background */
+  --surface-secondary: #f9fafb;   /* Subtle backgrounds, hover states */
+  --surface-tertiary: #e8e8e8;    /* Deeper backgrounds, active states */
+  --surface-inverse: black;       /* Inverse backgrounds (headers) */
+
+  /* Text Colors */
+  --text-primary: black;          /* Primary text */
+  --text-secondary: #6b7280;      /* Secondary text, metadata */
+  --text-tertiary: #9ca3af;       /* Disabled, placeholder text */
+  --text-inverse: white;          /* Text on dark backgrounds */
+
+  /* Border Colors */
+  --border-primary: black;        /* Primary borders, dividers */
+  --border-secondary: #d1d5db;    /* Subtle borders */
+  --border-error: #c62828;        /* Error borders */
+
+  /* Semantic Colors */
+  --color-accent: #42b883;        /* Accent color */
+  --color-error: #c62828;         /* Error states */
+  --color-error-bg: #ffebee;      /* Error backgrounds */
+  --color-success: #10b981;       /* Success states */
+  --color-warning: #f59e0b;       /* Warning states */
+
+  /* ===== SPACING ===== */
+
+  /* Base spacing unit: 4px */
+  --space-1: 4px;    /* Tight spacing, between related items */
+  --space-2: 8px;    /* Small gaps, compact padding */
+  --space-3: 12px;   /* Default padding, comfortable gaps */
+  --space-4: 16px;   /* Generous padding, section spacing */
+  --space-5: 20px;   /* Large spacing, modal padding */
+  --space-6: 24px;   /* XL spacing, major sections */
+  --space-8: 32px;   /* XXL spacing, page-level gaps */
+
+  /* ===== BORDERS ===== */
+
+  --border-width-thin: 1.5px;     /* Subtle dividers */
+  --border-width-thick: 2px;      /* Prominent borders, box outlines */
+  --border-radius-none: 0;        /* Sharp corners */
+  --border-radius-sm: 2px;        /* Subtle rounding */
+  --border-radius-md: 4px;        /* Default rounding */
+  --border-radius-lg: 8px;        /* Generous rounding */
+
+  /* ===== SHADOWS ===== */
+
+  --shadow-sm: 2px 2px 0 0 rgba(0, 0, 0, 0.15);     /* Subtle elevation */
+  --shadow-md: 6px 6px 0 0 rgba(0, 0, 0, 0.25);     /* Default elevation */
+  --shadow-lg: 8px 8px 0 0 rgba(0, 0, 0, 0.3);      /* Prominent elevation */
+
+  /* ===== COMPONENT TOKENS ===== */
+
+  /* Box/Window */
+  --box-border-width: var(--border-width-thick);
+  --box-border-color: var(--border-primary);
+  --box-border-radius: var(--border-radius-none);
+  --box-shadow: var(--shadow-md);
+  --box-shadow-selected: var(--shadow-lg);
+  --box-header-bg: var(--surface-inverse);
+  --box-header-text: var(--text-inverse);
+  --box-header-padding: var(--space-2) var(--space-3);
+
+  /* Button */
+  --button-padding: var(--space-1) var(--space-3);
+  --button-border-width: var(--border-width-thin);
+  --button-border-radius: var(--border-radius-none);
+  --button-font-size: var(--font-size-body);
+
+  /* Input */
+  --input-padding: var(--space-2) var(--space-3);
+  --input-border-width: var(--border-width-thin);
+  --input-border-radius: var(--border-radius-none);
+  --input-font-size: var(--font-size-body);
+
+  /* Table */
+  --table-cell-padding: var(--space-2) var(--space-3);
+  --table-border-width: var(--border-width-thin);
+  --table-font-size: var(--font-size-body-sm);
+  --table-row-hover-bg: var(--surface-tertiary);
+  --table-row-stripe-bg: #f5f5f5;
+
+  /* Menu/Sidebar */
+  --menu-border-width: var(--border-width-thin);
+  --menu-item-padding: var(--space-2) var(--space-3);
+  --menu-section-padding: var(--space-3);
+
+  /* Resize Handles */
   --handle-size: 8px;
-
-  /* Colors */
-  --bg-primary: white;
-  --bg-secondary: #f9fafb;
-  --text-primary: black;
-  --text-secondary: #6b7280;
-  --accent-color: #42b883;
-
-  /* Spacing */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
-  --spacing-lg: 16px;
-  --spacing-xl: 20px;
-
-  /* Font Sizes */
-  --font-size-xs: 11px;
-  --font-size-sm: 12px;
-  --font-size-base: 14px;
-  --font-size-lg: 16px;
-  --font-size-xl: 18px;
 }
 
 body {
   margin: 0;
-  font-family: var(--font-ui);
-  line-height: 1.5;
+  font-family: var(--font-family-ui);
+  line-height: var(--line-height-normal);
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

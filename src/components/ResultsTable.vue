@@ -180,23 +180,23 @@ defineExpose({
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: white;
+  background: var(--surface-primary);
 }
 
 .error-banner {
-  padding: 10px 12px;
-  background: #ffebee;
-  border-bottom: 1px solid #c62828;
-  color: #c62828;
-  font-size: 12px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-error-bg);
+  border-bottom: var(--border-width-thin) solid var(--border-error);
+  color: var(--color-error);
+  font-size: var(--font-size-body-sm);
   font-weight: bold;
   flex-shrink: 0;
 }
 
 .results-footer {
-  padding: 8px 12px;
-  background: white;
-  border-top: 1px solid black;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-primary);
+  border-top: var(--border-width-thin) solid var(--border-primary);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -206,43 +206,43 @@ defineExpose({
 .results-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .results-stat {
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body-sm);
   font-weight: normal;
 }
 
 .stats-divider {
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body-sm);
   font-weight: bold;
 }
 
 .pagination {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .pagination-btn {
-  background: var(--bg-primary);
+  background: var(--surface-primary);
   color: var(--text-primary);
-  border: var(--border-width) solid var(--border-color);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--border-radius);
+  border: var(--button-border-width) solid var(--border-primary);
+  padding: var(--button-padding);
+  border-radius: var(--button-border-radius);
   cursor: pointer;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body-sm);
   font-weight: bold;
   transition: none;
   outline: none;
-  font-family: var(--font-ui);
+  font-family: var(--font-family-ui);
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background: var(--bg-secondary);
+  background: var(--surface-secondary);
 }
 
 .pagination-btn:focus {
@@ -252,12 +252,12 @@ defineExpose({
 .pagination-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
-  background: var(--bg-secondary);
+  background: var(--surface-secondary);
 }
 
 .page-info {
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-body-sm);
   min-width: 50px;
   text-align: center;
 }
@@ -273,40 +273,26 @@ defineExpose({
 .results-table {
   width: max-content;
   min-width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
   border-spacing: 0;
-  font-size: var(--font-size-sm);
-  font-family: var(--font-results);
+  font-size: var(--table-font-size);
+  font-family: var(--font-family-mono);
   color: var(--text-primary);
 }
 
-.results-table thead {
-  position: sticky;
-  top: 0;
-  background: var(--bg-primary);
-  z-index: 10;
-}
-
-.results-table thead tr {
-  display: table-row;
-}
-
 .results-table th {
-  padding: 8px 12px;
+  padding: var(--table-cell-padding);
   font-weight: bold;
   white-space: nowrap;
-  background: var(--bg-primary);
-  position: sticky;
-  top: -1px;
+  background: var(--surface-primary);
   z-index: 10;
-  border-top: 1px solid var(--border-color);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: var(--table-border-width) solid var(--border-primary);
   min-width: 150px;
   vertical-align: bottom;
 }
 
 .results-table td {
-  padding: 8px 12px;
+  padding: var(--table-cell-padding);
   white-space: nowrap;
   min-width: 150px;
   vertical-align: baseline;
@@ -321,7 +307,7 @@ defineExpose({
 .numeric-column {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-family: var(--font-results);
+  font-family: var(--font-family-mono);
 }
 
 /* Headers always align with their column content */
@@ -334,15 +320,15 @@ defineExpose({
 }
 
 .results-table tbody tr:nth-child(even) {
-  background: #f5f5f5;
+  background: var(--table-row-stripe-bg);
 }
 
 .results-table tbody tr:nth-child(odd) {
-  background: white;
+  background: var(--surface-primary);
 }
 
 .results-table tbody tr:hover {
-  background: #e8e8e8;
+  background: var(--table-row-hover-bg);
 }
 
 .empty-state {
@@ -350,7 +336,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #666;
-  font-size: 14px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-body);
 }
 </style>

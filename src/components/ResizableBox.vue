@@ -201,13 +201,13 @@ onUnmounted(() => {
 <style scoped>
 .resizable-box {
   position: absolute;
-  background: var(--bg-primary);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
+  background: var(--surface-primary);
+  border: var(--box-border-width) solid var(--box-border-color);
+  border-radius: var(--box-border-radius);
+  box-shadow: var(--box-shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: var(--border-thick) solid var(--border-color);
   outline: none;
   transition: none;
   isolation: isolate;
@@ -215,7 +215,7 @@ onUnmounted(() => {
 }
 
 .resizable-box.selected {
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--box-shadow-selected);
   z-index: 10;
   position: relative;
 }
@@ -223,12 +223,12 @@ onUnmounted(() => {
 .resizable-box.selected::before {
   content: '';
   position: absolute;
-  top: -4px;
-  left: -4px;
-  right: -4px;
-  bottom: -4px;
-  border: 2px solid var(--border-color);
-  border-radius: var(--border-radius);
+  top: calc(var(--space-1) * -1);
+  left: calc(var(--space-1) * -1);
+  right: calc(var(--space-1) * -1);
+  bottom: calc(var(--space-1) * -1);
+  border: var(--border-width-thick) solid var(--border-primary);
+  border-radius: var(--box-border-radius);
   pointer-events: none;
 }
 
@@ -237,9 +237,9 @@ onUnmounted(() => {
 }
 
 .box-header {
-  background: var(--border-color);
-  color: var(--bg-primary);
-  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--box-header-bg);
+  color: var(--box-header-text);
+  padding: var(--box-header-padding);
   cursor: grab;
   user-select: none;
   display: flex;
@@ -247,7 +247,7 @@ onUnmounted(() => {
   align-items: center;
   border-bottom: none;
   flex-shrink: 0;
-  font-size: 14px;
+  font-size: var(--font-size-body);
 }
 
 .box-header:active {

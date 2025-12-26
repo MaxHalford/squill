@@ -40,12 +40,12 @@ const retroTheme = EditorView.theme({
   '&': {
     backgroundColor: 'white',
     color: 'black',
-    fontFamily: 'var(--font-editor)',
+    fontFamily: 'var(--font-family-mono)',
     textAlign: 'left',
   },
   '.cm-content': {
     caretColor: 'black',
-    fontFamily: 'var(--font-editor)',
+    fontFamily: 'var(--font-family-mono)',
     textAlign: 'left',
   },
   '.cm-cursor, .cm-dropCursor': {
@@ -66,17 +66,17 @@ const retroTheme = EditorView.theme({
     backgroundColor: '#f5f5f5',
   },
   '.cm-scroller': {
-    fontFamily: 'var(--font-editor)',
+    fontFamily: 'var(--font-family-mono)',
     textAlign: 'left',
   },
   '.cm-line': {
-    fontFamily: 'var(--font-editor)',
+    fontFamily: 'var(--font-family-mono)',
     textAlign: 'left',
   },
   '.cm-tooltip-autocomplete': {
     backgroundColor: 'white',
     border: '1px solid black',
-    fontFamily: 'var(--font-editor)',
+    fontFamily: 'var(--font-family-mono)',
   },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
     backgroundColor: '#d7d7d7',
@@ -230,16 +230,16 @@ defineExpose({
 
 .run-button {
   position: absolute;
-  bottom: var(--spacing-sm);
-  right: var(--spacing-sm);
-  background: var(--bg-primary);
+  bottom: var(--space-2);
+  right: var(--space-2);
+  background: var(--surface-primary);
   color: var(--text-primary);
-  border: var(--border-slim) solid var(--border-color);
-  padding: var(--spacing-xs) var(--spacing-md);
-  border-radius: var(--border-radius);
-  font-size: var(--font-size-base);
+  border: var(--button-border-width) solid var(--border-primary);
+  padding: var(--button-padding);
+  border-radius: var(--button-border-radius);
+  font-size: var(--button-font-size);
   font-weight: bold;
-  font-family: var(--font-editor);
+  font-family: var(--font-family-mono);
   cursor: pointer;
   transition: none;
   line-height: 1;
@@ -249,7 +249,7 @@ defineExpose({
 }
 
 .run-button:hover:not(:disabled) {
-  background: var(--bg-secondary);
+  background: var(--surface-secondary);
 }
 
 .run-button:focus {
@@ -257,8 +257,8 @@ defineExpose({
 }
 
 .run-button:disabled {
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
+  background: var(--surface-secondary);
+  color: var(--text-tertiary);
   cursor: not-allowed;
   opacity: 0.5;
 }
