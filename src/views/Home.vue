@@ -6,8 +6,10 @@ import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
 import { ref, onMounted, onUnmounted, nextTick, provide } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
+import { useSettingsStore } from '../stores/settings'
 
 const canvasStore = useCanvasStore()
+const settingsStore = useSettingsStore()
 const canvasRef = ref(null)
 const copiedBoxId = ref(null)
 
@@ -41,6 +43,10 @@ provide('executeBoxQuery', executeBoxQuery)
 
 const selectBox = (id, event) => {
   canvasStore.selectBox(id)
+  // Smoothly pan viewport to the selected box (if enabled in settings)
+  if (settingsStore.panToBoxOnSelect && canvasRef.value) {
+    canvasRef.value.panToBox(id)
+  }
 }
 
 const deselectBox = () => {

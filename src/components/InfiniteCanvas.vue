@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, provide } from 'vue'
+import type { Box } from '../types/canvas'
 
 const emit = defineEmits(['canvas-click'])
 
-const props = defineProps({
-  boxes: { type: Array, default: () => [] }
-})
+const props = defineProps<{
+  boxes: Box[]
+}>()
 
 const canvasRef = ref(null)
 const viewportRef = ref(null)
@@ -95,10 +96,63 @@ const getViewportCenter = () => {
   return { x: canvasX, y: canvasY }
 }
 
+// Smooth pan animation
+let animationFrameId: number | null = null
+const panToBox = (boxId: number) => {
+  const box = props.boxes.find((b) => b.id === boxId)
+  if (!box || !canvasRef.value) return
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const viewportCenterX = rect.width / 2
+  const viewportCenterY = rect.height / 2
+
+  // Calculate box center in canvas coordinates
+  const boxCenterX = box.x + box.width / 2
+  const boxCenterY = box.y + box.height / 2
+
+  // Calculate target pan to center the box
+  const targetPan = {
+    x: viewportCenterX - boxCenterX * zoom.value,
+    y: viewportCenterY - boxCenterY * zoom.value
+  }
+
+  // Cancel any ongoing animation
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId)
+  }
+
+  // Smooth animation using easing
+  const startPan = { ...pan.value }
+  const startTime = performance.now()
+  const duration = 400 // milliseconds
+
+  const animate = (currentTime: number) => {
+    const elapsed = currentTime - startTime
+    const progress = Math.min(elapsed / duration, 1)
+
+    // Ease-out cubic easing for smooth deceleration
+    const eased = 1 - Math.pow(1 - progress, 3)
+
+    pan.value = {
+      x: startPan.x + (targetPan.x - startPan.x) * eased,
+      y: startPan.y + (targetPan.y - startPan.y) * eased
+    }
+
+    if (progress < 1) {
+      animationFrameId = requestAnimationFrame(animate)
+    } else {
+      animationFrameId = null
+    }
+  }
+
+  animationFrameId = requestAnimationFrame(animate)
+}
+
 // Expose methods
 defineExpose({
   fitToView,
-  getViewportCenter
+  getViewportCenter,
+  panToBox
 })
 
 // Check if element is or is inside a box

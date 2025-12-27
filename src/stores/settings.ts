@@ -7,13 +7,15 @@ interface Settings {
   autoLimitEnabled: boolean
   autoLimitValue: number
   paginationSize: number
+  panToBoxOnSelect: boolean
 }
 
 // Default settings
 const DEFAULT_SETTINGS: Settings = {
   autoLimitEnabled: true,
   autoLimitValue: 5000,
-  paginationSize: 50
+  paginationSize: 50,
+  panToBoxOnSelect: true
 }
 
 const loadSettings = (): Settings => {
@@ -44,12 +46,16 @@ export const useSettingsStore = defineStore('settings', () => {
   // Pagination settings
   const paginationSize = ref(savedSettings.paginationSize)
 
+  // Viewport settings
+  const panToBoxOnSelect = ref(savedSettings.panToBoxOnSelect)
+
   // Watch for changes and auto-save
-  watch([autoLimitEnabled, autoLimitValue, paginationSize], () => {
+  watch([autoLimitEnabled, autoLimitValue, paginationSize, panToBoxOnSelect], () => {
     saveSettings({
       autoLimitEnabled: autoLimitEnabled.value,
       autoLimitValue: autoLimitValue.value,
-      paginationSize: paginationSize.value
+      paginationSize: paginationSize.value,
+      panToBoxOnSelect: panToBoxOnSelect.value
     })
   })
 
@@ -72,19 +78,26 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  const togglePanToBoxOnSelect = () => {
+    panToBoxOnSelect.value = !panToBoxOnSelect.value
+  }
+
   const resetToDefaults = () => {
     autoLimitEnabled.value = DEFAULT_SETTINGS.autoLimitEnabled
     autoLimitValue.value = DEFAULT_SETTINGS.autoLimitValue
     paginationSize.value = DEFAULT_SETTINGS.paginationSize
+    panToBoxOnSelect.value = DEFAULT_SETTINGS.panToBoxOnSelect
   }
 
   return {
     autoLimitEnabled,
     autoLimitValue,
     paginationSize,
+    panToBoxOnSelect,
     toggleAutoLimit,
     setAutoLimitValue,
     setPaginationSize,
+    togglePanToBoxOnSelect,
     resetToDefaults
   }
 })

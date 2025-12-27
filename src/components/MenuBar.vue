@@ -374,6 +374,25 @@ onUnmounted(() => {
             </div>
           </div>
 
+          <div class="settings-section">
+            <div class="setting-header">Viewport behavior</div>
+            <div class="setting-description">
+              Control how the viewport moves when interacting with boxes
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">
+                <input
+                  type="checkbox"
+                  :checked="settingsStore.panToBoxOnSelect"
+                  @change="settingsStore.togglePanToBoxOnSelect"
+                  class="setting-checkbox"
+                />
+                <span>Pan to box on select</span>
+              </label>
+            </div>
+          </div>
+
           <div class="settings-section settings-section-danger">
             <div class="setting-header">Reset</div>
             <div class="setting-description">
