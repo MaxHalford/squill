@@ -216,7 +216,7 @@ const insertTableName = (item) => {
     :initial-z-index="initialZIndex"
     :is-selected="isSelected"
     :initial-name="initialName"
-    @select="emit('select')"
+    @select="emit('select', $event)"
     @update:position="emit('update:position', $event)"
     @update:size="emit('update:size', $event)"
     @delete="emit('delete')"

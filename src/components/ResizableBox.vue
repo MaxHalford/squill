@@ -54,9 +54,10 @@ watch(() => props.initialY, (newY) => {
   position.value.y = newY
 })
 
-// Handle selection
-const handleBoxClick = () => {
-  emit('select')
+// Handle selection from content area (should trigger pan)
+const handleContentClick = (e) => {
+  e.stopPropagation()
+  emit('select', { shouldPan: true })
 }
 
 // Handle dragging
@@ -66,7 +67,7 @@ const handleHeaderMouseDown = (e) => {
     return
   }
   e.stopPropagation()
-  emit('select')
+  emit('select', { shouldPan: false })
   isDragging.value = true
   const zoom = canvasZoom.value
   dragStart.value = {
@@ -79,7 +80,7 @@ const handleHeaderMouseDown = (e) => {
 const handleResizeStart = (e, direction) => {
   e.stopPropagation()
   e.preventDefault()
-  emit('select')
+  emit('select', { shouldPan: false })
   isResizing.value = true
   resizeDirection.value = direction
   dragStart.value = { x: e.clientX, y: e.clientY }
@@ -168,7 +169,6 @@ onUnmounted(() => {
       height: `${size.height}px`,
       zIndex: zIndex
     }"
-    @click="handleBoxClick"
   >
     <div
       ref="headerRef"
@@ -178,7 +178,7 @@ onUnmounted(() => {
       <slot name="header"></slot>
     </div>
 
-    <div class="box-content" @mousedown.stop>
+    <div class="box-content" @click="handleContentClick">
       <slot></slot>
     </div>
 

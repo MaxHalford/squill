@@ -41,10 +41,10 @@ provide('registerBoxExecutor', registerBoxExecutor)
 provide('unregisterBoxExecutor', unregisterBoxExecutor)
 provide('executeBoxQuery', executeBoxQuery)
 
-const selectBox = (id, event) => {
+const selectBox = (id, eventData) => {
   canvasStore.selectBox(id)
-  // Smoothly pan viewport to the selected box (if enabled in settings)
-  if (settingsStore.panToBoxOnSelect && canvasRef.value) {
+  // Smoothly pan viewport to the selected box (if enabled in settings and event allows it)
+  if (settingsStore.panToBoxOnSelect && eventData?.shouldPan && canvasRef.value) {
     canvasRef.value.panToBox(id)
   }
 }

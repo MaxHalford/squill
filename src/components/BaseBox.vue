@@ -59,8 +59,8 @@ const handleNameKeydown = (e) => {
 }
 
 // Event handlers
-const handleSelect = () => {
-  emit('select')
+const handleSelect = (eventData) => {
+  emit('select', eventData)
 }
 
 const handleUpdatePosition = (newPosition) => {
