@@ -1,9 +1,8 @@
 - This app is a web-based interface for querying and exploring databases.
-- The app is meant to be used by data analysts and data scientists.
-- The main functionality is to query databases using SQL, but also to explore database schemas visually.
-- The app is expected to be used in a desktop web browser.
 - The user can connect to multiple databases.
 - Always use plan mode, and don't mind asking for clarifications.
+- The app is meant to be used by data analysts and data scientists.
+- The main functionality is to query databases using SQL, but also to explore database schemas visually.
 - The app is intended to look and feel like an operating system:
   - There is a menu bar at the top.
   - The user can move, resize, add, delete windows.
@@ -13,4 +12,7 @@
 - Use the semantic design system in style.css for consistent styling.
 - Don't hesitate to refactor and improve the structure as needed.
 - It's important to keep the code clean, simple, and maintainable.
+- Work smart. When debugging, take a step back and think deeply about what might be going wrong. When something is not working as intended, add logging to check your assumptions.
+- You can use the Playwright MCP for testing
 - This is a Vue.js project using Vite and bun.
+- The app is expected to be used in a desktop web browser.
