@@ -194,6 +194,10 @@ defineExpose({
         <span v-if="stats && stats.totalBytesProcessed" class="results-stat">
           {{ formatBytes(stats.totalBytesProcessed) }}
         </span>
+        <span v-if="stats && stats.engine === 'bigquery'" class="stats-divider">•</span>
+        <span v-if="stats && stats.engine === 'bigquery'" class="results-stat" :class="{ 'cache-hit': stats.cacheHit }">
+          {{ stats.cacheHit ? '⚡ Cached' : '' }}
+        </span>
       </div>
       <div class="footer-actions">
         <div class="pagination">

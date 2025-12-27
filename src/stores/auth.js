@@ -363,6 +363,7 @@ export const useAuthStore = defineStore('auth', () => {
       body: JSON.stringify({
         query: transformedQuery,
         useLegacySql: false,
+        useQueryCache: true,
       }),
     }
 
@@ -385,7 +386,8 @@ export const useAuthStore = defineStore('auth', () => {
 
     // Extract statistics from BigQuery response
     const stats = {
-      totalBytesProcessed: data.totalBytesProcessed || '0'
+      totalBytesProcessed: data.totalBytesProcessed || '0',
+      cacheHit: data.cacheHit || false
     }
 
     // Transform BigQuery response to table format
