@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, inject, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import ResizableBox from './ResizableBox.vue'
+import { ref, inject, watch, onMounted, onUnmounted } from 'vue'
+import BaseBox from './BaseBox.vue'
 import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
 import { useAuthStore } from '../stores/auth'
@@ -34,10 +34,8 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query'])
 
-// Editable name state
-const isEditingName = ref(false)
-const boxName = ref(props.initialName)
-const nameInputRef = ref(null)
+// Reference to BaseBox to access boxName
+const baseBoxRef = ref(null)
 
 const MIN_EDITOR_HEIGHT = 100
 const MIN_RESULTS_HEIGHT = 200
@@ -62,10 +60,6 @@ const resultsRef = ref(null)
 
 // Watch for prop changes (e.g., when loading from localStorage)
 let isUpdatingFromProp = false
-
-watch(() => props.initialName, (newName) => {
-  boxName.value = newName
-})
 
 watch(() => props.initialQuery, (newQuery) => {
   isUpdatingFromProp = true
@@ -121,10 +115,10 @@ const updateDependenciesFromQuery = async (query) => {
         .filter(boxId => boxId && boxId !== props.boxId)
 
       const uniqueDeps = [...new Set(dependencyBoxIds)]
-      console.log(`🔗 Box ${props.boxId} (${boxName.value}): Dependencies updated to [${uniqueDeps.join(', ')}]`)
+      console.log(`🔗 Box ${props.boxId} (${baseBoxRef.value?.boxName}): Dependencies updated to [${uniqueDeps.join(', ')}]`)
       canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
     } else {
-      console.log(`🔗 Box ${props.boxId} (${boxName.value}): BigQuery query, clearing dependencies`)
+      console.log(`🔗 Box ${props.boxId} (${baseBoxRef.value?.boxName}): BigQuery query, clearing dependencies`)
       canvasStore.updateBoxDependencies(props.boxId, [])
     }
   } catch (err) {
@@ -208,7 +202,7 @@ const runQuery = async () => {
 
       // Store results so they can be queried by other boxes
       try {
-        await duckdbStore.storeResults(boxName.value, result.rows, props.boxId)
+        await duckdbStore.storeResults(baseBoxRef.value?.boxName || props.initialName, result.rows, props.boxId)
       } catch (storageErr) {
         console.warn('Failed to store DuckDB results:', storageErr)
       }
@@ -218,7 +212,7 @@ const runQuery = async () => {
 
       // Store results in DuckDB for cross-query analysis
       try {
-        await duckdbStore.storeResults(boxName.value, result.rows, props.boxId)
+        await duckdbStore.storeResults(baseBoxRef.value?.boxName || props.initialName, result.rows, props.boxId)
       } catch (storageErr) {
         console.warn('Failed to store results in DuckDB:', storageErr)
       }
@@ -305,71 +299,21 @@ const handleMouseUp = () => {
   isDraggingSplitter.value = false
 }
 
-const handleSelect = () => {
-  emit('select')
-}
-
-const handleUpdatePosition = (newPosition) => {
-  emit('update:position', newPosition)
-}
-
 const handleUpdateSize = (newSize) => {
   boxHeight.value = newSize.height
   emit('update:size', newSize)
 }
 
-// Handle maximize button
-const handleMaximize = (e) => {
-  e.stopPropagation() // Prevent triggering header drag
-  emit('maximize')
-}
-
-// Handle delete button
-const handleDelete = (e) => {
-  e.stopPropagation() // Prevent triggering header drag
-  emit('delete')
-}
-
-// Handle name editing
-const startEditingName = (e) => {
-  e.stopPropagation()
-  isEditingName.value = true
-  nextTick(() => {
-    if (nameInputRef.value) {
-      nameInputRef.value.focus()
-      nameInputRef.value.select()
-    }
-  })
-}
-
-const finishEditingName = async () => {
-  isEditingName.value = false
-  const newName = boxName.value.trim()
-
-  if (newName && newName !== props.initialName) {
-    // Rename the DuckDB table (dependencies will break)
-    try {
-      await duckdbStore.renameTable(props.initialName, newName)
-    } catch (err) {
-      console.warn('Failed to rename table:', err)
-      // Continue with box rename even if table rename fails
-    }
-
-    emit('update:name', newName)
-  } else if (!newName) {
-    boxName.value = props.initialName
+// Handle name update from BaseBox - rename DuckDB table
+const handleUpdateName = async (newName) => {
+  try {
+    await duckdbStore.renameTable(props.initialName, newName)
+  } catch (err) {
+    console.warn('Failed to rename table:', err)
+    // Continue with box rename even if table rename fails
   }
-}
 
-const handleNameKeydown = (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault()
-    finishEditingName()
-  } else if (e.key === 'Escape') {
-    e.preventDefault()
-    boxName.value = props.initialName
-    isEditingName.value = false
-  }
+  emit('update:name', newName)
 }
 
 // Add global mouse listeners for splitter and register executor
@@ -395,7 +339,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <ResizableBox
+  <BaseBox
+    ref="baseBoxRef"
     :box-id="boxId"
     :initial-x="initialX"
     :initial-y="initialY"
@@ -403,43 +348,14 @@ onUnmounted(() => {
     :initial-height="initialHeight"
     :initial-z-index="initialZIndex"
     :is-selected="isSelected"
-    @select="handleSelect"
-    @update:position="handleUpdatePosition"
+    :initial-name="initialName"
+    @select="emit('select')"
+    @update:position="emit('update:position', $event)"
     @update:size="handleUpdateSize"
+    @delete="emit('delete')"
+    @maximize="emit('maximize')"
+    @update:name="handleUpdateName"
   >
-    <template #header>
-      <div class="box-name-container">
-        <input
-          v-if="isEditingName"
-          ref="nameInputRef"
-          v-model="boxName"
-          @blur="finishEditingName"
-          @keydown="handleNameKeydown"
-          @click.stop
-          class="name-input"
-          type="text"
-        />
-        <span
-          v-else
-          class="box-name"
-          @dblclick="startEditingName"
-          title="Double-click to edit"
-        >{{ boxName }}</span>
-      </div>
-      <div class="header-buttons">
-        <button
-          class="header-btn maximize-btn"
-          @click="handleMaximize"
-          title="Maximize"
-        >⛶</button>
-        <button
-          class="header-btn delete-btn"
-          @click="handleDelete"
-          title="Delete"
-        >✕</button>
-      </div>
-    </template>
-
     <QueryEditor
       ref="editorRef"
       v-model="queryText"
@@ -461,9 +377,9 @@ onUnmounted(() => {
       :results="queryResults"
       :stats="queryStats"
       :error="error"
-      :box-name="boxName"
+      :box-name="baseBoxRef?.boxName || initialName"
     />
-  </ResizableBox>
+  </BaseBox>
 </template>
 
 <style scoped>
@@ -484,79 +400,5 @@ onUnmounted(() => {
   bottom: calc(var(--space-1) * -1);
   left: 0;
   right: 0;
-}
-
-/* Header name container */
-.box-name-container {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-right: auto;
-}
-
-.box-name {
-  cursor: pointer;
-  user-select: none;
-  display: inline-block;
-}
-
-.box-name:hover {
-  opacity: 0.7;
-}
-
-.name-input {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: inherit;
-  font-size: inherit;
-  font-family: inherit;
-  font-weight: inherit;
-  padding: 0;
-  margin: 0;
-  min-width: 100px;
-  max-width: 400px;
-  line-height: var(--line-height-tight);
-  height: 14px;
-  display: inline-block;
-}
-
-/* Header buttons */
-.header-buttons {
-  display: flex;
-  gap: var(--space-1);
-}
-
-.header-btn {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--text-inverse);
-  cursor: pointer;
-  font-size: var(--font-size-body-lg);
-  font-weight: bold;
-  padding: 0;
-  line-height: 1;
-  transition: all 0.2s;
-  outline: none;
-}
-
-.header-btn:focus {
-  outline: none;
-}
-
-.header-btn:hover {
-  background: var(--text-inverse);
-  color: var(--surface-inverse);
-}
-
-.delete-btn:hover {
-  background: var(--color-error);
-  border-color: var(--color-error);
-  color: var(--text-inverse);
 }
 </style>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from 'vue'
-import ResizableBox from './ResizableBox.vue'
+import { ref, computed } from 'vue'
+import BaseBox from './BaseBox.vue'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
@@ -24,11 +24,6 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name'])
 
-// Editable name state
-const isEditingName = ref(false)
-const boxName = ref(props.initialName)
-const nameInputRef = ref(null)
-
 // Column navigation state
 const selectedProject = ref(null)
 const selectedDataset = ref(null)
@@ -43,10 +38,6 @@ const schemas = ref({}) // { tableId: schema }
 const loadingDatasets = ref({})
 const loadingTables = ref({})
 const loadingSchema = ref({})
-
-watch(() => props.initialName, (newName) => {
-  boxName.value = newName
-})
 
 // Column 1: Projects (including DuckDB)
 const projects = computed(() => {
@@ -213,54 +204,10 @@ const insertTableName = (item) => {
     navigator.clipboard.writeText(tableName)
   }
 }
-
-// Handle name editing
-const startEditingName = (e) => {
-  e.stopPropagation()
-  isEditingName.value = true
-  nextTick(() => {
-    if (nameInputRef.value) {
-      nameInputRef.value.focus()
-      nameInputRef.value.select()
-    }
-  })
-}
-
-const finishEditingName = () => {
-  isEditingName.value = false
-  if (boxName.value.trim()) {
-    emit('update:name', boxName.value.trim())
-  } else {
-    boxName.value = props.initialName
-  }
-}
-
-const handleNameKeydown = (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault()
-    finishEditingName()
-  } else if (e.key === 'Escape') {
-    e.preventDefault()
-    boxName.value = props.initialName
-    isEditingName.value = false
-  }
-}
-
-const handleSelect = () => emit('select')
-const handleUpdatePosition = (newPosition) => emit('update:position', newPosition)
-const handleUpdateSize = (newSize) => emit('update:size', newSize)
-const handleMaximize = (e) => {
-  e.stopPropagation()
-  emit('maximize')
-}
-const handleDelete = (e) => {
-  e.stopPropagation()
-  emit('delete')
-}
 </script>
 
 <template>
-  <ResizableBox
+  <BaseBox
     :box-id="boxId"
     :initial-x="initialX"
     :initial-y="initialY"
@@ -268,35 +215,14 @@ const handleDelete = (e) => {
     :initial-height="initialHeight"
     :initial-z-index="initialZIndex"
     :is-selected="isSelected"
-    @select="handleSelect"
-    @update:position="handleUpdatePosition"
-    @update:size="handleUpdateSize"
+    :initial-name="initialName"
+    @select="emit('select')"
+    @update:position="emit('update:position', $event)"
+    @update:size="emit('update:size', $event)"
+    @delete="emit('delete')"
+    @maximize="emit('maximize')"
+    @update:name="emit('update:name', $event)"
   >
-    <template #header>
-      <div class="box-name-container">
-        <input
-          v-if="isEditingName"
-          ref="nameInputRef"
-          v-model="boxName"
-          @blur="finishEditingName"
-          @keydown="handleNameKeydown"
-          @click.stop
-          class="name-input"
-          type="text"
-        />
-        <span
-          v-else
-          class="box-name"
-          @dblclick="startEditingName"
-          title="Double-click to edit"
-        >{{ boxName }}</span>
-      </div>
-      <div class="header-buttons">
-        <button class="header-btn maximize-btn" @click="handleMaximize" title="Maximize">⛶</button>
-        <button class="header-btn delete-btn" @click="handleDelete" title="Delete">✕</button>
-      </div>
-    </template>
-
     <div class="schema-browser">
       <!-- Column 1: Projects -->
       <div class="column">
@@ -364,70 +290,10 @@ const handleDelete = (e) => {
         </div>
       </div>
     </div>
-  </ResizableBox>
+  </BaseBox>
 </template>
 
 <style scoped>
-/* Header */
-.box-name-container {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-right: auto;
-}
-
-.box-name {
-  cursor: pointer;
-  user-select: none;
-}
-
-.box-name:hover {
-  opacity: 0.7;
-}
-
-.name-input {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: inherit;
-  font-size: inherit;
-  font-family: inherit;
-  font-weight: inherit;
-  padding: 0;
-  min-width: 100px;
-}
-
-.header-buttons {
-  display: flex;
-  gap: var(--space-1);
-}
-
-.header-btn {
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--text-inverse);
-  cursor: pointer;
-  font-size: var(--font-size-body-lg);
-  padding: 0;
-  outline: none;
-  transition: all 0.2s;
-}
-
-.header-btn:hover {
-  background: var(--text-inverse);
-  color: var(--surface-inverse);
-}
-
-.delete-btn:hover {
-  background: var(--color-error);
-  color: var(--text-inverse);
-}
-
 /* Schema Browser - Column View */
 .schema-browser {
   display: flex;
