@@ -1,29 +1,36 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import type { Box, BoxType, Position, Size, CanvasState } from '../types/canvas'
 
 const STORAGE_KEY = 'squill_canvas_state'
 
+interface UndoRedoState {
+  boxes: Box[]
+  selectedBoxId: number | null
+  nextBoxId: number
+}
+
 export const useCanvasStore = defineStore('canvas', () => {
-  const boxes = ref([])
-  const selectedBoxId = ref(null)
+  const boxes = ref<Box[]>([])
+  const selectedBoxId = ref<number | null>(null)
   const nextBoxId = ref(1)
 
   // Active project ID (database type determined by active connection)
-  const activeProjectId = ref(null)
+  const activeProjectId = ref<string | null>(null)
 
   // Canvas reference for getting viewport center
-  const canvasRef = ref(null)
+  const canvasRef = ref<any>(null)
 
   // Undo/Redo stacks
-  const undoStack = ref([])
-  const redoStack = ref([])
+  const undoStack = ref<UndoRedoState[]>([])
+  const redoStack = ref<UndoRedoState[]>([])
 
   // Load state from localStorage
   const loadState = () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
-        const state = JSON.parse(saved)
+        const state: CanvasState & { selectedProject?: string | null } = JSON.parse(saved)
         boxes.value = state.boxes || []
         nextBoxId.value = state.nextBoxId || 1
         activeProjectId.value = state.activeProjectId || state.selectedProject || null
@@ -63,7 +70,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Save state to localStorage
   const saveState = () => {
     try {
-      const state = {
+      const state: CanvasState = {
         boxes: boxes.value,
         nextBoxId: nextBoxId.value,
         activeProjectId: activeProjectId.value
@@ -80,7 +87,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }, { deep: true })
 
   // Get max z-index
-  const getMaxZIndex = () => {
+  const getMaxZIndex = (): number => {
     if (boxes.value.length === 0) return 0
     return Math.max(...boxes.value.map(box => box.zIndex || 0))
   }
@@ -112,7 +119,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     })
 
     // Restore previous state
-    const previousState = undoStack.value.pop()
+    const previousState = undoStack.value.pop()!
     boxes.value = previousState.boxes
     selectedBoxId.value = previousState.selectedBoxId
     nextBoxId.value = previousState.nextBoxId
@@ -130,18 +137,18 @@ export const useCanvasStore = defineStore('canvas', () => {
     })
 
     // Restore next state
-    const nextState = redoStack.value.pop()
+    const nextState = redoStack.value.pop()!
     boxes.value = nextState.boxes
     selectedBoxId.value = nextState.selectedBoxId
     nextBoxId.value = nextState.nextBoxId
   }
 
   // Add a new box
-  const addBox = (type = 'sql', position = null) => {
+  const addBox = (type: BoxType = 'sql', position: Position | null = null): number => {
     saveToUndoStack()
 
     // Get viewport center if canvas ref is available
-    let centerPosition = null
+    let centerPosition: Position | null = null
     if (!position && canvasRef.value) {
       centerPosition = canvasRef.value.getViewportCenter()
     }
@@ -154,7 +161,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     const width = 600
     const height = 500
 
-    const newBox = {
+    const newBox: Box = {
       id: boxId,
       type: type, // 'sql' or 'schema'
       x: position ? position.x - width / 2 : (centerPosition ? centerPosition.x - width / 2 : defaultX),
@@ -171,17 +178,17 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Set active project ID
-  const setActiveProjectId = (projectId) => {
+  const setActiveProjectId = (projectId: string | null) => {
     activeProjectId.value = projectId
   }
 
   // Set canvas ref
-  const setCanvasRef = (ref) => {
+  const setCanvasRef = (ref: any) => {
     canvasRef.value = ref
   }
 
   // Remove a SQL box
-  const removeBox = (id) => {
+  const removeBox = (id: number) => {
     const index = boxes.value.findIndex(box => box.id === id)
     if (index !== -1) {
       saveToUndoStack()
@@ -193,7 +200,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Select a box and bring to front
-  const selectBox = (id) => {
+  const selectBox = (id: number) => {
     selectedBoxId.value = id
 
     // Bring selected box to front
@@ -212,12 +219,12 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Check if a box is selected
-  const isBoxSelected = (id) => {
+  const isBoxSelected = (id: number): boolean => {
     return selectedBoxId.value === id
   }
 
   // Update box position
-  const updateBoxPosition = (id, position) => {
+  const updateBoxPosition = (id: number, position: Position) => {
     const box = boxes.value.find(b => b.id === id)
     if (box) {
       box.x = position.x
@@ -226,7 +233,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Update box size
-  const updateBoxSize = (id, size) => {
+  const updateBoxSize = (id: number, size: Size) => {
     const box = boxes.value.find(b => b.id === id)
     if (box) {
       box.width = size.width
@@ -235,7 +242,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Update box query
-  const updateBoxQuery = (id, query) => {
+  const updateBoxQuery = (id: number, query: string) => {
     const box = boxes.value.find(b => b.id === id)
     if (box) {
       box.query = query
@@ -243,7 +250,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Update box name
-  const updateBoxName = (id, name) => {
+  const updateBoxName = (id: number, name: string) => {
     const box = boxes.value.find(b => b.id === id)
     if (box) {
       box.name = name
@@ -251,7 +258,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Update box z-index
-  const updateBoxZIndex = (id, zIndex) => {
+  const updateBoxZIndex = (id: number, zIndex: number) => {
     const box = boxes.value.find(b => b.id === id)
     if (box) {
       box.zIndex = zIndex
@@ -259,7 +266,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Update box dependencies (array of box IDs this box depends on)
-  const updateBoxDependencies = (id, dependencies) => {
+  const updateBoxDependencies = (id: number, dependencies: number[]) => {
     const box = boxes.value.find(b => b.id === id)
     if (box) {
       box.dependencies = dependencies
@@ -280,7 +287,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Copy a box (duplicate with offset)
-  const copyBox = (id) => {
+  const copyBox = (id: number): number | null => {
     const originalBox = boxes.value.find(b => b.id === id)
     if (!originalBox) return null
 
@@ -291,7 +298,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     // Generate incremented name based on type
     const newName = originalBox.type === 'sql' ? `query_${boxId}` : `schema_${boxId}`
 
-    const newBox = {
+    const newBox: Box = {
       id: boxId,
       type: originalBox.type,
       x: originalBox.x + OFFSET,

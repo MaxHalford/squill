@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { useSettingsStore } from './settings'
 import { useConnectionsStore } from './connections'
 import { applyAutoLimit } from '../utils/queryTransform'
+import type { GoogleUserInfo, GoogleTokenResponse } from '../types/google-oauth'
+import type { BigQueryProject } from '../types/bigquery'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
@@ -14,6 +16,14 @@ const SCOPES = [
   'https://www.googleapis.com/auth/cloud-platform.read-only' // To list projects
 ].join(' ')
 
+interface QueryResult {
+  rows: Record<string, any>[]
+  stats: {
+    totalBytesProcessed?: string
+    cacheHit?: boolean
+  }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   // Delegate to connections store
   const connectionsStore = useConnectionsStore()
@@ -22,7 +32,7 @@ export const useAuthStore = defineStore('auth', () => {
   connectionsStore.loadState()
 
   // Project ID is still managed locally
-  const projectId = ref(null)
+  const projectId = ref<string | null>(null)
 
   // Load projectId from localStorage
   try {
@@ -46,12 +56,12 @@ export const useAuthStore = defineStore('auth', () => {
   })
 
   // For backward compatibility - projects list
-  const projects = ref([])
+  const projects = ref<BigQueryProject[]>([])
 
   // Initialize Google Sign-In
-  let tokenClient = null
+  let tokenClient: any = null
 
-  const initGoogleAuth = () => {
+  const initGoogleAuth = (): Promise<void> => {
     return new Promise((resolve) => {
       // Load Google Identity Services library
       if (window.google?.accounts?.oauth2) {
@@ -63,13 +73,13 @@ export const useAuthStore = defineStore('auth', () => {
       script.src = 'https://accounts.google.com/gsi/client'
       script.async = true
       script.defer = true
-      script.onload = resolve
+      script.onload = () => resolve()
       document.head.appendChild(script)
     })
   }
 
   // Sign in with Google
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (): Promise<void> => {
     if (!GOOGLE_CLIENT_ID) {
       throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
     }
@@ -77,10 +87,10 @@ export const useAuthStore = defineStore('auth', () => {
     await initGoogleAuth()
 
     return new Promise((resolve, reject) => {
-      tokenClient = window.google.accounts.oauth2.initTokenClient({
+      tokenClient = window.google!.accounts!.oauth2!.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: SCOPES,
-        callback: async (response) => {
+        callback: async (response: GoogleTokenResponse) => {
           if (response.error) {
             reject(new Error(response.error))
             return
@@ -110,7 +120,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Fetch user info from Google
-  const fetchUserInfo = async (token) => {
+  const fetchUserInfo = async (token: string): Promise<GoogleUserInfo> => {
     const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -156,7 +166,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Fetch list of available projects
-  const fetchProjects = async () => {
+  const fetchProjects = async (): Promise<BigQueryProject[]> => {
     if (!accessToken.value) {
       throw new Error('Not authenticated')
     }
@@ -180,7 +190,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Set active project
-  const setProjectId = (newProjectId) => {
+  const setProjectId = (newProjectId: string) => {
     projectId.value = newProjectId
     try {
       localStorage.setItem('squill-project', newProjectId)
@@ -190,7 +200,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Reconnect an existing connection
-  const reconnectConnection = async (connectionId) => {
+  const reconnectConnection = async (connectionId: string): Promise<void> => {
     if (!GOOGLE_CLIENT_ID) {
       throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
     }
@@ -198,10 +208,10 @@ export const useAuthStore = defineStore('auth', () => {
     await initGoogleAuth()
 
     return new Promise((resolve, reject) => {
-      tokenClient = window.google.accounts.oauth2.initTokenClient({
+      tokenClient = window.google!.accounts!.oauth2!.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: SCOPES,
-        callback: async (response) => {
+        callback: async (response: GoogleTokenResponse) => {
           if (response.error) {
             reject(new Error(response.error))
             return
@@ -248,7 +258,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Fetch datasets for a project
-  const fetchDatasets = async (targetProjectId = null) => {
+  const fetchDatasets = async (targetProjectId: string | null = null) => {
     if (!isAuthenticated.value) {
       throw new Error('Not authenticated')
     }
@@ -276,7 +286,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Fetch tables for a dataset
-  const fetchTables = async (datasetId, targetProjectId = null) => {
+  const fetchTables = async (datasetId: string, targetProjectId: string | null = null) => {
     if (!isAuthenticated.value) {
       throw new Error('Not authenticated')
     }
@@ -304,7 +314,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Fetch table schema
-  const fetchTableSchema = async (datasetId, tableId, targetProjectId = null) => {
+  const fetchTableSchema = async (datasetId: string, tableId: string, targetProjectId: string | null = null) => {
     if (!isAuthenticated.value) {
       throw new Error('Not authenticated')
     }
@@ -332,7 +342,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Run BigQuery query
-  const runQuery = async (query, signal = null) => {
+  const runQuery = async (query: string, signal: AbortSignal | null = null): Promise<QueryResult> => {
     if (!isAuthenticated.value) {
       throw new Error('Please sign in with Google first')
     }
@@ -354,7 +364,7 @@ export const useAuthStore = defineStore('auth', () => {
       settingsStore.autoLimitValue
     )
 
-    const fetchOptions = {
+    const fetchOptions: RequestInit = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken.value}`,
@@ -392,10 +402,10 @@ export const useAuthStore = defineStore('auth', () => {
 
     // Transform BigQuery response to table format
     if (data.schema && data.rows) {
-      const fieldNames = data.schema.fields.map(f => f.name)
-      const rows = data.rows.map(row => {
-        const obj = {}
-        fieldNames.forEach((name, i) => {
+      const fieldNames = data.schema.fields.map((f: any) => f.name)
+      const rows = data.rows.map((row: any) => {
+        const obj: Record<string, any> = {}
+        fieldNames.forEach((name: string, i: number) => {
           obj[name] = row.f[i].v
         })
         return obj

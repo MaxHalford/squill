@@ -1,17 +1,35 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as duckdb from '@duckdb/duckdb-wasm'
+import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
+
+interface TableMetadata {
+  rowCount: number
+  columns?: string[]
+  lastUpdated: number
+  originalBoxName?: string
+  boxId?: number | null
+}
+
+interface QueryResult {
+  rows: Record<string, any>[]
+  stats: {
+    executionTimeMs: number
+    rowCount: number
+    engine: 'duckdb'
+  }
+}
 
 export const useDuckDBStore = defineStore('duckdb', () => {
   // DuckDB instances
-  const db = ref(null)
-  const conn = ref(null)
+  const db = ref<AsyncDuckDB | null>(null)
+  const conn = ref<AsyncDuckDBConnection | null>(null)
   const isInitialized = ref(false)
   const isInitializing = ref(false)
-  const initError = ref(null)
+  const initError = ref<string | null>(null)
 
   // Track available tables (table name -> metadata)
-  const tables = ref({})
+  const tables = ref<Record<string, TableMetadata>>({})
 
   // Reactive trigger for table schema changes
   const schemaVersion = ref(0)
@@ -55,7 +73,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
       isInitialized.value = true
       console.log('DuckDB initialized successfully')
-    } catch (err) {
+    } catch (err: any) {
       console.error('DuckDB initialization failed:', err)
       initError.value = err.message
       throw err
@@ -79,7 +97,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
       // Load row count for each table
       for (const row of tableList) {
-        const tableName = row.table_name
+        const tableName = row.table_name as string
         try {
           const countResult = await conn.value.query(`SELECT COUNT(*) as count FROM ${tableName}`)
           const countData = countResult.toArray()
@@ -102,12 +120,12 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   // Sanitize box name for use as table name
-  const sanitizeTableName = (boxName) => {
+  const sanitizeTableName = (boxName: string): string => {
     return boxName.toLowerCase().replace(/[^a-z0-9_]/g, '_')
   }
 
   // Infer DuckDB type from JavaScript value
-  const inferDuckDBType = (value) => {
+  const inferDuckDBType = (value: any): string => {
     if (value === null || value === undefined) return 'VARCHAR'
     if (typeof value === 'number') {
       return Number.isInteger(value) ? 'BIGINT' : 'DOUBLE'
@@ -122,7 +140,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   // Format value for SQL INSERT
-  const formatValueForSQL = (value) => {
+  const formatValueForSQL = (value: any): string | number | boolean => {
     if (value === null || value === undefined) return 'NULL'
     if (typeof value === 'number') return value
     if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
@@ -131,7 +149,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   // Store BigQuery results as DuckDB table
-  const storeResults = async (boxName, results, boxId = null) => {
+  const storeResults = async (boxName: string, results: Record<string, any>[], boxId: number | null = null): Promise<string | null> => {
     if (!isInitialized.value) {
       await initialize()
     }
@@ -145,7 +163,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
     try {
       // Drop existing table if exists
-      await conn.value.query(`DROP TABLE IF EXISTS ${tableName}`)
+      await conn.value!.query(`DROP TABLE IF EXISTS ${tableName}`)
 
       // Infer schema from first row
       const columns = Object.keys(results[0])
@@ -156,7 +174,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }).join(', ')
 
       // Create table
-      await conn.value.query(`CREATE TABLE ${tableName} (${columnDefs})`)
+      await conn.value!.query(`CREATE TABLE ${tableName} (${columnDefs})`)
 
       // Insert data in batches
       const BATCH_SIZE = 1000
@@ -167,7 +185,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
           return `(${vals})`
         }).join(', ')
 
-        await conn.value.query(`INSERT INTO ${tableName} VALUES ${values}`)
+        await conn.value!.query(`INSERT INTO ${tableName} VALUES ${values}`)
       }
 
       // Update metadata
@@ -180,14 +198,14 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }
 
       return tableName
-    } catch (err) {
+    } catch (err: any) {
       console.error(`Failed to store results for ${boxName}:`, err)
       throw new Error(`Failed to store results in DuckDB: ${err.message}`)
     }
   }
 
   // Execute DuckDB query
-  const runQuery = async (query) => {
+  const runQuery = async (query: string): Promise<QueryResult> => {
     if (!isInitialized.value) {
       await initialize()
     }
@@ -198,12 +216,12 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     const startTime = performance.now()
 
     try {
-      const result = await conn.value.query(query)
+      const result = await conn.value!.query(query)
       const endTime = performance.now()
 
       // Convert Arrow result to array of objects
       const rows = result.toArray().map(row => {
-        const obj = {}
+        const obj: Record<string, any> = {}
         result.schema.fields.forEach((field) => {
           obj[field.name] = row[field.name]
         })
@@ -218,14 +236,14 @@ export const useDuckDBStore = defineStore('duckdb', () => {
           engine: 'duckdb'
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('DuckDB query failed:', err)
       throw new Error(`DuckDB query failed: ${err.message}`)
     }
   }
 
   // Check if table exists
-  const tableExists = (tableName) => {
+  const tableExists = (tableName: string): boolean => {
     return tableName in tables.value
   }
 
@@ -233,7 +251,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   const getTableNames = computed(() => Object.keys(tables.value))
 
   // Get fresh table names by reloading from database
-  const getFreshTableNames = async () => {
+  const getFreshTableNames = async (): Promise<string[]> => {
     if (!isInitialized.value) {
       return []
     }
@@ -242,19 +260,19 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   // Get the original box name for a table
-  const getTableBoxName = (tableName) => {
+  const getTableBoxName = (tableName: string): string | null => {
     const tableInfo = tables.value[tableName]
     return tableInfo?.originalBoxName || null
   }
 
   // Get the box ID for a table
-  const getTableBoxId = (tableName) => {
+  const getTableBoxId = (tableName: string): number | null => {
     const tableInfo = tables.value[tableName]
     return tableInfo?.boxId || null
   }
 
   // Rename a table (dependencies will break and need manual update)
-  const renameTable = async (oldName, newName) => {
+  const renameTable = async (oldName: string, newName: string) => {
     const oldTableName = sanitizeTableName(oldName)
     const newTableName = sanitizeTableName(newName)
 
@@ -273,7 +291,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }
 
       // Use ALTER TABLE to rename
-      await conn.value.query(`ALTER TABLE ${oldTableName} RENAME TO ${newTableName}`)
+      await conn.value!.query(`ALTER TABLE ${oldTableName} RENAME TO ${newTableName}`)
 
       // Update metadata
       tables.value[newTableName] = {
@@ -287,7 +305,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
       console.log(`✅ Renamed DuckDB table: ${oldTableName} -> ${newTableName}`)
       console.log(`⚠️  Dependent queries may need manual updates`)
-    } catch (err) {
+    } catch (err: any) {
       console.error(`Failed to rename table from ${oldTableName} to ${newTableName}:`, err)
       throw new Error(`Failed to rename table: ${err.message}`)
     }

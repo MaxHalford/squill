@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, inject, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import ResizableBox from './ResizableBox.vue'
 import QueryEditor from './QueryEditor.vue'

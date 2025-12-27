@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import SqlBox from '../components/SqlBox.vue'
 import SchemaBox from '../components/SchemaBox.vue'

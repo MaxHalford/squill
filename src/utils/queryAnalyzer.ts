@@ -4,11 +4,9 @@
 
 /**
  * Extract table references from SQL query
- * @param {string} query - SQL query to analyze
- * @returns {string[]} - Array of table names referenced in the query
  */
-export function extractTableReferences(query) {
-  const tableRefs = []
+export function extractTableReferences(query: string): string[] {
+  const tableRefs: string[] = []
 
   // Pattern: FROM/JOIN followed by optional dataset.table or just table
   // Matches:
@@ -29,11 +27,8 @@ export function extractTableReferences(query) {
 
 /**
  * Detect if query targets BigQuery based on patterns
- * @param {string} query - SQL query to analyze
- * @param {string[]} duckDBTables - List of available DuckDB tables
- * @returns {boolean} - True if query targets BigQuery
  */
-export function isBigQueryQuery(query, duckDBTables = []) {
+export function isBigQueryQuery(query: string, duckDBTables: string[] = []): boolean {
   // Normalize for comparison
   const normalized = query.toLowerCase().trim()
 
@@ -46,7 +41,7 @@ export function isBigQueryQuery(query, duckDBTables = []) {
   const tableRefs = extractTableReferences(query)
   const referencesLocalTable = tableRefs.some(ref => {
     // Extract just the table name (last part after dots)
-    const tableName = ref.split('.').pop().replace(/`/g, '').toLowerCase()
+    const tableName = ref.split('.').pop()!.replace(/`/g, '').toLowerCase()
     return duckDBTables.includes(tableName)
   })
 
@@ -69,10 +64,7 @@ export function isBigQueryQuery(query, duckDBTables = []) {
 
 /**
  * Detect which engine should execute the query
- * @param {string} query - SQL query to analyze
- * @param {string[]} duckDBTables - List of available DuckDB tables
- * @returns {'bigquery'|'duckdb'} - Engine to use
  */
-export function detectQueryEngine(query, duckDBTables = []) {
+export function detectQueryEngine(query: string, duckDBTables: string[] = []): 'bigquery' | 'duckdb' {
   return isBigQueryQuery(query, duckDBTables) ? 'bigquery' : 'duckdb'
 }

@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "build:deploy": "VITE_BASE_PATH=/squill/ vite build",
-    "preview": "vite preview"
+    "build": "vue-tsc --noEmit && vite build",
+    "build:deploy": "vue-tsc --noEmit && VITE_BASE_PATH=/squill/ vite build",
+    "preview": "vite preview",
+    "type-check": "vue-tsc --noEmit",
+    "lint": "eslint . --ext .vue,.ts,.js,.tsx",
+    "lint:fix": "eslint . --ext .vue,.ts,.js,.tsx --fix"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.0",
@@ -19,7 +22,14 @@
     "vue-router": "^4.6.3"
   },
   "devDependencies": {
+    "@types/node": "^22.19.3",
+    "@typescript-eslint/eslint-plugin": "^8.50.1",
+    "@typescript-eslint/parser": "^8.50.1",
     "@vitejs/plugin-vue": "^6.0.1",
-    "vite": "^7.2.4"
+    "eslint": "^9.39.2",
+    "eslint-plugin-vue": "^9.33.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4",
+    "vue-tsc": "^2.2.12"
   }
 }

@@ -3,13 +3,18 @@ import { ref, watch } from 'vue'
 
 const STORAGE_KEY = 'squill-settings'
 
+interface Settings {
+  autoLimitEnabled: boolean
+  autoLimitValue: number
+}
+
 // Default settings
-const DEFAULT_SETTINGS = {
+const DEFAULT_SETTINGS: Settings = {
   autoLimitEnabled: true,
   autoLimitValue: 5000
 }
 
-const loadSettings = () => {
+const loadSettings = (): Settings => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
     return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS
@@ -19,7 +24,7 @@ const loadSettings = () => {
   }
 }
 
-const saveSettings = (data) => {
+const saveSettings = (data: Settings): void => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
   } catch (err) {
@@ -47,8 +52,8 @@ export const useSettingsStore = defineStore('settings', () => {
     autoLimitEnabled.value = !autoLimitEnabled.value
   }
 
-  const setAutoLimitValue = (value) => {
-    const numValue = parseInt(value, 10)
+  const setAutoLimitValue = (value: string | number) => {
+    const numValue = typeof value === 'string' ? parseInt(value, 10) : value
     if (numValue > 0 && numValue <= 1000000) {
       autoLimitValue.value = numValue
     }

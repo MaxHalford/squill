@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onUnmounted, inject } from 'vue'
 
 const MIN_WIDTH = 300

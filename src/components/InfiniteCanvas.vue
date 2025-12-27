@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onUnmounted, provide } from 'vue'
 
 const emit = defineEmits(['canvas-click'])

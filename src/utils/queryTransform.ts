@@ -1,11 +1,7 @@
 /**
  * Applies automatic LIMIT to SQL queries if enabled and no LIMIT exists
- * @param {string} query - The SQL query to transform
- * @param {boolean} enabled - Whether auto-limit is enabled
- * @param {number} limitValue - The limit value to apply
- * @returns {string} - The transformed query
  */
-export function applyAutoLimit(query, enabled, limitValue) {
+export function applyAutoLimit(query: string, enabled: boolean, limitValue: number): string {
   if (!enabled || !query) return query
 
   // Trim whitespace and normalize

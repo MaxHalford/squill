@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue'
 import ResizableBox from './ResizableBox.vue'
 import { useAuthStore } from '../stores/auth'

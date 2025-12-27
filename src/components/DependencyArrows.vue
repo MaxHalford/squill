@@ -1,9 +1,10 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
+import type { Box } from '../types/canvas'
 
-const props = defineProps({
-  boxes: { type: Array, required: true }
-})
+const props = defineProps<{
+  boxes: Box[]
+}>()
 
 // Determine best connection points based on relative box positions
 const getConnectionPoints = (sourceBox, targetBox) => {
