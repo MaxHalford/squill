@@ -85,57 +85,37 @@ watch(queryText, (newQuery) => {
 })
 
 // Detect and run missing dependencies recursively
-const runMissingDependencies = async (query, visitedBoxIds = new Set()) => {
-  // Prevent infinite loops
-  if (visitedBoxIds.has(props.boxId)) {
-    console.warn(`Circular dependency detected for box ${props.boxId}`)
-    return
-  }
-  visitedBoxIds.add(props.boxId)
-
-  // Extract table references from query
+const runMissingDependencies = async (query) => {
   const tableRefs = extractTableReferences(query)
   if (tableRefs.length === 0) return
 
-  // Get available tables in DuckDB
   const availableTables = await duckdbStore.getFreshTableNames()
 
-  // Find missing tables
-  const missingTables = []
-  for (const tableRef of tableRefs) {
-    const tableName = tableRef.split('.').pop().replace(/`/g, '').toLowerCase()
-
-    // Skip if table exists
-    if (availableTables.includes(tableName)) continue
-
-    // Check if this is a BigQuery table (contains project.dataset.table pattern)
-    if (tableRef.includes('.') && tableRef.split('.').length >= 2) {
-      continue // Skip BigQuery tables
-    }
-
-    missingTables.push(tableName)
-  }
+  // Find missing local tables (exclude BigQuery tables with project.dataset.table pattern)
+  const missingTables = tableRefs
+    .filter(ref => {
+      const tableName = ref.split('.').pop().replace(/`/g, '').toLowerCase()
+      const isBigQueryTable = ref.includes('.') && ref.split('.').length >= 2
+      return !isBigQueryTable && !availableTables.includes(tableName)
+    })
+    .map(ref => ref.split('.').pop().replace(/`/g, '').toLowerCase())
 
   if (missingTables.length === 0) return
 
-  // Find boxes that produce these tables and run them
+  // Find and run boxes that produce missing tables
   for (const tableName of missingTables) {
-    const sourceBoxId = duckdbStore.getTableBoxId(tableName)
+    let boxIdToRun = duckdbStore.getTableBoxId(tableName)
 
-    // If no box ID in metadata, try to find by matching table name to box name
-    let boxIdToRun = sourceBoxId
+    // Fallback: find by matching table name to box name
     if (!boxIdToRun) {
       const box = canvasStore.boxes.find(b =>
-        duckdbStore.sanitizeTableName(b.name).toLowerCase() === tableName
+        duckdbStore.sanitizeTableName(b.name) === tableName
       )
       boxIdToRun = box?.id
     }
 
-    if (boxIdToRun && boxIdToRun !== props.boxId && !visitedBoxIds.has(boxIdToRun)) {
-      console.log(`📦 Auto-running dependency: Box ${boxIdToRun} (${tableName})`)
-      if (executeBoxQuery) {
-        await executeBoxQuery(boxIdToRun)
-      }
+    if (boxIdToRun && boxIdToRun !== props.boxId && executeBoxQuery) {
+      await executeBoxQuery(boxIdToRun)
     }
   }
 }
@@ -178,12 +158,9 @@ const runQuery = async () => {
       // Execute in DuckDB
       result = await duckdbStore.runQuery(query)
 
-      // Also store DuckDB query results so they can be queried by other boxes
+      // Store results so they can be queried by other boxes
       try {
-        const tableName = await duckdbStore.storeResults(boxName.value, result.rows, props.boxId)
-        if (tableName) {
-          console.log(`DuckDB results stored as table: ${tableName}`)
-        }
+        await duckdbStore.storeResults(boxName.value, result.rows, props.boxId)
       } catch (storageErr) {
         console.warn('Failed to store DuckDB results:', storageErr)
       }
@@ -191,15 +168,11 @@ const runQuery = async () => {
       // Execute in BigQuery
       result = await authStore.runQuery(query, abortController.signal)
 
-      // Automatically store results in DuckDB
+      // Store results in DuckDB for cross-query analysis
       try {
-        const tableName = await duckdbStore.storeResults(boxName.value, result.rows, props.boxId)
-        if (tableName) {
-          console.log(`BigQuery results stored as DuckDB table: ${tableName}`)
-        }
+        await duckdbStore.storeResults(boxName.value, result.rows, props.boxId)
       } catch (storageErr) {
         console.warn('Failed to store results in DuckDB:', storageErr)
-        // Don't fail the query, just warn
       }
     }
 
@@ -219,38 +192,22 @@ const runQuery = async () => {
       resultsRef.value.resetPagination()
     }
 
-    // Update dependencies if this was a DuckDB query
+    // Update dependencies for DuckDB queries
     if (engine === 'duckdb') {
       try {
-        // Extract table references from query
         const tableRefs = extractTableReferences(query)
-        console.log(`🔗 Extracting dependencies for box ${props.boxId}`)
-        console.log(`🔗 Table references found:`, tableRefs)
+        const dependencyBoxIds = tableRefs
+          .map(ref => {
+            const tableName = ref.split('.').pop().replace(/`/g, '').toLowerCase()
+            return duckdbStore.getTableBoxId(tableName)
+          })
+          .filter(boxId => boxId && boxId !== props.boxId)
 
-        const dependencyBoxIds = []
-
-        // Map table names directly to box IDs using metadata
-        for (const tableRef of tableRefs) {
-          const tableName = tableRef.split('.').pop().replace(/`/g, '').toLowerCase()
-          console.log(`🔗 Looking up box ID for table: ${tableName}`)
-          const sourceBoxId = duckdbStore.getTableBoxId(tableName)
-          console.log(`🔗 Found box ID: ${sourceBoxId}`)
-
-          if (sourceBoxId && sourceBoxId !== props.boxId) {
-            dependencyBoxIds.push(sourceBoxId)
-            console.log(`🔗 Added dependency: ${sourceBoxId}`)
-          }
-        }
-
-        // Update this box's dependencies (remove duplicates)
-        const uniqueDeps = [...new Set(dependencyBoxIds)]
-        canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
-        console.log(`📊 Box ${props.boxId} dependencies:`, uniqueDeps)
+        canvasStore.updateBoxDependencies(props.boxId, [...new Set(dependencyBoxIds)])
       } catch (depErr) {
         console.warn('Failed to update dependencies:', depErr)
       }
     } else {
-      // BigQuery queries have no dependencies
       canvasStore.updateBoxDependencies(props.boxId, [])
     }
   } catch (err) {
@@ -446,6 +403,7 @@ onUnmounted(() => {
       :results="queryResults"
       :stats="queryStats"
       :error="error"
+      :box-name="boxName"
     />
   </ResizableBox>
 </template>

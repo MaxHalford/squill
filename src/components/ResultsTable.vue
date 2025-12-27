@@ -4,7 +4,8 @@ import { ref, computed } from 'vue'
 const props = defineProps({
   results: { type: Array, default: null },
   stats: { type: Object, default: null },
-  error: { type: String, default: null }
+  error: { type: String, default: null },
+  boxName: { type: String, default: 'results' }
 })
 
 // Format bytes to human-readable format
@@ -98,6 +99,44 @@ const resetPagination = () => {
   currentPage.value = 1
 }
 
+// Convert results to CSV and download
+const downloadCSV = () => {
+  if (!props.results || props.results.length === 0) return
+
+  // Convert to CSV format
+  const headers = columns.value
+  const csvRows = []
+
+  // Add header row
+  csvRows.push(headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(','))
+
+  // Add data rows
+  for (const row of props.results) {
+    const values = headers.map(header => {
+      const value = row[header]
+      if (value === null || value === undefined) return ''
+      // Escape quotes and wrap in quotes
+      return `"${String(value).replace(/"/g, '""')}"`
+    })
+    csvRows.push(values.join(','))
+  }
+
+  const csvContent = csvRows.join('\n')
+
+  // Create blob and download
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  const url = URL.createObjectURL(blob)
+
+  link.setAttribute('href', url)
+  link.setAttribute('download', `${props.boxName}.csv`)
+  link.style.visibility = 'hidden'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 defineExpose({
   resetPagination
 })
@@ -153,24 +192,33 @@ defineExpose({
         </span>
         <span v-if="stats && stats.totalBytesProcessed" class="stats-divider">•</span>
         <span v-if="stats && stats.totalBytesProcessed" class="results-stat">
-          {{ formatBytes(stats.totalBytesProcessed) }} processed
+          {{ formatBytes(stats.totalBytesProcessed) }}
         </span>
       </div>
-      <div class="pagination">
+      <div class="footer-actions">
+        <div class="pagination">
+          <button
+            @click.stop="prevPage"
+            :disabled="currentPage === 1"
+            class="pagination-btn"
+          >
+            ←
+          </button>
+          <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+          <button
+            @click.stop="nextPage"
+            :disabled="currentPage === totalPages"
+            class="pagination-btn"
+          >
+            →
+          </button>
+        </div>
         <button
-          @click.stop="prevPage"
-          :disabled="currentPage === 1"
-          class="pagination-btn"
+          @click.stop="downloadCSV"
+          class="download-btn"
+          title="Download as CSV"
         >
-          ←
-        </button>
-        <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-        <button
-          @click.stop="nextPage"
-          :disabled="currentPage === totalPages"
-          class="pagination-btn"
-        >
-          →
+          ⬇
         </button>
       </div>
     </div>
@@ -205,48 +253,87 @@ defineExpose({
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  min-height: 36px;
 }
 
 .results-info {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex: 1;
 }
 
 .results-stat {
   color: var(--text-primary);
   font-size: var(--font-size-body-sm);
   font-weight: normal;
+  white-space: nowrap;
 }
 
 .stats-divider {
   color: var(--text-secondary);
   font-size: var(--font-size-body-sm);
-  font-weight: bold;
+  opacity: 0.5;
+  user-select: none;
 }
 
-.pagination {
+.footer-actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-.pagination-btn {
-  background: var(--surface-primary);
+.download-btn {
+  background: transparent;
   color: var(--text-primary);
   border: none;
-  padding: var(--button-padding);
+  padding: 0;
   border-radius: var(--button-border-radius);
   cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  outline: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.download-btn:hover {
+  background: var(--surface-secondary);
+  border-color: var(--text-secondary);
+}
+
+.download-btn:focus {
+  outline: none;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  border-radius: var(--button-border-radius);
+}
+
+.pagination-btn {
+  background: transparent;
+  color: var(--text-primary);
+  border: none;
+  padding: 4px 8px;
+  border-radius: calc(var(--button-border-radius) - 2px);
+  cursor: pointer;
   font-size: var(--font-size-body-sm);
-  font-weight: bold;
-  transition: none;
+  font-weight: 500;
+  transition: background 0.15s ease;
   outline: none;
   font-family: var(--font-family-ui);
+  min-width: 24px;
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background: var(--surface-secondary);
+  background: var(--surface-primary);
 }
 
 .pagination-btn:focus {
@@ -256,14 +343,14 @@ defineExpose({
 .pagination-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
-  background: var(--surface-secondary);
 }
 
 .page-info {
   color: var(--text-primary);
   font-size: var(--font-size-body-sm);
-  min-width: 30px;
-  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+  user-select: none;
 }
 
 .table-container {

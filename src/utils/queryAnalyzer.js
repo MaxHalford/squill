@@ -74,13 +74,5 @@ export function isBigQueryQuery(query, duckDBTables = []) {
  * @returns {'bigquery'|'duckdb'} - Engine to use
  */
 export function detectQueryEngine(query, duckDBTables = []) {
-  const tableRefs = extractTableReferences(query)
-  const engine = isBigQueryQuery(query, duckDBTables) ? 'bigquery' : 'duckdb'
-
-  console.log(`🔍 Query Detection:`)
-  console.log(`  Tables referenced:`, tableRefs)
-  console.log(`  Available DuckDB tables:`, duckDBTables)
-  console.log(`  Selected engine: ${engine}`)
-
-  return engine
+  return isBigQueryQuery(query, duckDBTables) ? 'bigquery' : 'duckdb'
 }
