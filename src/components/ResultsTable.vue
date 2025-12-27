@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useSettingsStore } from '../stores/settings'
+
+const settingsStore = useSettingsStore()
 
 const props = defineProps({
   results: { type: Array, default: null },
@@ -28,7 +31,7 @@ const formatTime = (ms) => {
 }
 
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = computed(() => settingsStore.paginationSize)
 
 const columns = computed(() => {
   if (!props.results || props.results.length === 0) return []

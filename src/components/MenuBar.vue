@@ -25,6 +25,7 @@ const addDatabaseMenuOpen = ref(false)
 
 // Settings state
 const limitInputValue = ref(settingsStore.autoLimitValue)
+const paginationInputValue = ref(settingsStore.paginationSize)
 
 // Connection display name
 const getConnectionDisplayName = (connection) => {
@@ -140,9 +141,30 @@ const handleLimitChange = (e) => {
   }, 500)
 }
 
+// Handle pagination size changes with debouncing
+let paginationDebounceTimer = null
+const handlePaginationChange = (e) => {
+  const value = e.target.value
+  paginationInputValue.value = value
+
+  // Debounce setting the value
+  if (paginationDebounceTimer) clearTimeout(paginationDebounceTimer)
+  paginationDebounceTimer = setTimeout(() => {
+    const numValue = parseInt(value, 10)
+    if (!isNaN(numValue) && numValue > 0) {
+      settingsStore.setPaginationSize(numValue)
+    }
+  }, 500)
+}
+
 // Sync limit input when store changes
 watch(() => settingsStore.autoLimitValue, (newValue) => {
   limitInputValue.value = newValue
+})
+
+// Sync pagination input when store changes
+watch(() => settingsStore.paginationSize, (newValue) => {
+  paginationInputValue.value = newValue
 })
 
 // Close dropdown when clicking outside
@@ -325,6 +347,27 @@ onUnmounted(() => {
                   :disabled="!settingsStore.autoLimitEnabled"
                   min="1"
                   max="1000000"
+                  class="setting-input-number"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="setting-header">Pagination size</div>
+            <div class="setting-description">
+              Number of rows to display per page in results tables
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">
+                <span>Rows per page</span>
+                <input
+                  type="number"
+                  :value="paginationInputValue"
+                  @input="handlePaginationChange"
+                  min="1"
+                  max="10000"
                   class="setting-input-number"
                 />
               </label>
