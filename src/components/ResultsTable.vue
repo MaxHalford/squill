@@ -142,8 +142,12 @@ defineExpose({
     </div>
     <div v-if="results && results.length > 0" class="results-footer">
       <div class="results-info">
+        <span v-if="stats && stats.engine" class="engine-badge" :class="`engine-${stats.engine}`">
+          {{ stats.engine === 'bigquery' ? 'BigQuery' : 'DuckDB' }}
+        </span>
+        <span v-if="stats && stats.engine" class="stats-divider">•</span>
         <span class="results-stat">{{ results.length }} {{ results.length === 1 ? 'row' : 'rows' }}</span>
-        <span v-if="stats" class="stats-divider">•</span>
+        <span v-if="stats && stats.executionTimeMs" class="stats-divider">•</span>
         <span v-if="stats && stats.executionTimeMs" class="results-stat">
           {{ formatTime(stats.executionTimeMs) }}
         </span>
@@ -338,5 +342,22 @@ defineExpose({
   height: 100%;
   color: var(--text-secondary);
   font-size: var(--font-size-body);
+}
+
+.engine-badge {
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: var(--font-size-caption);
+}
+
+.engine-bigquery {
+  background: #4285f4;
+  color: white;
+}
+
+.engine-duckdb {
+  background: #ffc107;
+  color: black;
 }
 </style>

@@ -4,8 +4,11 @@ import ResizableBox from './ResizableBox.vue'
 import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
 import { useAuthStore } from '../stores/auth'
+import { useDuckDBStore } from '../stores/duckdb'
+import { detectQueryEngine } from '../utils/queryAnalyzer'
 
 const authStore = useAuthStore()
+const duckdbStore = useDuckDBStore()
 
 // Inject canvas zoom for splitter dragging
 const canvasZoom = inject('canvasZoom', ref(1))
@@ -44,6 +47,7 @@ const queryResults = ref(null)
 const queryStats = ref(null)
 const isRunning = ref(false)
 const error = ref(null)
+const detectedEngine = ref(null)
 let abortController = null
 
 const editorRef = ref(null)
@@ -84,12 +88,41 @@ const runQuery = async () => {
 
   isRunning.value = true
   error.value = null
+  detectedEngine.value = null
   abortController = new AbortController()
 
   try {
     const query = editorRef.value.getQuery()
     const startTime = performance.now()
-    const result = await authStore.runQuery(query, abortController.signal)
+
+    // Get fresh table names from DuckDB before detecting engine
+    const availableTables = await duckdbStore.getFreshTableNames()
+
+    // Detect which engine to use
+    const engine = detectQueryEngine(query, availableTables)
+    detectedEngine.value = engine
+
+    let result
+
+    if (engine === 'duckdb') {
+      // Execute in DuckDB
+      result = await duckdbStore.runQuery(query)
+    } else {
+      // Execute in BigQuery
+      result = await authStore.runQuery(query, abortController.signal)
+
+      // Automatically store results in DuckDB
+      try {
+        const tableName = await duckdbStore.storeResults(boxName.value, result.rows)
+        if (tableName) {
+          console.log(`Results stored as DuckDB table: ${tableName}`)
+        }
+      } catch (storageErr) {
+        console.warn('Failed to store results in DuckDB:', storageErr)
+        // Don't fail the query, just warn
+      }
+    }
+
     const endTime = performance.now()
 
     // Calculate execution time
@@ -98,7 +131,8 @@ const runQuery = async () => {
     queryResults.value = result.rows
     queryStats.value = {
       ...result.stats,
-      executionTimeMs: Math.round(executionTimeMs)
+      executionTimeMs: Math.round(executionTimeMs),
+      engine: engine
     }
 
     if (resultsRef.value) {
@@ -237,7 +271,6 @@ onUnmounted(() => {
   >
     <template #header>
       <div class="box-name-container">
-        <img src="../assets/bigquery.svg" alt="BigQuery" class="box-icon" />
         <input
           v-if="isEditingName"
           ref="nameInputRef"
@@ -320,12 +353,6 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--space-2);
   margin-right: auto;
-}
-
-.box-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
 }
 
 .box-name {

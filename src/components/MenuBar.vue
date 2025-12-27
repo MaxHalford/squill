@@ -114,6 +114,16 @@ const addBox = (boxType) => {
   closeDropdown()
 }
 
+// Handle reset all data
+const handleResetAll = () => {
+  if (confirm('This will clear all data including connections, queries, and cached results. Are you sure?')) {
+    // Clear all localStorage
+    localStorage.clear()
+    // Reload the page to reset application state
+    window.location.reload()
+  }
+}
+
 // Handle limit value changes with debouncing
 let limitDebounceTimer = null
 const handleLimitChange = (e) => {
@@ -319,6 +329,16 @@ onUnmounted(() => {
                 />
               </label>
             </div>
+          </div>
+
+          <div class="settings-section settings-section-danger">
+            <div class="setting-header">Reset</div>
+            <div class="setting-description">
+              Clear all data including connections, queries, and cached results
+            </div>
+            <button @click="handleResetAll" class="reset-button">
+              Reset All Data
+            </button>
           </div>
         </div>
       </div>
@@ -665,6 +685,31 @@ onUnmounted(() => {
 .setting-input-number::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+.settings-section-danger {
+  background: rgba(255, 0, 0, 0.05);
+}
+
+.reset-button {
+  width: 100%;
+  padding: var(--space-2);
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.reset-button:hover {
+  background: #c82333;
+}
+
+.reset-button:active {
+  background: #bd2130;
 }
 
 .setting-input-number[type=number] {

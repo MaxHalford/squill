@@ -7,5 +7,14 @@ export default defineConfig(() => ({
   base: process.env.VITE_BASE_PATH || '/',
   build: {
     chunkSizeWarningLimit: 1000
+  },
+  optimizeDeps: {
+    exclude: ['@duckdb/duckdb-wasm'],
+    esbuildOptions: {
+      target: 'esnext'
+    }
+  },
+  worker: {
+    format: 'es'
   }
 }))
