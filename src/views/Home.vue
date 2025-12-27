@@ -4,12 +4,40 @@ import SqlBox from '../components/SqlBox.vue'
 import SchemaBox from '../components/SchemaBox.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, provide } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
 
 const canvasStore = useCanvasStore()
 const canvasRef = ref(null)
 const copiedBoxId = ref(null)
+
+// Registry for box query executors
+const boxExecutors = ref(new Map())
+
+// Register a box's run method
+const registerBoxExecutor = (boxId, runFn) => {
+  boxExecutors.value.set(boxId, runFn)
+}
+
+// Unregister a box's run method
+const unregisterBoxExecutor = (boxId) => {
+  boxExecutors.value.delete(boxId)
+}
+
+// Execute a query for a specific box
+const executeBoxQuery = async (boxId) => {
+  const executor = boxExecutors.value.get(boxId)
+  if (executor) {
+    await executor()
+  } else {
+    console.warn(`No executor found for box ${boxId}`)
+  }
+}
+
+// Provide the registry methods to all descendants
+provide('registerBoxExecutor', registerBoxExecutor)
+provide('unregisterBoxExecutor', unregisterBoxExecutor)
+provide('executeBoxQuery', executeBoxQuery)
 
 const selectBox = (id, event) => {
   canvasStore.selectBox(id)

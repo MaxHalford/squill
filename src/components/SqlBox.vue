@@ -1,5 +1,5 @@
 <script setup>
-import { ref, inject } from 'vue'
+import { ref, inject, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import ResizableBox from './ResizableBox.vue'
 import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
@@ -14,6 +14,11 @@ const canvasStore = useCanvasStore()
 
 // Inject canvas zoom for splitter dragging
 const canvasZoom = inject('canvasZoom', ref(1))
+
+// Inject box executor registry for recursive dependency execution
+const registerBoxExecutor = inject('registerBoxExecutor', null)
+const unregisterBoxExecutor = inject('unregisterBoxExecutor', null)
+const executeBoxQuery = inject('executeBoxQuery', null)
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -56,8 +61,6 @@ const editorRef = ref(null)
 const resultsRef = ref(null)
 
 // Watch for prop changes (e.g., when loading from localStorage)
-import { watch } from 'vue'
-
 let isUpdatingFromProp = false
 
 watch(() => props.initialName, (newName) => {
@@ -81,6 +84,62 @@ watch(queryText, (newQuery) => {
   }, 500)
 })
 
+// Detect and run missing dependencies recursively
+const runMissingDependencies = async (query, visitedBoxIds = new Set()) => {
+  // Prevent infinite loops
+  if (visitedBoxIds.has(props.boxId)) {
+    console.warn(`Circular dependency detected for box ${props.boxId}`)
+    return
+  }
+  visitedBoxIds.add(props.boxId)
+
+  // Extract table references from query
+  const tableRefs = extractTableReferences(query)
+  if (tableRefs.length === 0) return
+
+  // Get available tables in DuckDB
+  const availableTables = await duckdbStore.getFreshTableNames()
+
+  // Find missing tables
+  const missingTables = []
+  for (const tableRef of tableRefs) {
+    const tableName = tableRef.split('.').pop().replace(/`/g, '').toLowerCase()
+
+    // Skip if table exists
+    if (availableTables.includes(tableName)) continue
+
+    // Check if this is a BigQuery table (contains project.dataset.table pattern)
+    if (tableRef.includes('.') && tableRef.split('.').length >= 2) {
+      continue // Skip BigQuery tables
+    }
+
+    missingTables.push(tableName)
+  }
+
+  if (missingTables.length === 0) return
+
+  // Find boxes that produce these tables and run them
+  for (const tableName of missingTables) {
+    const sourceBoxId = duckdbStore.getTableBoxId(tableName)
+
+    // If no box ID in metadata, try to find by matching table name to box name
+    let boxIdToRun = sourceBoxId
+    if (!boxIdToRun) {
+      const box = canvasStore.boxes.find(b =>
+        duckdbStore.sanitizeTableName(b.name).toLowerCase() === tableName
+      )
+      boxIdToRun = box?.id
+    }
+
+    if (boxIdToRun && boxIdToRun !== props.boxId && !visitedBoxIds.has(boxIdToRun)) {
+      console.log(`📦 Auto-running dependency: Box ${boxIdToRun} (${tableName})`)
+      if (executeBoxQuery) {
+        await executeBoxQuery(boxIdToRun)
+      }
+    }
+  }
+}
+
 // Run query
 const runQuery = async () => {
   if (!authStore.isAuthenticated) {
@@ -95,6 +154,15 @@ const runQuery = async () => {
 
   try {
     const query = editorRef.value.getQuery()
+
+    // Run missing dependencies first
+    try {
+      await runMissingDependencies(query)
+    } catch (depErr) {
+      console.warn('Failed to run dependencies:', depErr)
+      // Continue with query execution even if dependency resolution fails
+    }
+
     const startTime = performance.now()
 
     // Get fresh table names from DuckDB before detecting engine
@@ -289,17 +357,25 @@ const handleNameKeydown = (e) => {
   }
 }
 
-// Add global mouse listeners for splitter
-import { onMounted, onUnmounted, nextTick } from 'vue'
-
+// Add global mouse listeners for splitter and register executor
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
   window.addEventListener('mouseup', handleMouseUp)
+
+  // Register this box's runQuery method for dependency execution
+  if (registerBoxExecutor) {
+    registerBoxExecutor(props.boxId, runQuery)
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('mouseup', handleMouseUp)
+
+  // Unregister this box's executor
+  if (unregisterBoxExecutor) {
+    unregisterBoxExecutor(props.boxId)
+  }
 })
 </script>
 
