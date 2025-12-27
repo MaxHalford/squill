@@ -40,7 +40,8 @@ export const useCanvasStore = defineStore('canvas', () => {
             height: box.height || 500,
             zIndex: box.zIndex || 1,
             query: box.query || 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
-            name: box.name || `Query ${box.id}`
+            name: box.name || `query_${box.id}`,
+            dependencies: box.dependencies || [] // Array of box IDs this box depends on
           }))
       } else {
         // Initialize with default boxes if no saved state
@@ -162,7 +163,8 @@ export const useCanvasStore = defineStore('canvas', () => {
       height: height,
       zIndex: getMaxZIndex() + 1,
       query: type === 'sql' ? 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' : '',
-      name: type === 'sql' ? `Query ${boxId}` : `Schema ${boxId}`
+      name: type === 'sql' ? `query_${boxId}` : `schema_${boxId}`,
+      dependencies: []
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -256,6 +258,14 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
+  // Update box dependencies (array of box IDs this box depends on)
+  const updateBoxDependencies = (id, dependencies) => {
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      box.dependencies = dependencies
+    }
+  }
+
   // Clear all boxes
   const clearAll = () => {
     boxes.value = []
@@ -286,7 +296,8 @@ export const useCanvasStore = defineStore('canvas', () => {
       height: originalBox.height,
       zIndex: getMaxZIndex() + 1,
       query: originalBox.query,
-      name: `${originalBox.name} (copy)`
+      name: `${originalBox.name} (copy)`,
+      dependencies: [] // Copied box starts with no dependencies
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -308,6 +319,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     updateBoxQuery,
     updateBoxName,
     updateBoxZIndex,
+    updateBoxDependencies,
     getMaxZIndex,
     clearAll,
     resetToDefault,

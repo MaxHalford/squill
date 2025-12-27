@@ -1,13 +1,24 @@
 <script setup>
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import ResizableBox from './ResizableBox.vue'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
+import { useDuckDBStore } from '../stores/duckdb'
 
 const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
+const duckdbStore = useDuckDBStore()
+
+// DuckDB tables (computed from store)
+const duckDBTables = computed(() => {
+  return Object.keys(duckdbStore.tables).map(tableName => ({
+    name: tableName,
+    rowCount: duckdbStore.tables[tableName].rowCount,
+    columns: duckdbStore.tables[tableName].columns || []
+  }))
+})
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -309,8 +320,25 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Datasets List -->
-      <div v-else class="datasets-list">
+      <!-- DuckDB Tables Section -->
+      <div v-if="duckDBTables.length > 0" class="duckdb-section">
+        <div class="section-header">
+          <span class="section-icon">🦆</span>
+          <span class="section-title">DuckDB Tables</span>
+        </div>
+        <div class="duckdb-tables-list">
+          <div v-for="table in duckDBTables" :key="table.name" class="duckdb-table-item">
+            <div class="table-name-row">
+              <span class="table-name">{{ table.name }}</span>
+              <span class="table-meta">{{ table.rowCount }} rows</span>
+            </div>
+          </div>
+        </div>
+        <div class="section-divider"></div>
+      </div>
+
+      <!-- BigQuery Datasets List -->
+      <div class="datasets-list">
         <div v-for="dataset in datasets" :key="dataset.id">
           <button
             class="dataset-header"
@@ -539,6 +567,63 @@ onUnmounted(() => {
   color: var(--text-secondary);
   text-transform: uppercase;
   font-size: 10px;
+}
+
+/* DuckDB Section */
+.duckdb-section {
+  margin-bottom: var(--space-3);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-secondary);
+  font-weight: 600;
+  font-size: var(--font-size-body-sm);
+  color: var(--text-primary);
+}
+
+.section-icon {
+  font-size: 16px;
+}
+
+.section-title {
+  flex: 1;
+}
+
+.section-divider {
+  height: 1px;
+  background: var(--border-primary);
+  margin: var(--space-3) 0;
+}
+
+.duckdb-tables-list {
+  padding: var(--space-2) 0;
+}
+
+.duckdb-table-item {
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.duckdb-table-item:hover {
+  background: var(--surface-secondary);
+}
+
+.table-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+}
+
+.table-meta {
+  color: var(--text-secondary);
+  font-size: var(--font-size-caption);
 }
 
 /* Header name container */

@@ -82,7 +82,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
           const countData = countResult.toArray()
           const rowCount = countData[0]?.count || 0
 
+          // Merge with existing metadata to preserve boxId and originalBoxName
           tables.value[tableName] = {
+            ...(tables.value[tableName] || {}), // Preserve existing metadata
             rowCount: Number(rowCount),
             lastUpdated: Date.now()
           }
@@ -90,22 +92,20 @@ export const useDuckDBStore = defineStore('duckdb', () => {
           console.warn(`Failed to get row count for ${tableName}:`, err)
         }
       }
+
+      console.log('📊 Loaded table metadata:', tables.value)
     } catch (err) {
       console.warn('Failed to load tables metadata:', err)
     }
   }
 
-  // Sanitize box name to valid table name
+  // Validate box name for use as table name (no sanitization needed now)
   const sanitizeTableName = (boxName) => {
-    const sanitized = boxName
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, '_')
-      .replace(/^[0-9]/, '_$&') // Prefix digit with underscore
-      .replace(/_+/g, '_') // Replace multiple underscores with single
-      .substring(0, 63) // PostgreSQL-style limit
-
-    console.log(`Sanitized table name: "${boxName}" -> "${sanitized}"`)
-    return sanitized
+    // Box names are now SQL-compatible by default (query_1, query_2, etc.)
+    // Just validate that it doesn't contain problematic characters
+    const tableName = boxName.toLowerCase().replace(/[^a-z0-9_]/g, '_')
+    console.log(`Table name: "${boxName}" -> "${tableName}"`)
+    return tableName
   }
 
   // Infer DuckDB type from JavaScript value
@@ -133,7 +133,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   // Store BigQuery results as DuckDB table
-  const storeResults = async (boxName, results) => {
+  const storeResults = async (boxName, results, boxId = null) => {
     if (!isInitialized.value) {
       await initialize()
     }
@@ -177,11 +177,13 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         rowCount: results.length,
         columns: columns,
         lastUpdated: Date.now(),
-        originalBoxName: boxName
+        originalBoxName: boxName,
+        boxId: boxId // Store box ID for dependency tracking
       }
 
-      console.log(`✅ Stored ${results.length} rows as table: ${tableName}`)
+      console.log(`✅ Stored ${results.length} rows as table: ${tableName} (box ID: ${boxId})`)
       console.log(`📊 Available DuckDB tables:`, Object.keys(tables.value))
+      console.log(`📊 Table metadata for ${tableName}:`, tables.value[tableName])
       return tableName
     } catch (err) {
       console.error(`Failed to store results for ${boxName}:`, err)
@@ -241,7 +243,22 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       return []
     }
     await loadTablesMetadata()
-    return Object.keys(tables.value)
+    const tableNames = Object.keys(tables.value)
+    console.log(`🔍 Fresh table names:`, tableNames)
+    console.log(`🔍 Full metadata:`, tables.value)
+    return tableNames
+  }
+
+  // Get the original box name for a table
+  const getTableBoxName = (tableName) => {
+    const tableInfo = tables.value[tableName]
+    return tableInfo?.originalBoxName || null
+  }
+
+  // Get the box ID for a table
+  const getTableBoxId = (tableName) => {
+    const tableInfo = tables.value[tableName]
+    return tableInfo?.boxId || null
   }
 
   return {
@@ -251,6 +268,8 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     tables,
     getTableNames,
     getFreshTableNames,
+    getTableBoxName,
+    getTableBoxId,
     initialize,
     storeResults,
     runQuery,

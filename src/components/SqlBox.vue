@@ -5,10 +5,12 @@ import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
 import { useAuthStore } from '../stores/auth'
 import { useDuckDBStore } from '../stores/duckdb'
-import { detectQueryEngine } from '../utils/queryAnalyzer'
+import { useCanvasStore } from '../stores/canvas'
+import { detectQueryEngine, extractTableReferences } from '../utils/queryAnalyzer'
 
 const authStore = useAuthStore()
 const duckdbStore = useDuckDBStore()
+const canvasStore = useCanvasStore()
 
 // Inject canvas zoom for splitter dragging
 const canvasZoom = inject('canvasZoom', ref(1))
@@ -107,15 +109,25 @@ const runQuery = async () => {
     if (engine === 'duckdb') {
       // Execute in DuckDB
       result = await duckdbStore.runQuery(query)
+
+      // Also store DuckDB query results so they can be queried by other boxes
+      try {
+        const tableName = await duckdbStore.storeResults(boxName.value, result.rows, props.boxId)
+        if (tableName) {
+          console.log(`DuckDB results stored as table: ${tableName}`)
+        }
+      } catch (storageErr) {
+        console.warn('Failed to store DuckDB results:', storageErr)
+      }
     } else {
       // Execute in BigQuery
       result = await authStore.runQuery(query, abortController.signal)
 
       // Automatically store results in DuckDB
       try {
-        const tableName = await duckdbStore.storeResults(boxName.value, result.rows)
+        const tableName = await duckdbStore.storeResults(boxName.value, result.rows, props.boxId)
         if (tableName) {
-          console.log(`Results stored as DuckDB table: ${tableName}`)
+          console.log(`BigQuery results stored as DuckDB table: ${tableName}`)
         }
       } catch (storageErr) {
         console.warn('Failed to store results in DuckDB:', storageErr)
@@ -137,6 +149,41 @@ const runQuery = async () => {
 
     if (resultsRef.value) {
       resultsRef.value.resetPagination()
+    }
+
+    // Update dependencies if this was a DuckDB query
+    if (engine === 'duckdb') {
+      try {
+        // Extract table references from query
+        const tableRefs = extractTableReferences(query)
+        console.log(`🔗 Extracting dependencies for box ${props.boxId}`)
+        console.log(`🔗 Table references found:`, tableRefs)
+
+        const dependencyBoxIds = []
+
+        // Map table names directly to box IDs using metadata
+        for (const tableRef of tableRefs) {
+          const tableName = tableRef.split('.').pop().replace(/`/g, '').toLowerCase()
+          console.log(`🔗 Looking up box ID for table: ${tableName}`)
+          const sourceBoxId = duckdbStore.getTableBoxId(tableName)
+          console.log(`🔗 Found box ID: ${sourceBoxId}`)
+
+          if (sourceBoxId && sourceBoxId !== props.boxId) {
+            dependencyBoxIds.push(sourceBoxId)
+            console.log(`🔗 Added dependency: ${sourceBoxId}`)
+          }
+        }
+
+        // Update this box's dependencies (remove duplicates)
+        const uniqueDeps = [...new Set(dependencyBoxIds)]
+        canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
+        console.log(`📊 Box ${props.boxId} dependencies:`, uniqueDeps)
+      } catch (depErr) {
+        console.warn('Failed to update dependencies:', depErr)
+      }
+    } else {
+      // BigQuery queries have no dependencies
+      canvasStore.updateBoxDependencies(props.boxId, [])
     }
   } catch (err) {
     if (err.name === 'AbortError') {

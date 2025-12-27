@@ -3,6 +3,7 @@ import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import SqlBox from '../components/SqlBox.vue'
 import SchemaBox from '../components/SchemaBox.vue'
 import MenuBar from '../components/MenuBar.vue'
+import DependencyArrows from '../components/DependencyArrows.vue'
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
 
@@ -149,6 +150,9 @@ onUnmounted(() => {
       :boxes="canvasStore.boxes"
       @canvas-click="deselectBox"
     >
+      <!-- Dependency arrows (rendered behind boxes) -->
+      <DependencyArrows :boxes="canvasStore.boxes" />
+
       <template v-for="box in canvasStore.boxes" :key="box.id">
         <!-- SQL Editor Box -->
         <SqlBox
