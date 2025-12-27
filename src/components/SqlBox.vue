@@ -71,6 +71,19 @@ watch(() => props.initialQuery, (newQuery) => {
   isUpdatingFromProp = true
   queryText.value = newQuery
   setTimeout(() => { isUpdatingFromProp = false }, 0)
+
+  // Update dependencies when query is updated externally (e.g., from table rename)
+  if (newQuery) {
+    updateDependenciesFromQuery(newQuery)
+  }
+})
+
+// Watch for table schema changes (renames, etc.) and recalculate dependencies
+watch(() => duckdbStore.schemaVersion, () => {
+  if (queryText.value) {
+    console.log(`📡 Schema changed, recalculating dependencies for box ${props.boxId}`)
+    updateDependenciesFromQuery(queryText.value)
+  }
 })
 
 // Emit query changes to parent for persistence (debounced)
@@ -81,8 +94,43 @@ watch(queryText, (newQuery) => {
   if (queryTimeout) clearTimeout(queryTimeout)
   queryTimeout = setTimeout(() => {
     emit('update:query', newQuery)
+    // Update dependencies reactively when query changes
+    updateDependenciesFromQuery(newQuery)
   }, 500)
 })
+
+// Reactively update dependencies when query text changes
+const updateDependenciesFromQuery = async (query) => {
+  try {
+    // Get fresh table names
+    const availableTables = await duckdbStore.getFreshTableNames()
+
+    // Detect engine
+    const engine = detectQueryEngine(query, availableTables)
+
+    // Only track dependencies for DuckDB queries
+    if (engine === 'duckdb') {
+      const tableRefs = extractTableReferences(query)
+      const dependencyBoxIds = tableRefs
+        .map(ref => {
+          const tableName = ref.split('.').pop().replace(/`/g, '').toLowerCase()
+          const boxId = duckdbStore.getTableBoxId(tableName)
+          console.log(`🔗 Box ${props.boxId}: Table "${tableName}" -> BoxId ${boxId}`)
+          return boxId
+        })
+        .filter(boxId => boxId && boxId !== props.boxId)
+
+      const uniqueDeps = [...new Set(dependencyBoxIds)]
+      console.log(`🔗 Box ${props.boxId} (${boxName.value}): Dependencies updated to [${uniqueDeps.join(', ')}]`)
+      canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
+    } else {
+      console.log(`🔗 Box ${props.boxId} (${boxName.value}): BigQuery query, clearing dependencies`)
+      canvasStore.updateBoxDependencies(props.boxId, [])
+    }
+  } catch (err) {
+    console.warn('Failed to update dependencies:', err)
+  }
+}
 
 // Detect and run missing dependencies recursively
 const runMissingDependencies = async (query) => {
@@ -294,11 +342,21 @@ const startEditingName = (e) => {
   })
 }
 
-const finishEditingName = () => {
+const finishEditingName = async () => {
   isEditingName.value = false
-  if (boxName.value.trim()) {
-    emit('update:name', boxName.value.trim())
-  } else {
+  const newName = boxName.value.trim()
+
+  if (newName && newName !== props.initialName) {
+    // Rename the DuckDB table (dependencies will break)
+    try {
+      await duckdbStore.renameTable(props.initialName, newName)
+    } catch (err) {
+      console.warn('Failed to rename table:', err)
+      // Continue with box rename even if table rename fails
+    }
+
+    emit('update:name', newName)
+  } else if (!newName) {
     boxName.value = props.initialName
   }
 }

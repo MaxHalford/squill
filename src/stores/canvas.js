@@ -287,6 +287,10 @@ export const useCanvasStore = defineStore('canvas', () => {
     saveToUndoStack()
     const OFFSET = 30 // Offset for copied box
     const boxId = nextBoxId.value++
+
+    // Generate incremented name based on type
+    const newName = originalBox.type === 'sql' ? `query_${boxId}` : `schema_${boxId}`
+
     const newBox = {
       id: boxId,
       type: originalBox.type,
@@ -296,7 +300,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       height: originalBox.height,
       zIndex: getMaxZIndex() + 1,
       query: originalBox.query,
-      name: `${originalBox.name} (copy)`,
+      name: newName,
       dependencies: [] // Copied box starts with no dependencies
     }
     boxes.value.push(newBox)

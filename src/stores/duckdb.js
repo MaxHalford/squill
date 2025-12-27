@@ -13,6 +13,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // Track available tables (table name -> metadata)
   const tables = ref({})
 
+  // Reactive trigger for table schema changes
+  const schemaVersion = ref(0)
+
   // Initialize DuckDB with IndexedDB persistence
   const initialize = async () => {
     if (isInitialized.value || isInitializing.value) return
@@ -250,11 +253,52 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     return tableInfo?.boxId || null
   }
 
+  // Rename a table (dependencies will break and need manual update)
+  const renameTable = async (oldName, newName) => {
+    const oldTableName = sanitizeTableName(oldName)
+    const newTableName = sanitizeTableName(newName)
+
+    // If names are the same after sanitization, nothing to do
+    if (oldTableName === newTableName) return
+
+    if (!isInitialized.value) {
+      await initialize()
+    }
+
+    try {
+      // Check if old table exists
+      if (!tables.value[oldTableName]) {
+        console.log(`Table ${oldTableName} does not exist yet, nothing to rename`)
+        return
+      }
+
+      // Use ALTER TABLE to rename
+      await conn.value.query(`ALTER TABLE ${oldTableName} RENAME TO ${newTableName}`)
+
+      // Update metadata
+      tables.value[newTableName] = {
+        ...tables.value[oldTableName],
+        originalBoxName: newName
+      }
+      delete tables.value[oldTableName]
+
+      // Increment schema version to trigger dependency recalculation
+      schemaVersion.value++
+
+      console.log(`✅ Renamed DuckDB table: ${oldTableName} -> ${newTableName}`)
+      console.log(`⚠️  Dependent queries may need manual updates`)
+    } catch (err) {
+      console.error(`Failed to rename table from ${oldTableName} to ${newTableName}:`, err)
+      throw new Error(`Failed to rename table: ${err.message}`)
+    }
+  }
+
   return {
     isInitialized,
     isInitializing,
     initError,
     tables,
+    schemaVersion,
     getTableNames,
     getFreshTableNames,
     getTableBoxName,
@@ -264,6 +308,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     runQuery,
     tableExists,
     sanitizeTableName,
-    loadTablesMetadata
+    loadTablesMetadata,
+    renameTable
   }
 })
