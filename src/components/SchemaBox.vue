@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { ref, watch, nextTick, computed } from 'vue'
 import ResizableBox from './ResizableBox.vue'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
@@ -11,20 +11,11 @@ const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 
-// DuckDB tables (computed from store)
-const duckDBTables = computed(() => {
-  return Object.keys(duckdbStore.tables).map(tableName => ({
-    name: tableName,
-    rowCount: duckdbStore.tables[tableName].rowCount,
-    columns: duckdbStore.tables[tableName].columns || []
-  }))
-})
-
 const props = defineProps({
   boxId: { type: Number, required: true },
   initialX: { type: Number, default: 100 },
   initialY: { type: Number, default: 100 },
-  initialWidth: { type: Number, default: 400 },
+  initialWidth: { type: Number, default: 800 },
   initialHeight: { type: Number, default: 600 },
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
@@ -38,132 +29,188 @@ const isEditingName = ref(false)
 const boxName = ref(props.initialName)
 const nameInputRef = ref(null)
 
-// Schema browsing state
+// Column navigation state
+const selectedProject = ref(null)
 const selectedDataset = ref(null)
-const datasets = ref([])
+const selectedTable = ref(null)
+
+// Data cache
+const datasets = ref({}) // { projectId: [datasets] }
 const tables = ref({}) // { datasetId: [tables] }
-const expandedTables = ref({}) // { tableId: true/false }
-const tableSchemas = ref({}) // { tableId: schema }
+const schemas = ref({}) // { tableId: schema }
 
-const isLoadingDatasets = ref(false)
-const isLoadingTables = ref({})
-const isLoadingSchema = ref({})
-const error = ref(null)
+// Loading states
+const loadingDatasets = ref({})
+const loadingTables = ref({})
+const loadingSchema = ref({})
 
-// Watch for prop changes
 watch(() => props.initialName, (newName) => {
   boxName.value = newName
 })
 
-// Load datasets
-const loadDatasets = async () => {
-  if (!authStore.isAuthenticated) {
-    error.value = 'Please sign in to browse schema'
-    return
+// Column 1: Projects (including DuckDB)
+const projects = computed(() => {
+  const items = [{ id: 'duckdb', name: 'DuckDB', type: 'duckdb' }]
+
+  if (canvasStore.activeProjectId) {
+    items.push({
+      id: canvasStore.activeProjectId,
+      name: canvasStore.activeProjectId,
+      type: 'bigquery'
+    })
   }
 
-  if (!canvasStore.activeProjectId) {
-    error.value = 'Please select a project'
-    return
-  }
+  return items
+})
 
-  // Check for expired token
-  if (connectionsStore.isActiveTokenExpired) {
-    error.value = 'Token expired - please reconnect'
-    return
-  }
+// Column 2: Datasets or Tables (depending on selected project)
+const column2Items = computed(() => {
+  if (!selectedProject.value) return []
 
-  isLoadingDatasets.value = true
-  error.value = null
-
-  try {
-    const fetchedDatasets = await authStore.fetchDatasets()
-    datasets.value = fetchedDatasets.map(ds => ({
-      id: ds.datasetReference.datasetId,
-      name: ds.datasetReference.datasetId
+  if (selectedProject.value === 'duckdb') {
+    // Show DuckDB tables directly
+    return Object.keys(duckdbStore.tables).map(tableName => ({
+      id: tableName,
+      name: tableName,
+      type: 'table',
+      rowCount: duckdbStore.tables[tableName].rowCount
     }))
-  } catch (err) {
-    error.value = err.message || 'Failed to load datasets'
-  } finally {
-    isLoadingDatasets.value = false
+  } else {
+    // Show BigQuery datasets
+    return datasets.value[selectedProject.value] || []
+  }
+})
+
+// Column 3: Tables (for BigQuery datasets only)
+const column3Items = computed(() => {
+  if (!selectedDataset.value || selectedProject.value === 'duckdb') return []
+  return tables.value[selectedDataset.value] || []
+})
+
+// Column 4: Schema (for selected table)
+const column4Items = computed(() => {
+  if (!selectedTable.value) return []
+  const key = selectedProject.value === 'duckdb'
+    ? selectedTable.value
+    : `${selectedDataset.value}.${selectedTable.value}`
+  return schemas.value[key] || []
+})
+
+// Select project
+const selectProject = async (projectId) => {
+  selectedProject.value = projectId
+  selectedDataset.value = null
+  selectedTable.value = null
+
+  // Load datasets for BigQuery projects
+  if (projectId !== 'duckdb' && !datasets.value[projectId]) {
+    await loadDatasets(projectId)
   }
 }
 
-// Toggle dataset (load tables)
-const toggleDataset = async (datasetId) => {
-  if (selectedDataset.value === datasetId) {
-    selectedDataset.value = null
-    return
-  }
-
+// Select dataset
+const selectDataset = async (datasetId) => {
   selectedDataset.value = datasetId
+  selectedTable.value = null
 
-  // Load tables if not already loaded
+  // Load tables for this dataset
   if (!tables.value[datasetId]) {
     await loadTables(datasetId)
   }
 }
 
-// Load tables for a dataset
-const loadTables = async (datasetId) => {
-  // Check for expired token
-  if (connectionsStore.isActiveTokenExpired) {
-    error.value = 'Token expired - please reconnect'
-    return
+// Select table
+const selectTable = async (tableId) => {
+  selectedTable.value = tableId
+
+  // Load schema
+  const key = selectedProject.value === 'duckdb'
+    ? tableId
+    : `${selectedDataset.value}.${tableId}`
+
+  if (!schemas.value[key]) {
+    await loadSchema(tableId, key)
   }
+}
 
-  isLoadingTables.value[datasetId] = true
-  error.value = null
+// Load BigQuery datasets
+const loadDatasets = async (projectId) => {
+  if (!authStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
 
+  loadingDatasets.value[projectId] = true
+  try {
+    const fetchedDatasets = await authStore.fetchDatasets()
+    datasets.value[projectId] = fetchedDatasets.map(ds => ({
+      id: ds.datasetReference.datasetId,
+      name: ds.datasetReference.datasetId,
+      type: 'dataset'
+    }))
+  } catch (err) {
+    console.error('Failed to load datasets:', err)
+  } finally {
+    loadingDatasets.value[projectId] = false
+  }
+}
+
+// Load BigQuery tables
+const loadTables = async (datasetId) => {
+  if (!authStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
+
+  loadingTables.value[datasetId] = true
   try {
     const fetchedTables = await authStore.fetchTables(datasetId)
     tables.value[datasetId] = fetchedTables.map(t => ({
       id: t.tableReference.tableId,
       name: t.tableReference.tableId,
-      type: t.type
+      type: 'table'
     }))
   } catch (err) {
-    error.value = err.message || 'Failed to load tables'
+    console.error('Failed to load tables:', err)
   } finally {
-    isLoadingTables.value[datasetId] = false
-  }
-}
-
-// Toggle table schema
-const toggleTableSchema = async (datasetId, tableId) => {
-  const key = `${datasetId}.${tableId}`
-
-  if (expandedTables.value[key]) {
-    expandedTables.value[key] = false
-    return
-  }
-
-  expandedTables.value[key] = true
-
-  // Load schema if not already loaded
-  if (!tableSchemas.value[key]) {
-    await loadTableSchema(datasetId, tableId, key)
+    loadingTables.value[datasetId] = false
   }
 }
 
 // Load table schema
-const loadTableSchema = async (datasetId, tableId, key) => {
-  // Check for expired token
-  if (connectionsStore.isActiveTokenExpired) {
-    error.value = 'Token expired - please reconnect'
-    return
+const loadSchema = async (tableId, key) => {
+  if (selectedProject.value === 'duckdb') {
+    // DuckDB schema
+    const table = duckdbStore.tables[tableId]
+    if (table && table.columns) {
+      schemas.value[key] = table.columns.map(col => ({
+        name: col,
+        type: 'VARCHAR' // Simplified for now
+      }))
+    }
+  } else {
+    // BigQuery schema
+    if (!authStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
+
+    loadingSchema.value[key] = true
+    try {
+      const schema = await authStore.fetchTableSchema(selectedDataset.value, tableId)
+      schemas.value[key] = schema
+    } catch (err) {
+      console.error('Failed to load schema:', err)
+    } finally {
+      loadingSchema.value[key] = false
+    }
+  }
+}
+
+// Insert table name into query
+const insertTableName = (item) => {
+  let tableName = ''
+
+  if (selectedProject.value === 'duckdb') {
+    tableName = item.name
+  } else if (item.type === 'table') {
+    tableName = `\`${selectedProject.value}.${selectedDataset.value}.${item.name}\``
   }
 
-  isLoadingSchema.value[key] = true
-  error.value = null
-
-  try {
-    const schema = await authStore.fetchTableSchema(datasetId, tableId)
-    tableSchemas.value[key] = schema
-  } catch (err) {
-    error.value = err.message || 'Failed to load schema'
-  } finally {
-    isLoadingSchema.value[key] = false
+  if (tableName) {
+    // Copy to clipboard
+    navigator.clipboard.writeText(tableName)
   }
 }
 
@@ -199,55 +246,17 @@ const handleNameKeydown = (e) => {
   }
 }
 
-const handleSelect = () => {
-  emit('select')
-}
-
-const handleUpdatePosition = (newPosition) => {
-  emit('update:position', newPosition)
-}
-
-const handleUpdateSize = (newSize) => {
-  emit('update:size', newSize)
-}
-
+const handleSelect = () => emit('select')
+const handleUpdatePosition = (newPosition) => emit('update:position', newPosition)
+const handleUpdateSize = (newSize) => emit('update:size', newSize)
 const handleMaximize = (e) => {
   e.stopPropagation()
   emit('maximize')
 }
-
 const handleDelete = (e) => {
   e.stopPropagation()
   emit('delete')
 }
-
-// Handle keyboard shortcuts
-const handleKeyDown = (e) => {
-  // Only handle shortcuts when this box is selected
-  if (!props.isSelected) return
-
-  // Ctrl+Enter / Cmd+Enter to refresh schema
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-    e.preventDefault()
-    // Only load datasets if we have an active BigQuery connection
-    if (connectionsStore.activeConnection?.type === 'bigquery' && authStore.isAuthenticated && canvasStore.activeProjectId) {
-      loadDatasets()
-    }
-  }
-}
-
-// Load datasets on mount if authenticated and BigQuery
-onMounted(() => {
-  // Only load datasets if we have an active BigQuery connection
-  if (connectionsStore.activeConnection?.type === 'bigquery' && authStore.isAuthenticated && canvasStore.activeProjectId) {
-    loadDatasets()
-  }
-  window.addEventListener('keydown', handleKeyDown)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
-})
 </script>
 
 <template>
@@ -283,106 +292,74 @@ onUnmounted(() => {
         >{{ boxName }}</span>
       </div>
       <div class="header-buttons">
-        <button
-          class="header-btn maximize-btn"
-          @click="handleMaximize"
-          title="Maximize"
-        >⛶</button>
-        <button
-          class="header-btn delete-btn"
-          @click="handleDelete"
-          title="Delete"
-        >✕</button>
+        <button class="header-btn maximize-btn" @click="handleMaximize" title="Maximize">⛶</button>
+        <button class="header-btn delete-btn" @click="handleDelete" title="Delete">✕</button>
       </div>
     </template>
 
     <div class="schema-browser">
-      <!-- Error Banner -->
-      <div v-if="error" class="error-banner">
-        {{ error }}
-      </div>
-
-      <!-- Loading State -->
-      <div v-if="isLoadingDatasets" class="loading-state">
-        Loading datasets...
-      </div>
-
-      <!-- Empty State -->
-      <div v-else-if="datasets.length === 0 && !error" class="empty-state">
-        <div v-if="!authStore.isAuthenticated">
-          Sign in to browse schema
-        </div>
-        <div v-else-if="!canvasStore.selectedProject">
-          Select a project to browse schema
-        </div>
-        <div v-else>
-          No datasets found
-        </div>
-      </div>
-
-      <!-- DuckDB Tables Section -->
-      <div v-if="duckDBTables.length > 0" class="duckdb-section">
-        <div class="section-header">
-          <span class="section-icon">🦆</span>
-          <span class="section-title">DuckDB Tables</span>
-        </div>
-        <div class="duckdb-tables-list">
-          <div v-for="table in duckDBTables" :key="table.name" class="duckdb-table-item">
-            <div class="table-name-row">
-              <span class="table-name">{{ table.name }}</span>
-              <span class="table-meta">{{ table.rowCount }} rows</span>
-            </div>
+      <!-- Column 1: Projects -->
+      <div class="column">
+        <div class="column-header">Projects</div>
+        <div class="column-content">
+          <div
+            v-for="project in projects"
+            :key="project.id"
+            :class="['item', { selected: selectedProject === project.id }]"
+            @click="selectProject(project.id)"
+          >
+            <span class="item-name">{{ project.name }}</span>
           </div>
         </div>
-        <div class="section-divider"></div>
       </div>
 
-      <!-- BigQuery Datasets List -->
-      <div class="datasets-list">
-        <div v-for="dataset in datasets" :key="dataset.id">
-          <button
-            class="dataset-header"
-            @click="toggleDataset(dataset.id)"
+      <!-- Column 2: Datasets or DuckDB Tables -->
+      <div v-if="selectedProject" class="column">
+        <div class="column-header">
+          {{ selectedProject === 'duckdb' ? 'Tables' : 'Datasets' }}
+        </div>
+        <div class="column-content">
+          <div v-if="loadingDatasets[selectedProject]" class="loading">Loading...</div>
+          <div
+            v-for="item in column2Items"
+            :key="item.id"
+            :class="['item', {
+              selected: selectedProject === 'duckdb' ? selectedTable === item.id : selectedDataset === item.id
+            }]"
+            @click="selectedProject === 'duckdb' ? selectTable(item.id) : selectDataset(item.id)"
+            @dblclick="selectedProject === 'duckdb' ? insertTableName(item) : null"
           >
-            <span class="caret">{{ selectedDataset === dataset.id ? '▼' : '▶' }}</span>
-            <span class="dataset-name">{{ dataset.name }}</span>
-          </button>
+            <span class="item-name">{{ item.name }}</span>
+            <span v-if="item.rowCount" class="item-meta">{{ item.rowCount }} rows</span>
+          </div>
+        </div>
+      </div>
 
-          <!-- Tables List -->
-          <div v-if="selectedDataset === dataset.id" class="tables-list">
-            <div v-if="isLoadingTables[dataset.id]" class="loading-message">
-              Loading tables...
-            </div>
-            <div v-else-if="!tables[dataset.id] || tables[dataset.id].length === 0" class="empty-message">
-              No tables found
-            </div>
-            <div v-else v-for="table in tables[dataset.id]" :key="table.id">
-              <button
-                class="table-header"
-                @click="toggleTableSchema(dataset.id, table.id)"
-              >
-                <span class="caret">{{ expandedTables[`${dataset.id}.${table.id}`] ? '▼' : '▶' }}</span>
-                <span class="table-name">{{ table.name }}</span>
-                <span class="table-type">{{ table.type }}</span>
-              </button>
+      <!-- Column 3: BigQuery Tables -->
+      <div v-if="selectedDataset && selectedProject !== 'duckdb'" class="column">
+        <div class="column-header">Tables</div>
+        <div class="column-content">
+          <div v-if="loadingTables[selectedDataset]" class="loading">Loading...</div>
+          <div
+            v-for="table in column3Items"
+            :key="table.id"
+            :class="['item', { selected: selectedTable === table.id }]"
+            @click="selectTable(table.id)"
+            @dblclick="insertTableName(table)"
+          >
+            <span class="item-name">{{ table.name }}</span>
+          </div>
+        </div>
+      </div>
 
-              <!-- Columns List -->
-              <div v-if="expandedTables[`${dataset.id}.${table.id}`]" class="columns-list">
-                <div v-if="isLoadingSchema[`${dataset.id}.${table.id}`]" class="loading-message">
-                  Loading schema...
-                </div>
-                <div v-else-if="tableSchemas[`${dataset.id}.${table.id}`]" class="columns">
-                  <div
-                    v-for="(column, index) in tableSchemas[`${dataset.id}.${table.id}`]"
-                    :key="index"
-                    class="column-item"
-                  >
-                    <span class="column-name">{{ column.name }}</span>
-                    <span class="column-type">{{ column.type }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+      <!-- Column 4: Schema -->
+      <div v-if="selectedTable" class="column column-schema">
+        <div class="column-header">Schema</div>
+        <div class="column-content">
+          <div v-if="loadingSchema[selectedTable]" class="loading">Loading...</div>
+          <div v-for="field in column4Items" :key="field.name" class="schema-field">
+            <span class="field-name">{{ field.name }}</span>
+            <span class="field-type">{{ field.type }}</span>
           </div>
         </div>
       </div>
@@ -391,242 +368,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.schema-browser {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--surface-primary);
-}
-
-.error-banner {
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-error-bg);
-  border-bottom: var(--border-width-thin) solid var(--border-error);
-  color: var(--color-error);
-  font-size: var(--font-size-body-sm);
-  font-weight: bold;
-  flex-shrink: 0;
-}
-
-.loading-state,
-.empty-state {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  text-align: center;
-  font-size: var(--font-size-body-sm);
-  color: var(--text-secondary);
-}
-
-.datasets-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-/* Zebra striping for datasets */
-.datasets-list > div:nth-child(even) .dataset-header {
-  background: var(--table-row-stripe-bg);
-}
-
-.datasets-list > div:nth-child(odd) .dataset-header {
-  background: var(--surface-primary);
-}
-
-.datasets-list > div:nth-child(even) .dataset-header:hover {
-  background: var(--surface-secondary);
-}
-
-.datasets-list > div:nth-child(odd) .dataset-header:hover {
-  background: var(--surface-secondary);
-}
-
-.dataset-header {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: none;
-  text-align: left;
-  font-size: var(--font-size-body-sm);
-  font-family: var(--font-family-ui);
-  color: var(--text-primary);
-  cursor: pointer;
-  outline: none;
-  transition: background 0.1s;
-}
-
-.caret {
-  font-size: 10px;
-  width: 12px;
-  flex-shrink: 0;
-  color: var(--text-secondary);
-}
-
-.dataset-name {
-  font-weight: 600;
-  font-family: var(--font-family-mono);
-}
-
-.tables-list {
-  background: var(--surface-secondary);
-}
-
-/* Zebra striping for tables */
-.tables-list > div:nth-child(even) .table-header {
-  background: var(--table-row-stripe-bg);
-}
-
-.tables-list > div:nth-child(odd) .table-header {
-  background: var(--surface-primary);
-}
-
-.tables-list > div:nth-child(even) .table-header:hover {
-  background: var(--surface-tertiary);
-}
-
-.tables-list > div:nth-child(odd) .table-header:hover {
-  background: var(--surface-tertiary);
-}
-
-.table-header {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 20px);
-  border: none;
-  text-align: left;
-  font-size: var(--font-size-body-sm);
-  font-family: var(--font-family-ui);
-  color: var(--text-primary);
-  cursor: pointer;
-  outline: none;
-  transition: background 0.1s;
-}
-
-.table-name {
-  flex: 1;
-  font-family: var(--font-family-mono);
-  font-weight: 500;
-}
-
-.table-type {
-  font-size: var(--font-size-caption);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-}
-
-.columns-list {
-  background: var(--surface-primary);
-  padding: var(--space-1) 0;
-}
-
-.loading-message,
-.empty-message {
-  padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 40px);
-  font-size: var(--font-size-caption);
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
-.columns {
-  padding-left: calc(var(--space-3) + 40px);
-}
-
-.column-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--font-size-caption);
-}
-
-/* Zebra striping for columns */
-.column-item:nth-child(even) {
-  background: var(--table-row-stripe-bg);
-}
-
-.column-item:nth-child(odd) {
-  background: var(--surface-primary);
-}
-
-.column-name {
-  font-family: var(--font-family-mono);
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.column-type {
-  font-family: var(--font-family-mono);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-size: 10px;
-}
-
-/* DuckDB Section */
-.duckdb-section {
-  margin-bottom: var(--space-3);
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--surface-secondary);
-  font-weight: 600;
-  font-size: var(--font-size-body-sm);
-  color: var(--text-primary);
-}
-
-.section-icon {
-  font-size: 16px;
-}
-
-.section-title {
-  flex: 1;
-}
-
-.section-divider {
-  height: 1px;
-  background: var(--border-primary);
-  margin: var(--space-3) 0;
-}
-
-.duckdb-tables-list {
-  padding: var(--space-2) 0;
-}
-
-.duckdb-table-item {
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.duckdb-table-item:hover {
-  background: var(--surface-secondary);
-}
-
-.table-name-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-body-sm);
-}
-
-.table-meta {
-  color: var(--text-secondary);
-  font-size: var(--font-size-caption);
-}
-
-/* Header name container */
+/* Header */
 .box-name-container {
   display: flex;
   align-items: center;
@@ -637,8 +379,6 @@ onUnmounted(() => {
 .box-name {
   cursor: pointer;
   user-select: none;
-  line-height: var(--line-height-tight);
-  display: inline-block;
 }
 
 .box-name:hover {
@@ -654,15 +394,9 @@ onUnmounted(() => {
   font-family: inherit;
   font-weight: inherit;
   padding: 0;
-  margin: 0;
   min-width: 100px;
-  max-width: 400px;
-  line-height: var(--line-height-tight);
-  height: 14px;
-  display: inline-block;
 }
 
-/* Header buttons */
 .header-buttons {
   display: flex;
   gap: var(--space-1);
@@ -679,15 +413,9 @@ onUnmounted(() => {
   color: var(--text-inverse);
   cursor: pointer;
   font-size: var(--font-size-body-lg);
-  font-weight: bold;
   padding: 0;
-  line-height: 1;
+  outline: none;
   transition: all 0.2s;
-  outline: none;
-}
-
-.header-btn:focus {
-  outline: none;
 }
 
 .header-btn:hover {
@@ -697,7 +425,108 @@ onUnmounted(() => {
 
 .delete-btn:hover {
   background: var(--color-error);
-  border-color: var(--color-error);
   color: var(--text-inverse);
+}
+
+/* Schema Browser - Column View */
+.schema-browser {
+  display: flex;
+  height: 100%;
+  background: var(--surface-primary);
+  overflow: hidden;
+}
+
+.column {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  border-right: var(--border-width-thin) solid var(--border-primary);
+  overflow: hidden;
+}
+
+.column-schema {
+  flex: 1;
+  border-right: none;
+}
+
+.column-header {
+  padding: var(--table-cell-padding);
+  background: var(--surface-primary);
+  border-bottom: var(--table-border-width) solid var(--border-primary);
+  font-size: var(--font-size-body-sm);
+  font-weight: bold;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.column-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s ease, font-weight 0.1s ease;
+}
+
+.item:hover {
+  background: var(--table-row-stripe-bg);
+}
+
+.item.selected {
+  background: var(--table-row-stripe-bg);
+  font-weight: 500;
+}
+
+.item-name {
+  flex: 1;
+  font-size: var(--font-size-body-sm);
+  font-family: var(--font-family-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-meta {
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.schema-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2);
+}
+
+.field-name {
+  font-size: var(--font-size-body-sm);
+  font-family: var(--font-family-mono);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field-type {
+  font-size: var(--font-size-caption);
+  font-family: var(--font-family-mono);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.loading {
+  padding: var(--space-3);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-body-sm);
 }
 </style>
