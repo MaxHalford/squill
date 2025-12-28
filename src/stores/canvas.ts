@@ -158,19 +158,21 @@ export const useCanvasStore = defineStore('canvas', () => {
     const defaultY = 100 + Math.random() * 200
 
     const boxId = nextBoxId.value++
-    const width = 600
-    const height = 500
+
+    // Size depends on type
+    const width = type === 'note' ? 400 : (type === 'schema' ? 800 : 600)
+    const height = type === 'note' ? 300 : (type === 'schema' ? 600 : 500)
 
     const newBox: Box = {
       id: boxId,
-      type: type, // 'sql' or 'schema'
+      type: type, // 'sql', 'schema', or 'note'
       x: position ? position.x - width / 2 : (centerPosition ? centerPosition.x - width / 2 : defaultX),
       y: position ? position.y - height / 2 : (centerPosition ? centerPosition.y - height / 2 : defaultY),
       width: width,
       height: height,
       zIndex: getMaxZIndex() + 1,
       query: type === 'sql' ? 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' : '',
-      name: type === 'sql' ? `query_${boxId}` : `schema_${boxId}`,
+      name: type === 'sql' ? `query_${boxId}` : (type === 'note' ? `note_${boxId}` : `schema_${boxId}`),
       dependencies: []
     }
     boxes.value.push(newBox)
@@ -296,7 +298,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     const boxId = nextBoxId.value++
 
     // Generate incremented name based on type
-    const newName = originalBox.type === 'sql' ? `query_${boxId}` : `schema_${boxId}`
+    const newName = originalBox.type === 'sql' ? `query_${boxId}` : (originalBox.type === 'note' ? `note_${boxId}` : `schema_${boxId}`)
 
     const newBox: Box = {
       id: boxId,

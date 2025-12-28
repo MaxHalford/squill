@@ -16,7 +16,8 @@ const activeDropdown = ref(null) // 'connection', 'box', 'settings'
 // Box types
 const boxTypes = [
   { id: 'sql', name: 'SQL editor' },
-  { id: 'schema', name: 'Schema browser' }
+  { id: 'schema', name: 'Schema browser' },
+  { id: 'note', name: 'Sticky note' }
 ]
 
 // Connection dropdown state

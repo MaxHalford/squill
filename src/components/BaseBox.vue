@@ -10,7 +10,8 @@ const props = defineProps({
   initialHeight: { type: Number, default: 500 },
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
-  initialName: { type: String, default: 'Box' }
+  initialName: { type: String, default: 'Box' },
+  showHeaderName: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name'])
@@ -101,7 +102,7 @@ defineExpose({
     @update:size="handleUpdateSize"
   >
     <template #header>
-      <div class="box-name-container">
+      <div v-if="showHeaderName" class="box-name-container">
         <input
           v-if="isEditingName"
           ref="nameInputRef"
@@ -119,7 +120,7 @@ defineExpose({
           title="Double-click to edit"
         >{{ boxName }}</span>
       </div>
-      <div class="header-buttons">
+      <div class="header-buttons" :class="{ 'no-name': !showHeaderName }">
         <button
           class="header-btn maximize-btn"
           @click="handleMaximize"
@@ -178,6 +179,10 @@ defineExpose({
 .header-buttons {
   display: flex;
   gap: var(--space-1);
+}
+
+.header-buttons.no-name {
+  margin-left: auto;
 }
 
 .header-btn {

@@ -216,6 +216,7 @@ const insertTableName = (item) => {
     :initial-z-index="initialZIndex"
     :is-selected="isSelected"
     :initial-name="initialName"
+    :show-header-name="false"
     @select="emit('select', $event)"
     @update:position="emit('update:position', $event)"
     @update:size="emit('update:size', $event)"

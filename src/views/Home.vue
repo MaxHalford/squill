@@ -2,6 +2,7 @@
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import SqlBox from '../components/SqlBox.vue'
 import SchemaBox from '../components/SchemaBox.vue'
+import StickyNoteBox from '../components/StickyNoteBox.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
 import { ref, onMounted, onUnmounted, nextTick, provide } from 'vue'
@@ -226,6 +227,27 @@ onUnmounted(() => {
           @update:size="handleUpdateSize(box.id, $event)"
           @update:name="handleUpdateName(box.id, $event)"
           @update:multi-position="handleUpdateMultiPosition"
+          @delete="handleDelete(box.id)"
+          @maximize="handleMaximize(box.id)"
+        />
+
+        <!-- Sticky Note Box -->
+        <StickyNoteBox
+          v-else-if="box.type === 'note'"
+          :box-id="box.id"
+          :initial-x="box.x"
+          :initial-y="box.y"
+          :initial-width="box.width"
+          :initial-height="box.height"
+          :initial-z-index="box.zIndex"
+          :initial-content="box.query"
+          :initial-name="box.name"
+          :is-selected="canvasStore.isBoxSelected(box.id)"
+          @select="selectBox(box.id, $event)"
+          @update:position="handleUpdatePosition(box.id, $event)"
+          @update:size="handleUpdateSize(box.id, $event)"
+          @update:name="handleUpdateName(box.id, $event)"
+          @update:content="handleUpdateQuery(box.id, $event)"
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
         />

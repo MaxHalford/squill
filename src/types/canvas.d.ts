@@ -1,4 +1,4 @@
-export type BoxType = 'sql' | 'schema'
+export type BoxType = 'sql' | 'schema' | 'note'
 
 export interface Position {
   x: number

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, inject } from 'vue'
 
-const MIN_WIDTH = 300
-const MIN_HEIGHT = 400
+const MIN_WIDTH = 200
+const MIN_HEIGHT = 150
 
 const props = defineProps({
   boxId: { type: Number, required: true },
