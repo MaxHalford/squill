@@ -354,6 +354,45 @@ export const useCanvasStore = defineStore('canvas', () => {
     return newBox.id
   }
 
+  // Copy multiple boxes (duplicate with offset)
+  const copyMultipleBoxes = (ids: number[]): number[] => {
+    if (ids.length === 0) return []
+
+    const originalBoxes = ids
+      .map(id => boxes.value.find(b => b.id === id))
+      .filter(box => box !== undefined) as Box[]
+
+    if (originalBoxes.length === 0) return []
+
+    saveToUndoStack()
+    const OFFSET = 30 // Offset for copied boxes
+    const newBoxIds: number[] = []
+
+    originalBoxes.forEach(originalBox => {
+      const boxId = nextBoxId.value++
+
+      // Generate incremented name based on type
+      const newName = originalBox.type === 'sql' ? `query_${boxId}` : (originalBox.type === 'note' ? `note_${boxId}` : `schema_${boxId}`)
+
+      const newBox: Box = {
+        id: boxId,
+        type: originalBox.type,
+        x: originalBox.x + OFFSET,
+        y: originalBox.y + OFFSET,
+        width: originalBox.width,
+        height: originalBox.height,
+        zIndex: getMaxZIndex() + 1,
+        query: originalBox.query,
+        name: newName,
+        dependencies: [] // Copied box starts with no dependencies
+      }
+      boxes.value.push(newBox)
+      newBoxIds.push(boxId)
+    })
+
+    return newBoxIds
+  }
+
   return {
     boxes,
     selectedBoxId,
@@ -381,6 +420,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     clearAll,
     resetToDefault,
     copyBox,
+    copyMultipleBoxes,
     undo,
     redo,
     setActiveProjectId,

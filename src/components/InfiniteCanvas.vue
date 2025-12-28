@@ -324,6 +324,11 @@ const handleMouseUp = (e) => {
       }
     })
 
+    // Blur active element so keyboard shortcuts work on boxes
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+
     // Update selection in store
     if (selectedIds.length > 0) {
       canvasStore.selectMultipleBoxes(selectedIds)

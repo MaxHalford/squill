@@ -220,7 +220,6 @@ onUnmounted(() => {
     0 0 20px 5px rgba(147, 51, 234, 0.4),
     0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 10;
-  position: relative;
 }
 
 .resizable-box.selected::before {

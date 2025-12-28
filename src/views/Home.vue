@@ -13,6 +13,7 @@ const canvasStore = useCanvasStore()
 const settingsStore = useSettingsStore()
 const canvasRef = ref(null)
 const copiedBoxId = ref(null)
+const copiedBoxIds = ref<number[]>([])
 
 // Registry for box query executors
 const boxExecutors = ref(new Map())
@@ -126,24 +127,51 @@ const handleKeyDown = (e) => {
     e.preventDefault()
     const allBoxIds = canvasStore.boxes.map(box => box.id)
     if (allBoxIds.length > 0) {
+      // Blur active element so keyboard shortcuts work on boxes
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur()
+      }
       canvasStore.selectMultipleBoxes(allBoxIds)
     }
   }
 
-  // Ctrl+C / Cmd+C to copy selected box
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && canvasStore.selectedBoxId !== null && !isTyping) {
-    e.preventDefault()
-    copiedBoxId.value = canvasStore.selectedBoxId
-    console.log('Box copied:', copiedBoxId.value)
+  // Ctrl+C / Cmd+C to copy selected box(es)
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && !isTyping) {
+    // Check if there are multiple boxes selected
+    if (canvasStore.selectedBoxIds.size > 0) {
+      e.preventDefault()
+      copiedBoxIds.value = Array.from(canvasStore.selectedBoxIds)
+      copiedBoxId.value = null // Clear single copy
+      console.log('Boxes copied:', copiedBoxIds.value)
+    }
+    // Or single box selected
+    else if (canvasStore.selectedBoxId !== null) {
+      e.preventDefault()
+      copiedBoxId.value = canvasStore.selectedBoxId
+      copiedBoxIds.value = [] // Clear multi copy
+      console.log('Box copied:', copiedBoxId.value)
+    }
   }
 
-  // Ctrl+V / Cmd+V to paste copied box
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v' && copiedBoxId.value !== null && !isTyping) {
-    e.preventDefault()
-    const newBoxId = canvasStore.copyBox(copiedBoxId.value)
-    console.log('Box pasted:', newBoxId)
-    if (newBoxId) {
-      canvasStore.selectBox(newBoxId)
+  // Ctrl+V / Cmd+V to paste copied box(es)
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v' && !isTyping) {
+    // Check if there are multiple boxes to paste
+    if (copiedBoxIds.value.length > 0) {
+      e.preventDefault()
+      const newBoxIds = canvasStore.copyMultipleBoxes(copiedBoxIds.value)
+      console.log('Boxes pasted:', newBoxIds)
+      if (newBoxIds.length > 0) {
+        canvasStore.selectMultipleBoxes(newBoxIds)
+      }
+    }
+    // Or single box to paste
+    else if (copiedBoxId.value !== null) {
+      e.preventDefault()
+      const newBoxId = canvasStore.copyBox(copiedBoxId.value)
+      console.log('Box pasted:', newBoxId)
+      if (newBoxId) {
+        canvasStore.selectBox(newBoxId)
+      }
     }
   }
 
