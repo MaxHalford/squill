@@ -107,11 +107,18 @@ const handleKeyDown = (e) => {
                    activeElement.tagName === 'TEXTAREA' ||
                    activeElement.classList.contains('cm-content')
 
-  // Delete/Backspace to remove selected box
-  if ((e.key === 'Delete' || e.key === 'Backspace') && canvasStore.selectedBoxId !== null && !isTyping) {
-    // Prevent backspace from navigating back in browser
-    e.preventDefault()
-    canvasStore.removeBox(canvasStore.selectedBoxId)
+  // Delete/Backspace to remove selected box(es)
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !isTyping) {
+    // Check if there are multiple boxes selected
+    if (canvasStore.selectedBoxIds.size > 0) {
+      e.preventDefault()
+      canvasStore.removeMultipleBoxes(Array.from(canvasStore.selectedBoxIds))
+    }
+    // Or single box selected
+    else if (canvasStore.selectedBoxId !== null) {
+      e.preventDefault()
+      canvasStore.removeBox(canvasStore.selectedBoxId)
+    }
   }
 
   // Ctrl+C / Cmd+C to copy selected box

@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, provide } from 'vue'
+import { ref, onMounted, onUnmounted, provide, computed } from 'vue'
 import type { Box } from '../types/canvas'
+import { useCanvasStore } from '../stores/canvas'
 
 const emit = defineEmits(['canvas-click'])
+const canvasStore = useCanvasStore()
 
 const props = defineProps<{
   boxes: Box[]
@@ -17,6 +19,11 @@ const zoom = ref(1)
 const isPanning = ref(false)
 const isActuallyPanning = ref(false)
 const panStart = ref({ x: 0, y: 0 })
+
+// Rectangle selection state
+const isRectangleSelecting = ref(false)
+const rectangleStart = ref({ x: 0, y: 0 })
+const rectangleCurrent = ref({ x: 0, y: 0 })
 
 // Provide zoom to child components
 provide('canvasZoom', zoom)
@@ -185,6 +192,34 @@ const isOverScrollableArea = (element) => {
   return false
 }
 
+// Convert screen coordinates to canvas coordinates
+const screenToCanvas = (screenX: number, screenY: number) => {
+  if (!canvasRef.value) return { x: 0, y: 0 }
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const canvasX = (screenX - rect.left - pan.value.x) / zoom.value
+  const canvasY = (screenY - rect.top - pan.value.y) / zoom.value
+
+  return { x: canvasX, y: canvasY }
+}
+
+// Check if a box intersects with a rectangle
+const boxIntersectsRectangle = (box: Box, rectStartX: number, rectStartY: number, rectEndX: number, rectEndY: number): boolean => {
+  // Calculate rectangle bounds (normalize in case dragged right-to-left or bottom-to-top)
+  const rectLeft = Math.min(rectStartX, rectEndX)
+  const rectRight = Math.max(rectStartX, rectEndX)
+  const rectTop = Math.min(rectStartY, rectEndY)
+  const rectBottom = Math.max(rectStartY, rectEndY)
+
+  // Check if box intersects with rectangle
+  const boxLeft = box.x
+  const boxRight = box.x + box.width
+  const boxTop = box.y
+  const boxBottom = box.y + box.height
+
+  return !(boxRight < rectLeft || boxLeft > rectRight || boxBottom < rectTop || boxTop > rectBottom)
+}
+
 // Handle mouse wheel for zoom - zoom to cursor position
 const handleWheel = (e) => {
   // Allow native scrolling in scrollable areas when Ctrl/Cmd is NOT pressed
@@ -223,6 +258,20 @@ const handleWheel = (e) => {
 const handleMouseDown = (e) => {
   // Left mouse button
   if (e.button === 0) {
+    // Check if Cmd/Ctrl is pressed for rectangle selection
+    if ((e.ctrlKey || e.metaKey) && !isOverBox(e.target)) {
+      e.preventDefault()
+      isRectangleSelecting.value = true
+
+      // Convert screen coordinates to canvas coordinates
+      const canvasCoords = screenToCanvas(e.clientX, e.clientY)
+      rectangleStart.value = canvasCoords
+      rectangleCurrent.value = canvasCoords
+
+      canvasRef.value.style.cursor = 'crosshair'
+      return
+    }
+
     // Don't pan if we're over a box
     if (isOverBox(e.target)) {
       return
@@ -240,6 +289,21 @@ const handleMouseDown = (e) => {
 }
 
 const handleMouseMove = (e) => {
+  if (isRectangleSelecting.value) {
+    // Update rectangle current position in canvas coordinates
+    const canvasCoords = screenToCanvas(e.clientX, e.clientY)
+    rectangleCurrent.value = canvasCoords
+
+    // Update store for visual rendering
+    canvasStore.setRectangleSelection({
+      startX: rectangleStart.value.x,
+      startY: rectangleStart.value.y,
+      endX: rectangleCurrent.value.x,
+      endY: rectangleCurrent.value.y
+    })
+    return
+  }
+
   if (isPanning.value) {
     isActuallyPanning.value = true
     pan.value = {
@@ -250,6 +314,30 @@ const handleMouseMove = (e) => {
 }
 
 const handleMouseUp = (e) => {
+  if (isRectangleSelecting.value) {
+    // Find all boxes that intersect with the selection rectangle
+    const selectedIds: number[] = []
+
+    props.boxes.forEach(box => {
+      if (boxIntersectsRectangle(box, rectangleStart.value.x, rectangleStart.value.y, rectangleCurrent.value.x, rectangleCurrent.value.y)) {
+        selectedIds.push(box.id)
+      }
+    })
+
+    // Update selection in store
+    if (selectedIds.length > 0) {
+      canvasStore.selectMultipleBoxes(selectedIds)
+    } else {
+      canvasStore.clearSelection()
+    }
+
+    // Clear rectangle selection visual
+    canvasStore.setRectangleSelection(null)
+    isRectangleSelecting.value = false
+    canvasRef.value.style.cursor = 'grab'
+    return
+  }
+
   if (isPanning.value) {
     // If we didn't actually pan (just clicked), emit canvas click
     if (!isActuallyPanning.value) {
@@ -293,6 +381,18 @@ onUnmounted(() => {
       }"
     >
       <slot />
+
+      <!-- Rectangle selection overlay -->
+      <div
+        v-if="canvasStore.rectangleSelection"
+        class="selection-rectangle"
+        :style="{
+          left: `${Math.min(canvasStore.rectangleSelection.startX, canvasStore.rectangleSelection.endX)}px`,
+          top: `${Math.min(canvasStore.rectangleSelection.startY, canvasStore.rectangleSelection.endY)}px`,
+          width: `${Math.abs(canvasStore.rectangleSelection.endX - canvasStore.rectangleSelection.startX)}px`,
+          height: `${Math.abs(canvasStore.rectangleSelection.endY - canvasStore.rectangleSelection.startY)}px`
+        }"
+      ></div>
     </div>
   </div>
 </template>
@@ -316,5 +416,13 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   position: relative;
+}
+
+.selection-rectangle {
+  position: absolute;
+  border: 2px solid rgba(0, 100, 200, 0.8);
+  background-color: rgba(0, 100, 200, 0.15);
+  pointer-events: none;
+  z-index: 9999;
 }
 </style>

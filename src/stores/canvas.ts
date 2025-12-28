@@ -21,6 +21,12 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Canvas reference for getting viewport center
   const canvasRef = ref<any>(null)
 
+  // Multi-selection state
+  const selectedBoxIds = ref<Set<number>>(new Set())
+
+  // Rectangle selection state (for visual rendering during drag)
+  const rectangleSelection = ref<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
+
   // Undo/Redo stacks
   const undoStack = ref<UndoRedoState[]>([])
   const redoStack = ref<UndoRedoState[]>([])
@@ -218,11 +224,43 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Deselect all boxes
   const deselectBox = () => {
     selectedBoxId.value = null
+    selectedBoxIds.value.clear()
   }
 
-  // Check if a box is selected
+  // Check if a box is selected (single or multi)
   const isBoxSelected = (id: number): boolean => {
-    return selectedBoxId.value === id
+    return selectedBoxId.value === id || selectedBoxIds.value.has(id)
+  }
+
+  // Select multiple boxes (for rectangle selection)
+  const selectMultipleBoxes = (boxIds: number[]) => {
+    selectedBoxId.value = null // Clear single selection
+    selectedBoxIds.value = new Set(boxIds)
+  }
+
+  // Clear all selections
+  const clearSelection = () => {
+    selectedBoxId.value = null
+    selectedBoxIds.value.clear()
+  }
+
+  // Set rectangle selection coordinates (for visual rendering)
+  const setRectangleSelection = (coords: { startX: number; startY: number; endX: number; endY: number } | null) => {
+    rectangleSelection.value = coords
+  }
+
+  // Remove multiple boxes (for multi-selection delete)
+  const removeMultipleBoxes = (boxIds: number[]) => {
+    if (boxIds.length === 0) return
+
+    saveToUndoStack()
+
+    const idsToRemove = new Set(boxIds)
+    boxes.value = boxes.value.filter(box => !idsToRemove.has(box.id))
+
+    // Clear selections
+    selectedBoxId.value = null
+    selectedBoxIds.value.clear()
   }
 
   // Update box position
@@ -319,6 +357,8 @@ export const useCanvasStore = defineStore('canvas', () => {
   return {
     boxes,
     selectedBoxId,
+    selectedBoxIds,
+    rectangleSelection,
     activeProjectId,
     canvasRef,
     loadState,
@@ -327,6 +367,10 @@ export const useCanvasStore = defineStore('canvas', () => {
     selectBox,
     deselectBox,
     isBoxSelected,
+    selectMultipleBoxes,
+    clearSelection,
+    setRectangleSelection,
+    removeMultipleBoxes,
     updateBoxPosition,
     updateBoxSize,
     updateBoxQuery,
