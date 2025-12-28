@@ -5,11 +5,13 @@ import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
+import { useSchemaStore } from '../stores/schema'
 
 const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
+const schemaStore = useSchemaStore()
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -181,6 +183,16 @@ const loadSchema = async (tableId, key) => {
     try {
       const schema = await authStore.fetchTableSchema(selectedDataset.value, tableId)
       schemas.value[key] = schema
+
+      // Also populate the schema store for autocompletion
+      if (selectedProject.value && selectedDataset.value) {
+        schemaStore.setTableSchema(
+          selectedProject.value,
+          selectedDataset.value,
+          tableId,
+          schema
+        )
+      }
     } catch (err) {
       console.error('Failed to load schema:', err)
     } finally {

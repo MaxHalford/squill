@@ -68,10 +68,18 @@ const handleConnectionSelect = async (connectionId) => {
 }
 
 // Handle project selection
-const handleProjectSelect = (projectId) => {
+const handleProjectSelect = async (projectId) => {
   canvasStore.setActiveProjectId(projectId)
   authStore.setProjectId(projectId)
   closeDropdown()
+
+  // Fetch all schemas using INFORMATION_SCHEMA
+  try {
+    await authStore.fetchAllSchemas()
+  } catch (error) {
+    console.error('Failed to fetch schemas:', error)
+    // Don't block the UI if schema fetch fails
+  }
 }
 
 // Handle add database
@@ -114,6 +122,17 @@ const handleReconnect = async (connectionId, event) => {
 const addBox = (boxType) => {
   canvasStore.addBox(boxType)
   closeDropdown()
+}
+
+// Handle refresh schemas
+const handleRefreshSchemas = async () => {
+  try {
+    await authStore.fetchAllSchemas()
+    alert('Schemas refreshed successfully!')
+  } catch (error) {
+    console.error('Failed to refresh schemas:', error)
+    alert('Failed to refresh schemas. Please check the console for details.')
+  }
 }
 
 // Handle reset all data
@@ -392,6 +411,16 @@ onUnmounted(() => {
                 <span>Pan to box on select</span>
               </label>
             </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="setting-header">BigQuery Schema Cache</div>
+            <div class="setting-description">
+              Refresh schema information from BigQuery INFORMATION_SCHEMA
+            </div>
+            <button @click="handleRefreshSchemas" class="action-button" :disabled="!authStore.isAuthenticated">
+              Refresh Schemas
+            </button>
           </div>
 
           <div class="settings-section settings-section-danger">
@@ -752,6 +781,34 @@ onUnmounted(() => {
 
 .settings-section-danger {
   background: rgba(255, 0, 0, 0.05);
+}
+
+.action-button {
+  width: 100%;
+  padding: var(--space-2);
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.action-button:hover:not(:disabled) {
+  background: var(--color-primary-dark, #0056b3);
+}
+
+.action-button:active:not(:disabled) {
+  background: var(--color-primary-darker, #004494);
+}
+
+.action-button:disabled {
+  background: var(--surface-secondary);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .reset-button {

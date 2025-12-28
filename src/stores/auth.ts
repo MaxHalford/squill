@@ -416,6 +416,86 @@ export const useAuthStore = defineStore('auth', () => {
     return { rows: [], stats }
   }
 
+  // Fetch all schemas using INFORMATION_SCHEMA
+  const fetchAllSchemas = async (targetProjectId: string | null = null): Promise<void> => {
+    if (!isAuthenticated.value) {
+      throw new Error('Not authenticated')
+    }
+
+    const project = targetProjectId || projectId.value
+    if (!project) {
+      throw new Error('No project specified')
+    }
+
+    // Import schema store
+    const { useSchemaStore } = await import('./schema')
+    const schemaStore = useSchemaStore()
+
+    try {
+      // Step 1: Get all datasets using SCHEMATA
+      const datasetsQuery = `
+        SELECT schema_name
+        FROM \`${project}.INFORMATION_SCHEMA.SCHEMATA\`
+        WHERE schema_name NOT IN ('INFORMATION_SCHEMA', 'information_schema')
+      `
+
+      const datasetsResult = await runQuery(datasetsQuery)
+      const datasets = datasetsResult.rows.map(row => row.schema_name)
+
+      if (datasets.length === 0) {
+        console.log('No datasets found in project')
+        return
+      }
+
+      console.log(`Found ${datasets.length} datasets, fetching schemas...`)
+
+      // Step 2: Build a UNION query to get columns from all datasets
+      const columnsQueries = datasets.map(dataset => `
+        SELECT
+          '${project}' as project_id,
+          table_schema as dataset_id,
+          table_name,
+          column_name,
+          data_type
+        FROM \`${project}.${dataset}.INFORMATION_SCHEMA.COLUMNS\`
+      `).join('\nUNION ALL\n')
+
+      const columnsQuery = `
+        ${columnsQueries}
+        ORDER BY dataset_id, table_name, ordinal_position
+      `
+
+      const result = await runQuery(columnsQuery)
+
+      // Group columns by table
+      const tableSchemas: Record<string, Array<{ name: string; type: string }>> = {}
+
+      for (const row of result.rows) {
+        const tableKey = `${row.project_id}.${row.dataset_id}.${row.table_name}`
+
+        if (!tableSchemas[tableKey]) {
+          tableSchemas[tableKey] = []
+        }
+
+        tableSchemas[tableKey].push({
+          name: row.column_name,
+          type: row.data_type
+        })
+      }
+
+      // Populate schema store
+      for (const [tableKey, columns] of Object.entries(tableSchemas)) {
+        const [proj, dataset, table] = tableKey.split('.')
+        schemaStore.setTableSchema(proj, dataset, table, columns)
+      }
+
+      console.log(`Loaded ${Object.keys(tableSchemas).length} table schemas from INFORMATION_SCHEMA`)
+    } catch (error) {
+      console.error('Failed to fetch schemas from INFORMATION_SCHEMA:', error)
+      throw error
+    }
+  }
+
   return {
     accessToken,
     userEmail,
@@ -433,5 +513,6 @@ export const useAuthStore = defineStore('auth', () => {
     fetchTables,
     fetchTableSchema,
     runQuery,
+    fetchAllSchemas,
   }
 })

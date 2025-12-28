@@ -1,20 +1,26 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { EditorView, basicSetup } from 'codemirror'
-import { sql, SQLDialect } from '@codemirror/lang-sql'
-import { autocompletion } from '@codemirror/autocomplete'
+import { sql, PostgreSQL, schemaCompletionSource } from '@codemirror/lang-sql'
+import { Compartment } from '@codemirror/state'
+import { BigQueryDialect } from '../utils/bigQueryDialect'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
   height: { type: Number, default: 150 },
   isRunning: { type: Boolean, default: false },
-  isAuthenticated: { type: Boolean, default: false }
+  isAuthenticated: { type: Boolean, default: false },
+  dialect: { type: String, default: 'bigquery' }, // 'bigquery' | 'duckdb'
+  schema: { type: Object, default: () => ({}) }    // Schema for autocompletion
 })
 
 const emit = defineEmits(['update:modelValue', 'run', 'stop'])
 
 const editorRef = ref(null)
-let editorView = null
+let editorView = ref<EditorView | null>(null)
+
+// Create compartment for dynamic language reconfiguration
+const languageCompartment = new Compartment()
 
 // Timer for query execution
 const elapsedTime = ref(0)
@@ -84,44 +90,31 @@ const retroTheme = EditorView.theme({
   },
 }, { dark: false })
 
-// Custom SQL completion source with uppercase keywords
-const uppercaseKeywords = (context) => {
-  const word = context.matchBefore(/\w*/)
-  if (!word) return null
-  if (word.from === word.to && !context.explicit) return null
+// Build SQL extension with dialect and schema
+const buildSQLExtension = (dialect: string, schema: any) => {
+  const sqlDialect = dialect === 'duckdb' ? PostgreSQL : BigQueryDialect
 
-  // Common SQL keywords in uppercase
-  const keywords = [
-    'SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'CROSS',
-    'ON', 'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN', 'IS', 'NULL',
-    'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET',
-    'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE',
-    'CREATE', 'TABLE', 'VIEW', 'INDEX', 'DROP', 'ALTER',
-    'AS', 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN',
-    'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
-    'UNION', 'ALL', 'EXCEPT', 'INTERSECT',
-    'WITH', 'RECURSIVE', 'CAST', 'EXISTS',
-    'ASC', 'DESC', 'NULLS', 'FIRST', 'LAST',
-    'TRUE', 'FALSE', 'ARRAY', 'STRUCT',
-    'INT64', 'FLOAT64', 'STRING', 'BOOL', 'DATE', 'TIMESTAMP', 'DATETIME',
-    'UNNEST', 'ARRAY_AGG', 'STRING_AGG',
-    'PARTITION', 'OVER', 'ROWS', 'RANGE', 'WINDOW',
-    'EXTRACT', 'DATE_TRUNC', 'CURRENT_DATE', 'CURRENT_TIMESTAMP'
+  return [
+    sql({
+      dialect: sqlDialect,
+      upperCaseKeywords: true
+    }),
+    sqlDialect.language.data.of({
+      autocomplete: schemaCompletionSource({ schema })
+    })
   ]
-
-  const options = keywords.map(keyword => ({
-    label: keyword,
-    type: 'keyword',
-    apply: keyword + ' ',
-    boost: keyword.toLowerCase().startsWith(word.text.toLowerCase()) ? 1 : 0
-  }))
-
-  return {
-    from: word.from,
-    options: options.filter(opt => opt.boost > 0 || context.explicit),
-    validFor: /^\w*$/
-  }
 }
+
+// Watch for prop changes and reconfigure editor
+watch([() => props.dialect, () => props.schema], ([newDialect, newSchema]) => {
+  if (editorView.value) {
+    editorView.value.dispatch({
+      effects: languageCompartment.reconfigure(
+        buildSQLExtension(newDialect, newSchema)
+      )
+    })
+  }
+}, { deep: true })
 
 onMounted(() => {
   // Keyboard shortcut for running query
@@ -136,20 +129,11 @@ onMounted(() => {
     }
   })
 
-  // Initialize CodeMirror
-  editorView = new EditorView({
+  // Initialize CodeMirror with dynamic language configuration
+  editorView.value = new EditorView({
     extensions: [
       basicSetup,
-      sql({
-        upperCaseKeywords: true,
-        dialect: SQLDialect.define({})
-      }),
-      autocompletion({
-        override: [uppercaseKeywords],
-        activateOnTyping: true,
-        maxRenderedOptions: 20,
-        closeOnBlur: true
-      }),
+      languageCompartment.of(buildSQLExtension(props.dialect, props.schema)),
       retroTheme,
       runShortcut,
       EditorView.updateListener.of((update) => {
@@ -164,17 +148,18 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (editorView) {
-    editorView.destroy()
+  if (editorView.value) {
+    editorView.value.destroy()
   }
   if (timerInterval) {
     clearInterval(timerInterval)
   }
 })
 
-// Expose method to get current query text
+// Expose methods
 defineExpose({
-  getQuery: () => editorView?.state.doc.toString() || ''
+  getQuery: () => editorView.value?.state.doc.toString() || '',
+  focus: () => editorView.value?.focus()
 })
 </script>
 

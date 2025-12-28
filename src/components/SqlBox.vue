@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { ref, inject, watch, onMounted, onUnmounted } from 'vue'
+import { ref, inject, watch, onMounted, onUnmounted, computed } from 'vue'
 import BaseBox from './BaseBox.vue'
 import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
 import { useAuthStore } from '../stores/auth'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useCanvasStore } from '../stores/canvas'
+import { useSchemaStore } from '../stores/schema'
 import { detectQueryEngine, extractTableReferences } from '../utils/queryAnalyzer'
+import { buildDuckDBSchema, buildBigQuerySchema, combineSchemas } from '../utils/schemaBuilder'
 
 const authStore = useAuthStore()
 const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()
+const schemaStore = useSchemaStore()
 
 // Inject canvas zoom for splitter dragging
 const canvasZoom = inject('canvasZoom', ref(1))
@@ -28,7 +31,9 @@ const props = defineProps({
   initialHeight: { type: Number, default: 500 },
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
-  initialQuery: { type: String, default: 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' },
+  initialQuery: { type: String, default: `SELECT *
+FROM bigquery-public-data.samples.shakespeare
+LIMIT 50` },
   initialName: { type: String, default: 'SQL Query' }
 })
 
@@ -57,6 +62,24 @@ let abortController = null
 
 const editorRef = ref(null)
 const resultsRef = ref(null)
+
+// Detect dialect from query content
+const currentDialect = computed(() => {
+  const tables = duckdbStore.tables
+  const engine = detectQueryEngine(queryText.value, Object.keys(tables))
+  return engine
+})
+
+// Build combined schema for autocompletion
+const editorSchema = computed(() => {
+  const duckdbSchema = buildDuckDBSchema(duckdbStore.tables)
+  const bigquerySchema = buildBigQuerySchema(
+    schemaStore.bigQuerySchemas,
+    canvasStore.activeProjectId
+  )
+
+  return combineSchemas(duckdbSchema, bigquerySchema)
+})
 
 // Watch for prop changes (e.g., when loading from localStorage)
 let isUpdatingFromProp = false
@@ -325,6 +348,14 @@ onMounted(() => {
   if (registerBoxExecutor) {
     registerBoxExecutor(props.boxId, runQuery)
   }
+
+  // Auto-focus editor if box is selected (newly created or duplicated)
+  if (props.isSelected && editorRef.value) {
+    // Small delay to ensure DOM is ready
+    setTimeout(() => {
+      editorRef.value?.focus()
+    }, 100)
+  }
 })
 
 onUnmounted(() => {
@@ -363,6 +394,8 @@ onUnmounted(() => {
       :height="editorHeight"
       :is-running="isRunning"
       :is-authenticated="authStore.isAuthenticated"
+      :dialect="currentDialect"
+      :schema="editorSchema"
       @run="runQuery"
       @stop="stopQuery"
     />
