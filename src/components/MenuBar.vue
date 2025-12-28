@@ -341,6 +341,16 @@ onUnmounted(() => {
 
         <div v-if="activeDropdown === 'settings'" class="dropdown settings-dropdown">
           <div class="settings-section">
+            <div class="setting-header">BigQuery Schema Cache</div>
+            <div class="setting-description">
+              Refresh schema information from BigQuery INFORMATION_SCHEMA
+            </div>
+            <button @click="handleRefreshSchemas" class="action-button" :disabled="!authStore.isAuthenticated">
+              Refresh Schemas
+            </button>
+          </div>
+
+          <div class="settings-section">
             <div class="setting-header">Auto-limit queries</div>
             <div class="setting-description">
               Automatically add LIMIT clause to queries without one
@@ -412,16 +422,6 @@ onUnmounted(() => {
                 <span>Pan to box on select</span>
               </label>
             </div>
-          </div>
-
-          <div class="settings-section">
-            <div class="setting-header">BigQuery Schema Cache</div>
-            <div class="setting-description">
-              Refresh schema information from BigQuery INFORMATION_SCHEMA
-            </div>
-            <button @click="handleRefreshSchemas" class="action-button" :disabled="!authStore.isAuthenticated">
-              Refresh Schemas
-            </button>
           </div>
 
           <div class="settings-section settings-section-danger">
@@ -787,7 +787,7 @@ onUnmounted(() => {
 .action-button {
   width: 100%;
   padding: var(--space-2);
-  background: var(--color-primary);
+  background: #007bff;
   color: white;
   border: none;
   border-radius: 4px;
@@ -798,11 +798,11 @@ onUnmounted(() => {
 }
 
 .action-button:hover:not(:disabled) {
-  background: var(--color-primary-dark, #0056b3);
+  background: #0056b3;
 }
 
 .action-button:active:not(:disabled) {
-  background: var(--color-primary-darker, #004494);
+  background: #004494;
 }
 
 .action-button:disabled {
