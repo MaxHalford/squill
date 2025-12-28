@@ -121,6 +121,15 @@ const handleKeyDown = (e) => {
     }
   }
 
+  // Ctrl+A / Cmd+A to select all boxes
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !isTyping) {
+    e.preventDefault()
+    const allBoxIds = canvasStore.boxes.map(box => box.id)
+    if (allBoxIds.length > 0) {
+      canvasStore.selectMultipleBoxes(allBoxIds)
+    }
+  }
+
   // Ctrl+C / Cmd+C to copy selected box
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && canvasStore.selectedBoxId !== null && !isTyping) {
     e.preventDefault()

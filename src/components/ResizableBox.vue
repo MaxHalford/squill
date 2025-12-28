@@ -215,7 +215,10 @@ onUnmounted(() => {
 }
 
 .resizable-box.selected {
-  box-shadow: var(--box-shadow-selected);
+  box-shadow:
+    0 0 0 3px rgba(147, 51, 234, 0.3),
+    0 0 20px 5px rgba(147, 51, 234, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 10;
   position: relative;
 }
@@ -227,9 +230,10 @@ onUnmounted(() => {
   left: calc(var(--space-1) * -1);
   right: calc(var(--space-1) * -1);
   bottom: calc(var(--space-1) * -1);
-  border: var(--border-width-thick) solid var(--border-primary);
+  border: var(--border-width-thick) solid rgba(147, 51, 234, 0.8);
   border-radius: var(--box-border-radius);
   pointer-events: none;
+  box-shadow: inset 0 0 20px rgba(147, 51, 234, 0.2);
 }
 
 .resizable-box.dragging {
