@@ -120,7 +120,8 @@ const handleReconnect = async (connectionId, event) => {
 
 // Add box
 const addBox = (boxType) => {
-  canvasStore.addBox(boxType)
+  const boxId = canvasStore.addBox(boxType)
+  canvasStore.selectBox(boxId)
   closeDropdown()
 }
 

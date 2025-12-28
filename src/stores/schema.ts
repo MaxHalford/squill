@@ -1,5 +1,7 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
+
+const STORAGE_KEY = 'squill-schemas'
 
 // BigQuery schema structure
 export interface BigQuerySchema {
@@ -9,6 +11,10 @@ export interface BigQuerySchema {
   columns: Array<{ name: string; type: string }>
 }
 
+interface SchemaState {
+  bigQuerySchemas: Record<string, Array<{ name: string; type: string }>>
+}
+
 export const useSchemaStore = defineStore('schema', () => {
   // Store BigQuery schemas by fully qualified table name
   // Key format: "project.dataset.table"
@@ -16,6 +22,39 @@ export const useSchemaStore = defineStore('schema', () => {
 
   // Schema version for reactive updates
   const schemaVersion = ref(0)
+
+  // Load state from localStorage
+  const loadState = () => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const state: SchemaState = JSON.parse(saved)
+        bigQuerySchemas.value = state.bigQuerySchemas || {}
+      }
+    } catch (error) {
+      console.error('Failed to load schema state:', error)
+    }
+  }
+
+  // Save state to localStorage
+  const saveState = () => {
+    try {
+      const state: SchemaState = {
+        bigQuerySchemas: bigQuerySchemas.value
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    } catch (error) {
+      console.error('Failed to save schema state:', error)
+    }
+  }
+
+  // Load initial state
+  loadState()
+
+  // Watch for changes and auto-save
+  watch(bigQuerySchemas, () => {
+    saveState()
+  }, { deep: true })
 
   // Add or update a table schema
   const setTableSchema = (project: string, dataset: string, table: string, columns: Array<{ name: string; type: string }>) => {

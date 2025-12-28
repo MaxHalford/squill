@@ -46,7 +46,7 @@ export const useCanvasStore = defineStore('canvas', () => {
             width: box.width || 600,
             height: box.height || 500,
             zIndex: box.zIndex || 1,
-            query: box.query || 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50',
+            query: box.query || `SELECT *\nFROM bigquery-public-data.samples.shakespeare\nLIMIT 50`,
             name: box.name || `query_${box.id}`,
             dependencies: box.dependencies || [] // Array of box IDs this box depends on
           }))
@@ -171,7 +171,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       width: width,
       height: height,
       zIndex: getMaxZIndex() + 1,
-      query: type === 'sql' ? 'SELECT * FROM bigquery-public-data.samples.shakespeare LIMIT 50' : '',
+      query: type === 'sql' ? 'SELECT *\nFROM bigquery-public-data.samples.shakespeare\nLIMIT 50' : '',
       name: type === 'sql' ? `query_${boxId}` : (type === 'note' ? `note_${boxId}` : `schema_${boxId}`),
       dependencies: []
     }

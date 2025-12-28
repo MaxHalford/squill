@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, inject, watch, onMounted, onUnmounted, computed } from 'vue'
+import { ref, inject, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import BaseBox from './BaseBox.vue'
 import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
@@ -31,9 +31,7 @@ const props = defineProps({
   initialHeight: { type: Number, default: 500 },
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
-  initialQuery: { type: String, default: `SELECT *
-FROM bigquery-public-data.samples.shakespeare
-LIMIT 50` },
+  initialQuery: { type: String, default: 'SELECT *\nFROM bigquery-public-data.samples.shakespeare\nLIMIT 50' },
   initialName: { type: String, default: 'SQL Query' }
 })
 
@@ -350,11 +348,13 @@ onMounted(() => {
   }
 
   // Auto-focus editor if box is selected (newly created or duplicated)
-  if (props.isSelected && editorRef.value) {
-    // Small delay to ensure DOM is ready
-    setTimeout(() => {
-      editorRef.value?.focus()
-    }, 100)
+  if (props.isSelected) {
+    // Wait for DOM updates and CodeMirror initialization
+    nextTick(() => {
+      setTimeout(() => {
+        editorRef.value?.focus()
+      }, 150)
+    })
   }
 })
 
