@@ -225,8 +225,7 @@ const runQuery = async () => {
     } else {
       // Check for BigQuery credentials
       if (!authStore.isAuthenticated) {
-        error.value = 'Please upload service account credentials in the sidebar'
-        return
+        throw new Error('Please upload service account credentials in the sidebar')
       }
 
       // Execute in BigQuery
@@ -274,11 +273,15 @@ const runQuery = async () => {
     } else {
       canvasStore.updateBoxDependencies(props.boxId, [])
     }
-  } catch (err) {
+  } catch (err: any) {
     if (err.name === 'AbortError') {
       error.value = 'Query cancelled'
     } else {
-      error.value = err.message || 'Query execution failed'
+      // Extract the actual error message
+      // DuckDB errors might have the message in different properties
+      const errorMessage = err.message || err.toString() || 'Query execution failed'
+      error.value = errorMessage
+      console.error('Query error:', err)
     }
     queryResults.value = null
     queryStats.value = null

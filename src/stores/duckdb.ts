@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
-import { parseCSVFile } from '../services/csvHandler'
+import { loadCsvWithDuckDB } from '../services/csvHandler'
 
 interface TableMetadata {
   rowCount: number
@@ -329,16 +329,29 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
 
     try {
-      // Parse CSV file
-      const result = await parseCSVFile(file, tables.value)
+      // Load CSV using DuckDB's native file loading
+      const result = await loadCsvWithDuckDB(
+        file,
+        db.value! as any,
+        conn.value! as any,
+        tables.value
+      )
 
-      // Store results using existing method (handles table creation and data insertion)
-      // This returns the actual sanitized table name that was created
-      const tableName = await storeResults(result.originalFileName, result.rows, boxId)
+      // Update metadata store (table already created by DuckDB)
+      tables.value[result.tableName] = {
+        rowCount: result.rowCount,
+        columns: result.columns,
+        lastUpdated: Date.now(),
+        originalBoxName: result.originalFileName,
+        boxId: boxId
+      }
 
-      console.log(`✅ Loaded CSV as table: ${tableName} (${result.rows.length} rows)`)
+      // Trigger reactive updates
+      schemaVersion.value++
 
-      return tableName
+      console.log(`✅ Loaded CSV as table: ${result.tableName} (${result.rowCount} rows)`)
+
+      return result.tableName
     } catch (err: any) {
       console.error(`Failed to load CSV ${file.name}:`, err)
       throw new Error(`Failed to load CSV: ${err.message}`)

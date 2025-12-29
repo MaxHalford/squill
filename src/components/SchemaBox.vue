@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import BaseBox from './BaseBox.vue'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
@@ -12,6 +12,17 @@ const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 const schemaStore = useSchemaStore()
+
+// Inject canvas zoom for resize handle dragging
+const canvasZoom = ref(1)
+try {
+  const injectedZoom = inject('canvasZoom', ref(1))
+  if (injectedZoom) {
+    canvasZoom.value = injectedZoom.value
+  }
+} catch (e) {
+  // Use default zoom if injection fails
+}
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -40,6 +51,18 @@ const schemas = ref({}) // { tableId: schema }
 const loadingDatasets = ref({})
 const loadingTables = ref({})
 const loadingSchema = ref({})
+
+// Column widths (resizable)
+const MIN_COLUMN_WIDTH = 120
+const MAX_COLUMN_WIDTH = 500
+const col1Width = ref(200)
+const col2Width = ref(200)
+const col3Width = ref(200)
+
+// Resize handle state
+const isDraggingHandle = ref<number | null>(null) // null or handle index (1, 2, 3)
+const dragStartX = ref(0)
+const dragStartWidth = ref(0)
 
 // Column 1: Projects (including DuckDB)
 const projects = computed(() => {
@@ -216,6 +239,49 @@ const insertTableName = (item) => {
     navigator.clipboard.writeText(tableName)
   }
 }
+
+// Handle column resize
+const handleResizeStart = (e: MouseEvent, handleIndex: number) => {
+  e.preventDefault()
+  e.stopPropagation()
+
+  isDraggingHandle.value = handleIndex
+  dragStartX.value = e.clientX
+
+  // Store the starting width of the column being resized
+  if (handleIndex === 1) {
+    dragStartWidth.value = col1Width.value
+  } else if (handleIndex === 2) {
+    dragStartWidth.value = col2Width.value
+  } else if (handleIndex === 3) {
+    dragStartWidth.value = col3Width.value
+  }
+
+  // Add global listeners
+  window.addEventListener('mousemove', handleResizeMove)
+  window.addEventListener('mouseup', handleResizeEnd)
+}
+
+const handleResizeMove = (e: MouseEvent) => {
+  if (isDraggingHandle.value === null) return
+
+  const deltaX = (e.clientX - dragStartX.value) / canvasZoom.value
+  const newWidth = Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, dragStartWidth.value + deltaX))
+
+  if (isDraggingHandle.value === 1) {
+    col1Width.value = newWidth
+  } else if (isDraggingHandle.value === 2) {
+    col2Width.value = newWidth
+  } else if (isDraggingHandle.value === 3) {
+    col3Width.value = newWidth
+  }
+}
+
+const handleResizeEnd = () => {
+  isDraggingHandle.value = null
+  window.removeEventListener('mousemove', handleResizeMove)
+  window.removeEventListener('mouseup', handleResizeEnd)
+}
 </script>
 
 <template>
@@ -238,7 +304,7 @@ const insertTableName = (item) => {
   >
     <div class="schema-browser">
       <!-- Column 1: Projects -->
-      <div class="column">
+      <div class="column" :style="{ width: `${col1Width}px` }">
         <div class="column-header">Projects</div>
         <div class="column-content">
           <div
@@ -252,8 +318,11 @@ const insertTableName = (item) => {
         </div>
       </div>
 
+      <!-- Resize handle 1 -->
+      <div class="resize-handle" @mousedown="handleResizeStart($event, 1)"></div>
+
       <!-- Column 2: Datasets or DuckDB Tables -->
-      <div v-if="selectedProject" class="column">
+      <div v-if="selectedProject" class="column" :style="{ width: `${col2Width}px` }">
         <div class="column-header">
           {{ selectedProject === 'duckdb' ? 'Tables' : 'Datasets' }}
         </div>
@@ -274,8 +343,11 @@ const insertTableName = (item) => {
         </div>
       </div>
 
+      <!-- Resize handle 2 -->
+      <div v-if="selectedProject" class="resize-handle" @mousedown="handleResizeStart($event, 2)"></div>
+
       <!-- Column 3: BigQuery Tables -->
-      <div v-if="selectedDataset && selectedProject !== 'duckdb'" class="column">
+      <div v-if="selectedDataset && selectedProject !== 'duckdb'" class="column" :style="{ width: `${col3Width}px` }">
         <div class="column-header">Tables</div>
         <div class="column-content">
           <div v-if="loadingTables[selectedDataset]" class="loading">Loading...</div>
@@ -290,6 +362,9 @@ const insertTableName = (item) => {
           </div>
         </div>
       </div>
+
+      <!-- Resize handle 3 -->
+      <div v-if="selectedDataset && selectedProject !== 'duckdb'" class="resize-handle" @mousedown="handleResizeStart($event, 3)"></div>
 
       <!-- Column 4: Schema -->
       <div v-if="selectedTable" class="column column-schema">
@@ -316,16 +391,32 @@ const insertTableName = (item) => {
 }
 
 .column {
-  flex: 0 0 200px;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  border-right: var(--border-width-thin) solid var(--border-primary);
   overflow: hidden;
 }
 
 .column-schema {
   flex: 1;
-  border-right: none;
+  min-width: 200px;
+}
+
+.resize-handle {
+  flex: 0 0 var(--border-width-thin);
+  background: var(--border-primary);
+  cursor: col-resize;
+  position: relative;
+}
+
+/* Invisible larger hit area for easier dragging */
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--space-1) * -1);
+  right: calc(var(--space-1) * -1);
 }
 
 .column-header {

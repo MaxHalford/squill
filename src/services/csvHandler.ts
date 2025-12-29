@@ -1,123 +1,70 @@
+import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
+
 export interface CsvLoadResult {
   tableName: string
-  rows: Record<string, any>[]
+  rowCount: number
   columns: string[]
   originalFileName: string
 }
 
-export async function parseCSVFile(
+export async function loadCsvWithDuckDB(
   file: File,
+  db: AsyncDuckDB,
+  conn: AsyncDuckDBConnection,
   existingTables: Record<string, any>
 ): Promise<CsvLoadResult> {
-  // 1. Read file content
-  const content = await readFileAsText(file)
-
-  // 2. Parse CSV
-  const rows = parseCSV(content)
-
-  if (rows.length === 0) {
-    throw new Error('CSV file is empty or has no data rows')
-  }
-
-  // 3. Generate unique table name
+  // 1. Generate unique table name
   const tableName = generateUniqueTableName(file.name, existingTables)
 
-  // 4. Get column names from first row
-  const columns = Object.keys(rows[0])
+  // 2. Read file as ArrayBuffer
+  const buffer = await readFileAsArrayBuffer(file)
 
-  return {
-    tableName,
-    rows,
-    columns,
-    originalFileName: file.name.replace('.csv', '')
+  // 3. Register file with DuckDB
+  const virtualPath = `/${file.name}`
+  await db.registerFileBuffer(virtualPath, new Uint8Array(buffer))
+
+  try {
+    // 4. Create table using DuckDB's read_csv_auto
+    await conn.query(`
+      CREATE TABLE ${tableName} AS
+      SELECT * FROM read_csv_auto('${virtualPath}')
+    `)
+
+    // 5. Query metadata
+    const countResult = await conn.query(`SELECT COUNT(*) as count FROM ${tableName}`)
+    const rowCount = Number(countResult.toArray()[0].count)
+
+    const schemaResult = await conn.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = '${tableName}'
+      ORDER BY ordinal_position
+    `)
+    const columns = schemaResult.toArray().map(row => row.column_name as string)
+
+    return {
+      tableName,
+      rowCount,
+      columns,
+      originalFileName: file.name.replace(/\.csv$/i, '')
+    }
+  } finally {
+    // 6. Clean up registered file
+    try {
+      await db.dropFile(virtualPath)
+    } catch (err) {
+      console.warn('Failed to drop file:', err)
+    }
   }
 }
 
-function readFileAsText(file: File): Promise<string> {
+function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = (e) => resolve(e.target?.result as string)
+    reader.onload = (e) => resolve(e.target?.result as ArrayBuffer)
     reader.onerror = () => reject(new Error('Failed to read file'))
-    reader.readAsText(file)
+    reader.readAsArrayBuffer(file)
   })
-}
-
-function parseCSV(content: string): Record<string, any>[] {
-  const lines = content.split(/\r?\n/).filter(line => line.trim().length > 0)
-
-  if (lines.length < 2) {
-    throw new Error('CSV must have at least a header row and one data row')
-  }
-
-  // Parse header
-  const headers = parseCSVLine(lines[0])
-
-  // Parse data rows
-  const rows: Record<string, any>[] = []
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i])
-
-    // Skip rows that don't have the right number of columns
-    if (values.length !== headers.length) {
-      continue
-    }
-
-    const row: Record<string, any> = {}
-    for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = convertValue(values[j])
-    }
-    rows.push(row)
-  }
-
-  return rows
-}
-
-function parseCSVLine(line: string): string[] {
-  const result: string[] = []
-  let current = ''
-  let inQuotes = false
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i]
-    const nextChar = line[i + 1]
-
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        // Escaped quote
-        current += '"'
-        i++ // Skip next quote
-      } else {
-        // Toggle quote state
-        inQuotes = !inQuotes
-      }
-    } else if (char === ',' && !inQuotes) {
-      // End of field
-      result.push(current.trim())
-      current = ''
-    } else {
-      current += char
-    }
-  }
-
-  // Add last field
-  result.push(current.trim())
-
-  return result
-}
-
-function convertValue(value: string): any {
-  // Remove quotes if present
-  if (value.startsWith('"') && value.endsWith('"')) {
-    value = value.slice(1, -1).replace(/""/g, '"')
-  }
-
-  // Try to convert to number
-  if (value && !isNaN(Number(value))) {
-    return Number(value)
-  }
-
-  // Return as string
-  return value
 }
 
 function generateUniqueTableName(
