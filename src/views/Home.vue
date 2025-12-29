@@ -54,6 +54,10 @@ const selectBox = (id, eventData) => {
 }
 
 const deselectBox = () => {
+  // Blur active element to stop editing
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
   canvasStore.deselectBox()
 }
 
