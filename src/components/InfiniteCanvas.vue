@@ -483,8 +483,8 @@ onUnmounted(() => {
 
 .selection-rectangle {
   position: absolute;
-  border: 2px solid rgba(0, 100, 200, 0.8);
-  background-color: rgba(0, 100, 200, 0.15);
+  border: 2px solid color-mix(in srgb, var(--color-purple) 60%, transparent);
+  background-color: color-mix(in srgb, var(--color-purple) 15%, transparent);
   pointer-events: none;
   z-index: 9999;
 }
@@ -497,14 +497,14 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(147, 51, 234, 0.15);
-  border: 3px dashed rgba(147, 51, 234, 0.6);
+  background: color-mix(in srgb, var(--color-purple) 15%, transparent);
+  border: 3px dashed color-mix(in srgb, var(--color-purple) 60%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 32px;
   font-weight: 600;
-  color: rgba(147, 51, 234, 0.9);
+  color: color-mix(in srgb, var(--color-purple) 90%, transparent);
   pointer-events: none;
   z-index: 10000;
 }

@@ -42,6 +42,7 @@
   --color-error-bg: #ffebee;      /* Error backgrounds */
   --color-success: #10b981;       /* Success states */
   --color-warning: #f59e0b;       /* Warning states */
+  --color-purple: rgb(147, 51, 234);  /* Purple accent for selections and overlays */
 
   /* ===== SPACING ===== */
 
