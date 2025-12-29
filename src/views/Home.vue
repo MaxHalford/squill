@@ -8,9 +8,11 @@ import DependencyArrows from '../components/DependencyArrows.vue'
 import { ref, onMounted, onUnmounted, nextTick, provide } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
+import { useDuckDBStore } from '../stores/duckdb'
 
 const canvasStore = useCanvasStore()
 const settingsStore = useSettingsStore()
+const duckdbStore = useDuckDBStore()
 const canvasRef = ref(null)
 const copiedBoxId = ref(null)
 const copiedBoxIds = ref<number[]>([])
@@ -99,6 +101,79 @@ const handleUpdateName = (id, name) => {
 
 const handleUpdateQuery = (id, query) => {
   canvasStore.updateBoxQuery(id, query)
+}
+
+const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
+  csvFiles: File[],
+  nonCsvFiles: File[],
+  position: { x: number, y: number }
+}) => {
+  // Show error for non-CSV files
+  if (nonCsvFiles.length > 0) {
+    const fileNames = nonCsvFiles.map(f => f.name).join(', ')
+    alert(`Only CSV files are supported. Skipped: ${fileNames}`)
+  }
+
+  // If no CSV files, exit early
+  if (csvFiles.length === 0) {
+    return
+  }
+
+  let currentPosition = { ...position }
+
+  for (const file of csvFiles) {
+    try {
+      // Validate file size (max 50MB)
+      const MAX_SIZE = 50 * 1024 * 1024
+      if (file.size > MAX_SIZE) {
+        alert(`File ${file.name} is too large (max 50MB)`)
+        continue
+      }
+
+      if (file.size === 0) {
+        alert(`File ${file.name} is empty`)
+        continue
+      }
+
+      // Load CSV into DuckDB first (without boxId association yet)
+      const tableName = await duckdbStore.loadCsvFile(file, null)
+
+      if (!tableName) {
+        console.error('Failed to load CSV')
+        continue
+      }
+
+      // Now create SqlBox with correct query and name from the start
+      const boxId = canvasStore.addBox('sql', currentPosition)
+
+      // Set the correct name and query
+      const displayName = file.name.replace('.csv', '') + '_query'
+      canvasStore.updateBoxName(boxId, displayName)
+      canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${tableName}\nLIMIT 100`)
+
+      // Update the table metadata to associate it with this box
+      duckdbStore.updateTableBoxId(tableName, boxId)
+
+      // Select the newly created box
+      canvasStore.selectBox(boxId)
+
+      // Auto-execute the query after a short delay to ensure the box is fully rendered
+      await nextTick()
+      setTimeout(async () => {
+        await executeBoxQuery(boxId)
+      }, 100)
+
+      // Offset position for next file (if multiple dropped)
+      currentPosition = {
+        x: currentPosition.x + 30,
+        y: currentPosition.y + 30
+      }
+
+    } catch (err: any) {
+      console.error(`Failed to load CSV ${file.name}:`, err)
+      alert(`Failed to load ${file.name}: ${err.message}`)
+    }
+  }
 }
 
 const handleKeyDown = (e) => {
@@ -228,6 +303,7 @@ onUnmounted(() => {
       ref="canvasRef"
       :boxes="canvasStore.boxes"
       @canvas-click="deselectBox"
+      @csv-drop="handleCsvDrop"
     >
       <!-- Dependency arrows (rendered behind boxes) -->
       <DependencyArrows :boxes="canvasStore.boxes" />

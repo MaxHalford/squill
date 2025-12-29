@@ -185,11 +185,6 @@ const runMissingDependencies = async (query) => {
 
 // Run query
 const runQuery = async () => {
-  if (!authStore.isAuthenticated) {
-    error.value = 'Please upload service account credentials in the sidebar'
-    return
-  }
-
   isRunning.value = true
   error.value = null
   detectedEngine.value = null
@@ -228,6 +223,12 @@ const runQuery = async () => {
         console.warn('Failed to store DuckDB results:', storageErr)
       }
     } else {
+      // Check for BigQuery credentials
+      if (!authStore.isAuthenticated) {
+        error.value = 'Please upload service account credentials in the sidebar'
+        return
+      }
+
       // Execute in BigQuery
       result = await authStore.runQuery(query, abortController.signal)
 

@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, provide, computed } from 'vue'
 import type { Box } from '../types/canvas'
 import { useCanvasStore } from '../stores/canvas'
 
-const emit = defineEmits(['canvas-click'])
+const emit = defineEmits(['canvas-click', 'csv-drop'])
 const canvasStore = useCanvasStore()
 
 const props = defineProps<{
@@ -24,6 +24,10 @@ const panStart = ref({ x: 0, y: 0 })
 const isRectangleSelecting = ref(false)
 const rectangleStart = ref({ x: 0, y: 0 })
 const rectangleCurrent = ref({ x: 0, y: 0 })
+
+// CSV drag state
+const isDraggingFile = ref(false)
+const dragCounter = ref(0) // Properly track nested drag enter/leave
 
 // Provide zoom to child components
 provide('canvasZoom', zoom)
@@ -355,6 +359,55 @@ const handleMouseUp = (e) => {
   }
 }
 
+// CSV drag and drop handlers
+const handleDragEnter = (e: DragEvent) => {
+  // Only handle file drags
+  if (e.dataTransfer?.types.includes('Files')) {
+    e.preventDefault()
+    dragCounter.value++
+    isDraggingFile.value = true
+  }
+}
+
+const handleDragLeave = (e: DragEvent) => {
+  e.preventDefault()
+  dragCounter.value--
+  if (dragCounter.value === 0) {
+    isDraggingFile.value = false
+  }
+}
+
+const handleDragOver = (e: DragEvent) => {
+  if (e.dataTransfer?.types.includes('Files')) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+const handleDrop = async (e: DragEvent) => {
+  e.preventDefault()
+  isDraggingFile.value = false
+  dragCounter.value = 0
+
+  const files = e.dataTransfer?.files
+  if (!files || files.length === 0) return
+
+  // Separate CSV and non-CSV files
+  const allFiles = Array.from(files)
+  const csvFiles = allFiles.filter(
+    f => f.name.toLowerCase().endsWith('.csv') || f.type === 'text/csv'
+  )
+  const nonCsvFiles = allFiles.filter(
+    f => !f.name.toLowerCase().endsWith('.csv') && f.type !== 'text/csv'
+  )
+
+  // Convert drop position to canvas coordinates
+  const dropPos = screenToCanvas(e.clientX, e.clientY)
+
+  // Emit to parent for orchestration (include both CSV and non-CSV for error handling)
+  emit('csv-drop', { csvFiles, nonCsvFiles, position: dropPos })
+}
+
 onMounted(() => {
   const canvas = canvasRef.value
   canvas.addEventListener('wheel', handleWheel, { passive: false, capture: true })
@@ -376,7 +429,12 @@ onUnmounted(() => {
   <div
     ref="canvasRef"
     class="infinite-canvas"
+    :class="{ 'dragging-file': isDraggingFile }"
     @mousedown="handleMouseDown"
+    @dragenter="handleDragEnter"
+    @dragleave="handleDragLeave"
+    @dragover="handleDragOver"
+    @drop="handleDrop"
   >
     <div
       ref="viewportRef"
@@ -429,5 +487,25 @@ onUnmounted(() => {
   background-color: rgba(0, 100, 200, 0.15);
   pointer-events: none;
   z-index: 9999;
+}
+
+/* Purple haze overlay for file drag */
+.infinite-canvas.dragging-file::before {
+  content: 'Drop CSV file to import';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(147, 51, 234, 0.15);
+  border: 3px dashed rgba(147, 51, 234, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 600;
+  color: rgba(147, 51, 234, 0.9);
+  pointer-events: none;
+  z-index: 10000;
 }
 </style>

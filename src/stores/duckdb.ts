@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
+import { parseCSVFile } from '../services/csvHandler'
 
 interface TableMetadata {
   rowCount: number
@@ -271,6 +272,13 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     return tableInfo?.boxId || null
   }
 
+  // Update the boxId association for a table
+  const updateTableBoxId = (tableName: string, boxId: number | null) => {
+    if (tables.value[tableName]) {
+      tables.value[tableName].boxId = boxId
+    }
+  }
+
   // Rename a table (dependencies will break and need manual update)
   const renameTable = async (oldName: string, newName: string) => {
     const oldTableName = sanitizeTableName(oldName)
@@ -311,6 +319,32 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
+  // Load CSV file into DuckDB
+  const loadCsvFile = async (
+    file: File,
+    boxId: number | null = null
+  ): Promise<string | null> => {
+    if (!isInitialized.value) {
+      await initialize()
+    }
+
+    try {
+      // Parse CSV file
+      const result = await parseCSVFile(file, tables.value)
+
+      // Store results using existing method (handles table creation and data insertion)
+      // This returns the actual sanitized table name that was created
+      const tableName = await storeResults(result.originalFileName, result.rows, boxId)
+
+      console.log(`✅ Loaded CSV as table: ${tableName} (${result.rows.length} rows)`)
+
+      return tableName
+    } catch (err: any) {
+      console.error(`Failed to load CSV ${file.name}:`, err)
+      throw new Error(`Failed to load CSV: ${err.message}`)
+    }
+  }
+
   return {
     isInitialized,
     isInitializing,
@@ -321,12 +355,14 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     getFreshTableNames,
     getTableBoxName,
     getTableBoxId,
+    updateTableBoxId,
     initialize,
     storeResults,
     runQuery,
     tableExists,
     sanitizeTableName,
     loadTablesMetadata,
-    renameTable
+    renameTable,
+    loadCsvFile
   }
 })
