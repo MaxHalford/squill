@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 
 const settingsStore = useSettingsStore()
+const tableRef = ref<HTMLElement | null>(null)
 
 const props = defineProps({
   results: { type: Array, default: null },
@@ -140,6 +141,130 @@ const downloadCSV = () => {
   URL.revokeObjectURL(url)
 }
 
+// Handle copy event for better Google Sheets compatibility
+const handleCopy = (event: ClipboardEvent) => {
+  console.log('Copy event detected')
+
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    console.log('No selection found')
+    return
+  }
+
+  console.log('Selection:', selection.toString().substring(0, 50))
+
+  // Check if selection is within our table
+  if (!tableRef.value) {
+    console.log('No table ref')
+    return
+  }
+
+  const range = selection.getRangeAt(0)
+
+  // Check if selection starts or ends in the table
+  const startNode = range.startContainer
+  const endNode = range.endContainer
+  const startInTable = tableRef.value.contains(startNode)
+  const endInTable = tableRef.value.contains(endNode)
+
+  console.log('startInTable:', startInTable, 'endInTable:', endInTable)
+
+  if (!startInTable && !endInTable) {
+    console.log('Selection not in table')
+    return
+  }
+
+  console.log('Copy event triggered for table')
+
+  const selectedText = selection.toString()
+  console.log('Selected text length:', selectedText.length)
+
+  if (!selectedText) {
+    console.log('No text selected')
+    return
+  }
+
+  // Helper function to check if a node is within the selection
+  const isNodeInSelection = (node: Node): boolean => {
+    const range = selection.getRangeAt(0)
+
+    // Check if the node is fully or partially contained in the selection
+    try {
+      const nodeRange = document.createRange()
+      nodeRange.selectNodeContents(node)
+
+      // Check if ranges intersect
+      const startToStart = range.compareBoundaryPoints(Range.START_TO_START, nodeRange)
+      const startToEnd = range.compareBoundaryPoints(Range.START_TO_END, nodeRange)
+      const endToStart = range.compareBoundaryPoints(Range.END_TO_START, nodeRange)
+      const endToEnd = range.compareBoundaryPoints(Range.END_TO_END, nodeRange)
+
+      // Node is in selection if the ranges overlap
+      return (startToStart <= 0 && startToEnd >= 0) || (endToStart <= 0 && endToEnd >= 0) ||
+             (startToStart >= 0 && endToEnd <= 0)
+    } catch (e) {
+      return false
+    }
+  }
+
+  // Extract only the selected cells
+  const rows: string[][] = []
+  const allRows = tableRef.value.querySelectorAll('tr')
+  console.log('Total rows in table:', allRows.length)
+
+  allRows.forEach((tr) => {
+    const cells: string[] = []
+    let hasSelectedCell = false
+
+    tr.querySelectorAll('th, td').forEach((cell) => {
+      // Check if this specific cell is in the selection
+      if (isNodeInSelection(cell)) {
+        hasSelectedCell = true
+        cells.push(cell.textContent?.trim() || '')
+      } else {
+        cells.push('') // Preserve column structure with empty cells
+      }
+    })
+
+    // Only include rows that have at least one selected cell
+    if (hasSelectedCell) {
+      // Remove leading and trailing empty cells
+      while (cells.length > 0 && cells[0] === '') cells.shift()
+      while (cells.length > 0 && cells[cells.length - 1] === '') cells.pop()
+
+      if (cells.length > 0) {
+        rows.push(cells)
+      }
+    }
+  })
+
+  console.log('Extracted', rows.length, 'rows')
+
+  if (rows.length === 0) {
+    console.log('No rows found, using plain text')
+    // Fallback: don't intercept, let browser handle it
+    return
+  }
+
+  // Format as TSV (tab-separated values) for Google Sheets
+  const tsvContent = rows.map(row => row.join('\t')).join('\n')
+
+  // Write to clipboard
+  event.preventDefault()
+  event.clipboardData?.setData('text/plain', tsvContent)
+  console.log('TSV content set to clipboard (first 100 chars):', tsvContent.substring(0, 100))
+}
+
+// Register copy handler at document level
+onMounted(() => {
+  console.log('ResultsTable: Registering copy handler')
+  document.addEventListener('copy', handleCopy)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('copy', handleCopy)
+})
+
 defineExpose({
   resetPagination
 })
@@ -153,6 +278,7 @@ defineExpose({
     <div class="table-container">
       <table
         v-if="results && results.length > 0"
+        ref="tableRef"
         class="results-table"
       >
         <thead>
@@ -394,6 +520,19 @@ defineExpose({
   white-space: nowrap;
   min-width: 150px;
   vertical-align: baseline;
+  user-select: text;
+  cursor: text;
+}
+
+.results-table th {
+  user-select: text;
+  cursor: text;
+}
+
+/* Visual feedback for text selection */
+.results-table ::selection {
+  background: rgba(147, 51, 234, 0.3);
+  color: inherit;
 }
 
 /* Text columns: left-aligned */

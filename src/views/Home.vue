@@ -212,19 +212,25 @@ const handleKeyDown = (e) => {
 
   // Ctrl+C / Cmd+C to copy selected box(es)
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && !isTyping) {
-    // Check if there are multiple boxes selected
-    if (canvasStore.selectedBoxIds.size > 0) {
-      e.preventDefault()
-      copiedBoxIds.value = Array.from(canvasStore.selectedBoxIds)
-      copiedBoxId.value = null // Clear single copy
-      console.log('Boxes copied:', copiedBoxIds.value)
-    }
-    // Or single box selected
-    else if (canvasStore.selectedBoxId !== null) {
-      e.preventDefault()
-      copiedBoxId.value = canvasStore.selectedBoxId
-      copiedBoxIds.value = [] // Clear multi copy
-      console.log('Box copied:', copiedBoxId.value)
+    // Don't intercept if user has text selected (let browser handle text copy)
+    const selection = window.getSelection()
+    const hasTextSelection = selection && selection.toString().length > 0
+
+    if (!hasTextSelection) {
+      // Check if there are multiple boxes selected
+      if (canvasStore.selectedBoxIds.size > 0) {
+        e.preventDefault()
+        copiedBoxIds.value = Array.from(canvasStore.selectedBoxIds)
+        copiedBoxId.value = null // Clear single copy
+        console.log('Boxes copied:', copiedBoxIds.value)
+      }
+      // Or single box selected
+      else if (canvasStore.selectedBoxId !== null) {
+        e.preventDefault()
+        copiedBoxId.value = canvasStore.selectedBoxId
+        copiedBoxIds.value = [] // Clear multi copy
+        console.log('Box copied:', copiedBoxId.value)
+      }
     }
   }
 
