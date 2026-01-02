@@ -68,7 +68,8 @@ const dragStartWidth = ref(0)
 const projects = computed(() => {
   const items = [{ id: 'duckdb', name: 'DuckDB', type: 'duckdb' }]
 
-  if (canvasStore.activeProjectId) {
+  // Only show BigQuery project if there's an active BigQuery connection
+  if (connectionsStore.activeConnection?.type === 'bigquery' && canvasStore.activeProjectId) {
     items.push({
       id: canvasStore.activeProjectId,
       name: canvasStore.activeProjectId,

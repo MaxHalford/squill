@@ -23,7 +23,12 @@ export const useConnectionsStore = defineStore('connections', () => {
 
   // Computed: check if active connection token is expired
   const isActiveTokenExpired = computed(() => {
-    if (!activeConnection.value || !activeConnection.value.tokenExpiry) return false
+    if (!activeConnection.value) return false
+
+    // Only connections with tokens can expire (e.g., BigQuery)
+    // DuckDB and other local connections don't have tokens
+    if (!activeConnection.value.tokenExpiry) return false
+
     return Date.now() > activeConnection.value.tokenExpiry
   })
 
@@ -176,7 +181,12 @@ export const useConnectionsStore = defineStore('connections', () => {
   // Check if token is expired for a specific connection
   const isConnectionExpired = (connectionId: string): boolean => {
     const connection = connections.value.find(c => c.id === connectionId)
-    if (!connection || !connection.tokenExpiry) return true
+    if (!connection) return false
+
+    // Only connections with tokens can expire (e.g., BigQuery)
+    // DuckDB and other local connections don't have tokens
+    if (!connection.tokenExpiry) return false
+
     return Date.now() > connection.tokenExpiry
   }
 

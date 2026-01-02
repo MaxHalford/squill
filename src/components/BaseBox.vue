@@ -152,6 +152,10 @@ defineExpose({
   cursor: pointer;
   user-select: none;
   display: inline-block;
+  line-height: var(--line-height-tight);
+  height: 14px;
+  padding: 0;
+  margin: 0;
 }
 
 .box-name:hover {

@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
 import { useSettingsStore } from '../stores/settings'
+import { getConnectionTypeName, connectionRequiresAuth } from '../utils/connectionUtils'
 
 const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
@@ -30,16 +31,17 @@ const paginationInputValue = ref(settingsStore.paginationSize)
 
 // Connection display name
 const getConnectionDisplayName = (connection) => {
-  const dbName = connection.type === 'bigquery' ? 'BigQuery' : connection.type
-  return `${dbName} - ${connection.email}`
+  const dbName = getConnectionTypeName(connection.type)
+  const identifier = connection.type === 'duckdb' ? 'local' : connection.email
+  return `${dbName} - ${identifier}`
 }
 
 // Toggle dropdown
 const toggleDropdown = (dropdown) => {
   if (dropdown === 'connection') {
     isConnectionDropdownOpen.value = !isConnectionDropdownOpen.value
-    // Load projects when opening connection dropdown
-    if (isConnectionDropdownOpen.value && connectionsStore.activeConnection && !connectionsStore.isActiveTokenExpired) {
+    // Load projects when opening connection dropdown (BigQuery only)
+    if (isConnectionDropdownOpen.value && connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired) {
       authStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
     }
     return
@@ -61,9 +63,20 @@ const closeDropdown = () => {
 
 // Handle connection selection
 const handleConnectionSelect = async (connectionId) => {
+  const connection = connectionsStore.connections.find(c => c.id === connectionId)
+  if (!connection) return
+
   connectionsStore.setActiveConnection(connectionId)
-  // Auto-load projects for the connection
-  await authStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
+
+  // Only load projects for BigQuery connections
+  if (connection.type === 'bigquery') {
+    await authStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
+  } else {
+    // Clear project for non-BigQuery connections
+    canvasStore.setActiveProjectId(null)
+    authStore.setProjectId(null)
+  }
+
   closeDropdown()
 }
 
@@ -214,7 +227,7 @@ onUnmounted(() => {
       <!-- Unified Connection Dropdown -->
       <div class="menu-item" :class="{ active: isConnectionDropdownOpen }">
         <button class="menu-button" @click.stop="toggleDropdown('connection')">
-          <span v-if="connectionsStore.activeConnection && canvasStore.activeProjectId" class="menu-text">
+          <span v-if="connectionsStore.activeConnection?.type === 'bigquery' && canvasStore.activeProjectId" class="menu-text">
             {{ getConnectionDisplayName(connectionsStore.activeConnection) }} / {{ canvasStore.activeProjectId }}
           </span>
           <span v-else-if="connectionsStore.activeConnection" class="menu-text">
@@ -236,20 +249,20 @@ onUnmounted(() => {
               class="dropdown-item connection-item"
               :class="{
                 selected: connectionsStore.activeConnectionId === connection.id,
-                expired: connectionsStore.isConnectionExpired(connection.id)
+                expired: connectionRequiresAuth(connection.type) && connectionsStore.isConnectionExpired(connection.id)
               }"
               @click="handleConnectionSelect(connection.id)"
             >
               <img v-if="connection.photo" :src="connection.photo" class="connection-avatar" />
               <div class="connection-info">
                 <div class="connection-name">{{ getConnectionDisplayName(connection) }}</div>
-                <div v-if="connectionsStore.isConnectionExpired(connection.id)" class="expired-badge">
+                <div v-if="connectionRequiresAuth(connection.type) && connectionsStore.isConnectionExpired(connection.id)" class="expired-badge">
                   Token Expired
                 </div>
               </div>
               <div class="connection-actions" @click.stop>
                 <button
-                  v-if="connectionsStore.isConnectionExpired(connection.id)"
+                  v-if="connectionRequiresAuth(connection.type) && connectionsStore.isConnectionExpired(connection.id)"
                   class="reconnect-btn"
                   @click="handleReconnect(connection.id, $event)"
                   title="Reconnect"
@@ -267,8 +280,8 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <!-- Projects Section -->
-          <div v-if="connectionsStore.activeConnection && !connectionsStore.isActiveTokenExpired" class="dropdown-section">
+          <!-- Projects Section (BigQuery only) -->
+          <div v-if="connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired" class="dropdown-section">
             <div class="section-label">Projects</div>
             <div v-if="authStore.projects.length === 0" class="dropdown-message">
               No projects found
