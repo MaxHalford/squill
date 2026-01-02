@@ -5,17 +5,25 @@ import SchemaBox from '../components/SchemaBox.vue'
 import StickyNoteBox from '../components/StickyNoteBox.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
-import { ref, onMounted, onUnmounted, nextTick, provide } from 'vue'
+import OnboardingModal from '../components/OnboardingModal.vue'
+import { ref, onMounted, onUnmounted, nextTick, provide, computed } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
+import { useConnectionsStore } from '../stores/connections'
+import { useAuthStore } from '../stores/auth'
 
 const canvasStore = useCanvasStore()
 const settingsStore = useSettingsStore()
 const duckdbStore = useDuckDBStore()
+const connectionsStore = useConnectionsStore()
+const authStore = useAuthStore()
 const canvasRef = ref(null)
 const copiedBoxId = ref(null)
 const copiedBoxIds = ref<number[]>([])
+const csvFileInputRef = ref<HTMLInputElement | null>(null)
+const isStoresReady = ref(false)
+const onboardingDismissed = ref(false)
 
 // Registry for box query executors
 const boxExecutors = ref(new Map())
@@ -44,6 +52,82 @@ const executeBoxQuery = async (boxId) => {
 provide('registerBoxExecutor', registerBoxExecutor)
 provide('unregisterBoxExecutor', unregisterBoxExecutor)
 provide('executeBoxQuery', executeBoxQuery)
+
+// Computed: show onboarding when there are no connections and not dismissed
+const showOnboarding = computed(() => {
+  return isStoresReady.value && connectionsStore.connections.length === 0 && !onboardingDismissed.value
+})
+
+// Handle BigQuery selection from onboarding
+const handleSelectBigquery = async () => {
+  try {
+    await authStore.signInWithGoogle()
+    // Modal will auto-close when connection is added
+  } catch (error) {
+    console.error('BigQuery connection failed:', error)
+    alert('Failed to connect to BigQuery. Please try again.')
+  }
+}
+
+// Handle DuckDB selection from onboarding
+const handleSelectDuckdb = async () => {
+  try {
+    // Initialize DuckDB
+    await duckdbStore.initialize()
+    // Create DuckDB connection entry so modal won't reappear
+    connectionsStore.addDuckDBConnection()
+  } catch (error) {
+    console.error('DuckDB initialization failed:', error)
+    alert('Failed to initialize DuckDB. Please try again.')
+  }
+}
+
+// Handle CSV selection from onboarding - open file picker
+const handleSelectCsv = () => {
+  csvFileInputRef.value?.click()
+}
+
+// Handle CSV file input from file picker
+const handleCsvFileInput = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const files = input.files
+  if (!files || files.length === 0) return
+
+  const csvFiles = Array.from(files).filter(
+    f => f.name.toLowerCase().endsWith('.csv') || f.type === 'text/csv'
+  )
+
+  if (csvFiles.length === 0) {
+    alert('Please select CSV files only')
+    return
+  }
+
+  // Initialize DuckDB if needed (CSV files use DuckDB)
+  await duckdbStore.initialize()
+
+  // Get viewport center for positioning
+  const center = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
+
+  // Process CSV files using existing handler
+  await handleCsvDrop({
+    csvFiles,
+    nonCsvFiles: [],
+    position: center
+  })
+
+  // Create DuckDB connection entry so modal closes
+  connectionsStore.addDuckDBConnection()
+
+  // Clear input for next use
+  input.value = ''
+}
+
+// Handle modal close (skip)
+const handleCloseOnboarding = () => {
+  // User chose to skip - they can use CSV drag-drop later
+  onboardingDismissed.value = true
+  console.log('Onboarding skipped')
+}
 
 const selectBox = (id, eventData) => {
   canvasStore.selectBox(id)
@@ -286,6 +370,14 @@ const handleKeyDown = (e) => {
 onMounted(async () => {
   // Load saved canvas state
   canvasStore.loadState()
+
+  // Ensure connections store is loaded
+  connectionsStore.loadState()
+
+  // Mark stores as ready (prevents flash)
+  await nextTick()
+  isStoresReady.value = true
+
   window.addEventListener('keydown', handleKeyDown)
 
   // Set canvas ref in store so it can be used when adding boxes
@@ -308,6 +400,25 @@ onUnmounted(() => {
 <template>
   <div class="page">
     <MenuBar />
+
+    <!-- Onboarding Modal -->
+    <OnboardingModal
+      :show="showOnboarding"
+      @close="handleCloseOnboarding"
+      @select-bigquery="handleSelectBigquery"
+      @select-duckdb="handleSelectDuckdb"
+      @select-csv="handleSelectCsv"
+    />
+
+    <!-- Hidden file input for CSV picker -->
+    <input
+      ref="csvFileInputRef"
+      type="file"
+      accept=".csv,text/csv"
+      multiple
+      style="display: none"
+      @change="handleCsvFileInput"
+    />
 
     <InfiniteCanvas
       ref="canvasRef"

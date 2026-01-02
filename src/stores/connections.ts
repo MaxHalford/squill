@@ -105,6 +105,31 @@ export const useConnectionsStore = defineStore('connections', () => {
     return connectionId
   }
 
+  // Add DuckDB connection (no OAuth required)
+  const addDuckDBConnection = (): string => {
+    const connectionId = 'duckdb-local'
+
+    // Check if already exists
+    const existing = connections.value.find(c => c.id === connectionId)
+    if (existing) {
+      activeConnectionId.value = connectionId
+      saveState()
+      return connectionId
+    }
+
+    const connection: Connection = {
+      id: connectionId,
+      type: 'duckdb',
+      name: 'DuckDB Local',
+      createdAt: Date.now()
+    }
+
+    connections.value.push(connection)
+    activeConnectionId.value = connectionId
+    saveState()
+    return connectionId
+  }
+
   // Set active connection
   const setActiveConnection = (connectionId: string) => {
     const connection = connections.value.find(c => c.id === connectionId)
@@ -163,6 +188,7 @@ export const useConnectionsStore = defineStore('connections', () => {
     loadState,
     saveState,
     addConnection,
+    addDuckDBConnection,
     setActiveConnection,
     removeConnection,
     reconnectConnection,
