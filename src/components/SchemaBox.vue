@@ -35,7 +35,7 @@ const props = defineProps({
   initialName: { type: String, default: 'Schema Browser' }
 })
 
-const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name'])
+const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'query-table'])
 
 // Column navigation state
 const selectedProject = ref(null)
@@ -241,6 +241,26 @@ const insertTableName = (item) => {
   }
 }
 
+// Query table - creates a new query box with SELECT * query
+const queryTable = (item) => {
+  // Determine engine and build full table name
+  const engine = selectedProject.value === 'duckdb' ? 'duckdb' : 'bigquery'
+
+  let fullTableName = ''
+  if (selectedProject.value === 'duckdb') {
+    fullTableName = item.name
+  } else {
+    // BigQuery: project.dataset.table
+    fullTableName = `${selectedProject.value}.${selectedDataset.value}.${item.name}`
+  }
+
+  // Emit event to parent with table info
+  emit('query-table', {
+    tableName: fullTableName,
+    engine: engine
+  })
+}
+
 // Handle column resize
 const handleResizeStart = (e: MouseEvent, handleIndex: number) => {
   e.preventDefault()
@@ -339,6 +359,14 @@ const handleResizeEnd = () => {
             @dblclick="selectedProject === 'duckdb' ? insertTableName(item) : null"
           >
             <span class="item-name">{{ item.name }}</span>
+            <button
+              v-if="selectedProject === 'duckdb' && selectedTable === item.id"
+              class="query-button"
+              @click.stop="queryTable(item)"
+              title="Query this table"
+            >
+              ▶
+            </button>
             <span v-if="item.rowCount" class="item-meta">{{ item.rowCount }} rows</span>
           </div>
         </div>
@@ -360,6 +388,14 @@ const handleResizeEnd = () => {
             @dblclick="insertTableName(table)"
           >
             <span class="item-name">{{ table.name }}</span>
+            <button
+              v-if="selectedTable === table.id"
+              class="query-button"
+              @click.stop="queryTable(table)"
+              title="Query this table"
+            >
+              ▶
+            </button>
           </div>
         </div>
       </div>
@@ -499,5 +535,23 @@ const handleResizeEnd = () => {
   text-align: center;
   color: var(--text-secondary);
   font-size: var(--font-size-body-sm);
+}
+
+.query-button {
+  padding: 2px 6px;
+  background: var(--surface-secondary);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--text-primary);
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.query-button:hover {
+  opacity: 1;
+  background: var(--surface-tertiary);
 }
 </style>

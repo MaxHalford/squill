@@ -12,6 +12,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useConnectionsStore } from '../stores/connections'
 import { useAuthStore } from '../stores/auth'
+import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
 
 const canvasStore = useCanvasStore()
 const settingsStore = useSettingsStore()
@@ -264,6 +265,52 @@ const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
   }
 }
 
+const handleQueryTableFromSchema = async (data: {
+  tableName: string,
+  engine: 'bigquery' | 'duckdb'
+}) => {
+  try {
+    // Find schema box to position new box relative to it
+    const schemaBox = canvasStore.boxes.find(box => box.type === 'schema')
+
+    let position = null
+    if (schemaBox) {
+      // Position to the right and slightly below schema box
+      position = {
+        x: schemaBox.x + schemaBox.width + 30,
+        y: schemaBox.y + 50
+      }
+    } else {
+      // Fallback to viewport center if no schema box found
+      position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
+    }
+
+    // Generate query and box name
+    const query = generateSelectQuery(data.tableName, data.engine)
+    const boxName = generateQueryBoxName(data.tableName)
+
+    // Create box
+    const boxId = canvasStore.addBox('sql', position)
+
+    // Configure box
+    canvasStore.updateBoxName(boxId, boxName)
+    canvasStore.updateBoxQuery(boxId, query)
+
+    // Select the newly created box
+    canvasStore.selectBox(boxId)
+
+    // Auto-execute the query after rendering (same pattern as CSV)
+    await nextTick()
+    setTimeout(async () => {
+      await executeBoxQuery(boxId)
+    }, 100)
+
+  } catch (error) {
+    console.error('Failed to create query box:', error)
+    alert(`Failed to query table: ${error.message}`)
+  }
+}
+
 const handleKeyDown = (e) => {
   // Don't handle shortcuts if user is typing in an input/textarea or CodeMirror editor
   const activeElement = document.activeElement
@@ -470,6 +517,7 @@ onUnmounted(() => {
           @update:multi-position="handleUpdateMultiPosition"
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
+          @query-table="handleQueryTableFromSchema"
         />
 
         <!-- Sticky Note Box -->

@@ -229,9 +229,11 @@ onUnmounted(() => {
         <button class="menu-button" @click.stop="toggleDropdown('connection')">
           <span v-if="connectionsStore.activeConnection?.type === 'bigquery' && canvasStore.activeProjectId" class="menu-text">
             {{ getConnectionDisplayName(connectionsStore.activeConnection) }} / {{ canvasStore.activeProjectId }}
+            <span v-if="connectionsStore.isActiveTokenExpired" class="token-expired-indicator"> (Expired)</span>
           </span>
           <span v-else-if="connectionsStore.activeConnection" class="menu-text">
             {{ getConnectionDisplayName(connectionsStore.activeConnection) }}
+            <span v-if="connectionsStore.isActiveTokenExpired" class="token-expired-indicator"> (Expired)</span>
           </span>
           <span v-else class="menu-text placeholder-text">
             No connection
@@ -534,6 +536,11 @@ onUnmounted(() => {
 .menu-text {
   font-weight: 500;
   white-space: nowrap;
+}
+
+.token-expired-indicator {
+  color: var(--color-error);
+  font-weight: 600;
 }
 
 .menu-caret {
