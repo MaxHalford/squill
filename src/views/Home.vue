@@ -160,7 +160,11 @@ const handleUpdateMultiPosition = (data) => {
 }
 
 const handleDelete = (id) => {
-  canvasStore.removeBox(id)
+  const previousBoxId = canvasStore.removeBox(id)
+  // If there was a previous box, select it and pan to it
+  if (previousBoxId !== null) {
+    selectBox(previousBoxId, { shouldPan: true })
+  }
 }
 
 const handleMaximize = (id) => {
@@ -365,7 +369,7 @@ const handleKeyDown = (e) => {
     // Or single box selected
     else if (canvasStore.selectedBoxId !== null) {
       e.preventDefault()
-      canvasStore.removeBox(canvasStore.selectedBoxId)
+      handleDelete(canvasStore.selectedBoxId)
     }
   }
 

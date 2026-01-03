@@ -13,6 +13,7 @@ interface UndoRedoState {
 export const useCanvasStore = defineStore('canvas', () => {
   const boxes = ref<Box[]>([])
   const selectedBoxId = ref<number | null>(null)
+  const previousSelectedBoxId = ref<number | null>(null)
   const nextBoxId = ref(1)
 
   // Active project ID (database type determined by active connection)
@@ -203,19 +204,34 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Remove a SQL box
-  const removeBox = (id: number) => {
+  const removeBox = (id: number): number | null => {
     const index = boxes.value.findIndex(box => box.id === id)
     if (index !== -1) {
       saveToUndoStack()
       boxes.value.splice(index, 1)
+
+      // If we're deleting the selected box, return the previous box ID for panning
       if (selectedBoxId.value === id) {
-        selectedBoxId.value = null
+        if (previousSelectedBoxId.value !== null && boxes.value.find(b => b.id === previousSelectedBoxId.value)) {
+          const prevId = previousSelectedBoxId.value
+          selectedBoxId.value = null // Clear selection temporarily (Home.vue will select with pan)
+          previousSelectedBoxId.value = null
+          return prevId
+        } else {
+          selectedBoxId.value = null
+        }
       }
     }
+    return null
   }
 
   // Select a box and bring to front
   const selectBox = (id: number) => {
+    // Save current selection as previous before changing
+    if (selectedBoxId.value !== null && selectedBoxId.value !== id) {
+      previousSelectedBoxId.value = selectedBoxId.value
+    }
+
     selectedBoxId.value = id
 
     // Bring selected box to front
@@ -409,6 +425,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   return {
     boxes,
     selectedBoxId,
+    previousSelectedBoxId,
     selectedBoxIds,
     rectangleSelection,
     activeProjectId,
