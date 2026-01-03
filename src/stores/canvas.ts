@@ -166,8 +166,12 @@ export const useCanvasStore = defineStore('canvas', () => {
     const boxId = nextBoxId.value++
 
     // Size depends on type
-    const width = type === 'note' ? 400 : (type === 'schema' ? 800 : 600)
-    const height = type === 'note' ? 300 : (type === 'schema' ? 600 : 500)
+    const width = type === 'note' ? 400 :
+                  type === 'detail' ? 400 :
+                  type === 'schema' ? 800 : 600
+    const height = type === 'note' ? 300 :
+                   type === 'detail' ? 500 :
+                   type === 'schema' ? 600 : 500
 
     const newBox: Box = {
       id: boxId,
@@ -178,7 +182,10 @@ export const useCanvasStore = defineStore('canvas', () => {
       height: height,
       zIndex: getMaxZIndex() + 1,
       query: type === 'sql' ? 'SELECT *\nFROM bigquery-public-data.samples.shakespeare\nLIMIT 50' : '',
-      name: type === 'sql' ? `query_${boxId}` : (type === 'note' ? `note_${boxId}` : `schema_${boxId}`),
+      name: type === 'sql' ? `query_${boxId}` :
+            type === 'note' ? `note_${boxId}` :
+            type === 'detail' ? `row_detail_${boxId}` :
+            `schema_${boxId}`,
       dependencies: []
     }
     boxes.value.push(newBox)
@@ -336,7 +343,10 @@ export const useCanvasStore = defineStore('canvas', () => {
     const boxId = nextBoxId.value++
 
     // Generate incremented name based on type
-    const newName = originalBox.type === 'sql' ? `query_${boxId}` : (originalBox.type === 'note' ? `note_${boxId}` : `schema_${boxId}`)
+    const newName = originalBox.type === 'sql' ? `query_${boxId}` :
+                    originalBox.type === 'note' ? `note_${boxId}` :
+                    originalBox.type === 'detail' ? `row_detail_${boxId}` :
+                    `schema_${boxId}`
 
     const newBox: Box = {
       id: boxId,
@@ -372,7 +382,10 @@ export const useCanvasStore = defineStore('canvas', () => {
       const boxId = nextBoxId.value++
 
       // Generate incremented name based on type
-      const newName = originalBox.type === 'sql' ? `query_${boxId}` : (originalBox.type === 'note' ? `note_${boxId}` : `schema_${boxId}`)
+      const newName = originalBox.type === 'sql' ? `query_${boxId}` :
+                      originalBox.type === 'note' ? `note_${boxId}` :
+                      originalBox.type === 'detail' ? `row_detail_${boxId}` :
+                      `schema_${boxId}`
 
       const newBox: Box = {
         id: boxId,

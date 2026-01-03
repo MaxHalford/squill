@@ -35,7 +35,7 @@ const props = defineProps({
   initialName: { type: String, default: 'SQL Query' }
 })
 
-const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query'])
+const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query', 'show-row-detail'])
 
 // Reference to BaseBox to access boxName
 const baseBoxRef = ref(null)
@@ -416,6 +416,7 @@ onUnmounted(() => {
       :stats="queryStats"
       :error="error"
       :box-name="baseBoxRef?.boxName || initialName"
+      @show-row-detail="emit('show-row-detail', $event)"
     />
   </BaseBox>
 </template>

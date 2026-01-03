@@ -68,12 +68,14 @@ const dragStartWidth = ref(0)
 const projects = computed(() => {
   const items = [{ id: 'duckdb', name: 'DuckDB', type: 'duckdb' }]
 
-  // Only show BigQuery project if there's an active BigQuery connection
-  if (connectionsStore.activeConnection?.type === 'bigquery' && canvasStore.activeProjectId) {
-    items.push({
-      id: canvasStore.activeProjectId,
-      name: canvasStore.activeProjectId,
-      type: 'bigquery'
+  // Show all BigQuery projects if there's an active BigQuery connection with valid token
+  if (connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired) {
+    authStore.projects.forEach(project => {
+      items.push({
+        id: project.projectId,
+        name: project.name || project.projectId,
+        type: 'bigquery'
+      })
     })
   }
 
@@ -156,7 +158,7 @@ const loadDatasets = async (projectId) => {
 
   loadingDatasets.value[projectId] = true
   try {
-    const fetchedDatasets = await authStore.fetchDatasets()
+    const fetchedDatasets = await authStore.fetchDatasets(projectId)
     datasets.value[projectId] = fetchedDatasets.map(ds => ({
       id: ds.datasetReference.datasetId,
       name: ds.datasetReference.datasetId,
@@ -175,7 +177,7 @@ const loadTables = async (datasetId) => {
 
   loadingTables.value[datasetId] = true
   try {
-    const fetchedTables = await authStore.fetchTables(datasetId)
+    const fetchedTables = await authStore.fetchTables(datasetId, selectedProject.value)
     tables.value[datasetId] = fetchedTables.map(t => ({
       id: t.tableReference.tableId,
       name: t.tableReference.tableId,
@@ -205,7 +207,7 @@ const loadSchema = async (tableId, key) => {
 
     loadingSchema.value[key] = true
     try {
-      const schema = await authStore.fetchTableSchema(selectedDataset.value, tableId)
+      const schema = await authStore.fetchTableSchema(selectedDataset.value, tableId, selectedProject.value)
       schemas.value[key] = schema
 
       // Also populate the schema store for autocompletion

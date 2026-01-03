@@ -12,6 +12,21 @@ const props = defineProps({
   boxName: { type: String, default: 'results' }
 })
 
+const emit = defineEmits(['show-row-detail'])
+
+// Track hovered row for showing detail icon
+const hoveredRowIndex = ref<number | null>(null)
+
+// Handle show detail button click
+const handleShowDetail = (row: any, index: number) => {
+  const globalRowIndex = (currentPage.value - 1) * pageSize.value + index
+  emit('show-row-detail', {
+    rowData: row,
+    rowIndex: index,
+    globalRowIndex: globalRowIndex
+  })
+}
+
 // Format bytes to human-readable format
 const formatBytes = (bytes) => {
   if (!bytes || bytes === '0') return '0 B'
@@ -229,6 +244,7 @@ defineExpose({
       >
         <thead>
           <tr>
+            <th class="row-number-header">#</th>
             <th
               v-for="column in columns"
               :key="column"
@@ -239,7 +255,25 @@ defineExpose({
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, index) in paginatedData" :key="`row-${currentPage}-${index}`">
+          <tr
+            v-for="(row, index) in paginatedData"
+            :key="`row-${currentPage}-${index}`"
+            @mouseenter="hoveredRowIndex = index"
+            @mouseleave="hoveredRowIndex = null"
+          >
+            <td class="row-number-cell">
+              <button
+                v-if="hoveredRowIndex === index"
+                class="detail-icon"
+                @click.stop="handleShowDetail(row, index)"
+                title="View row details"
+              >
+                👁
+              </button>
+              <span v-else class="row-number">
+                {{ (currentPage - 1) * pageSize + index + 1 }}
+              </span>
+            </td>
             <td
               v-for="column in columns"
               :key="column"
@@ -538,5 +572,52 @@ defineExpose({
 .engine-duckdb {
   background: #ffc107;
   color: black;
+}
+
+.row-number-header {
+  width: 60px;
+  text-align: right;
+  padding-right: var(--space-3);
+  user-select: none;
+}
+
+.row-number-cell {
+  width: 60px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  user-select: none;
+  position: relative;
+  padding-right: var(--space-3);
+}
+
+.row-number {
+  display: inline-block;
+  font-size: var(--font-size-caption);
+}
+
+.detail-icon {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 14px;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  line-height: 1;
+}
+
+.detail-icon:hover {
+  opacity: 1;
+  background: var(--surface-secondary);
+  border-radius: var(--border-radius-sm);
+}
+
+.detail-icon:focus {
+  outline: none;
 }
 </style>

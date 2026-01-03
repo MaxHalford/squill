@@ -3,6 +3,7 @@ import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import SqlBox from '../components/SqlBox.vue'
 import SchemaBox from '../components/SchemaBox.vue'
 import StickyNoteBox from '../components/StickyNoteBox.vue'
+import RowDetailBox from '../components/RowDetailBox.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
 import OnboardingModal from '../components/OnboardingModal.vue'
@@ -296,8 +297,8 @@ const handleQueryTableFromSchema = async (data: {
     canvasStore.updateBoxName(boxId, boxName)
     canvasStore.updateBoxQuery(boxId, query)
 
-    // Select the newly created box
-    canvasStore.selectBox(boxId)
+    // Select the newly created box and pan to it
+    selectBox(boxId, { shouldPan: true })
 
     // Auto-execute the query after rendering (same pattern as CSV)
     await nextTick()
@@ -308,6 +309,42 @@ const handleQueryTableFromSchema = async (data: {
   } catch (error) {
     console.error('Failed to create query box:', error)
     alert(`Failed to query table: ${error.message}`)
+  }
+}
+
+const handleShowRowDetail = (data: {
+  rowData: Record<string, any>,
+  rowIndex: number,
+  globalRowIndex: number
+}) => {
+  try {
+    // Find SQL box to position detail box nearby
+    const sqlBox = canvasStore.boxes.find(box => box.type === 'sql')
+
+    let position = null
+    if (sqlBox) {
+      position = {
+        x: sqlBox.x + sqlBox.width + 30,
+        y: sqlBox.y
+      }
+    } else {
+      position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
+    }
+
+    // Create detail box
+    const boxId = canvasStore.addBox('detail', position)
+
+    // Set name and data
+    const boxName = `Row ${data.globalRowIndex + 1} Detail`
+    canvasStore.updateBoxName(boxId, boxName)
+    canvasStore.updateBoxQuery(boxId, JSON.stringify(data.rowData))
+
+    // Select and pan to box
+    selectBox(boxId, { shouldPan: true })
+
+  } catch (error) {
+    console.error('Failed to create detail box:', error)
+    alert(`Failed to show row details: ${error.message}`)
   }
 }
 
@@ -497,6 +534,7 @@ onUnmounted(() => {
           @update:multi-position="handleUpdateMultiPosition"
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
+          @show-row-detail="handleShowRowDetail"
         />
 
         <!-- Schema Browser Box -->
@@ -537,6 +575,26 @@ onUnmounted(() => {
           @update:size="handleUpdateSize(box.id, $event)"
           @update:name="handleUpdateName(box.id, $event)"
           @update:content="handleUpdateQuery(box.id, $event)"
+          @delete="handleDelete(box.id)"
+          @maximize="handleMaximize(box.id)"
+        />
+
+        <!-- Row Detail Box -->
+        <RowDetailBox
+          v-else-if="box.type === 'detail'"
+          :box-id="box.id"
+          :initial-x="box.x"
+          :initial-y="box.y"
+          :initial-width="box.width"
+          :initial-height="box.height"
+          :initial-z-index="box.zIndex"
+          :initial-row-data="box.query"
+          :initial-name="box.name"
+          :is-selected="canvasStore.isBoxSelected(box.id)"
+          @select="selectBox(box.id, $event)"
+          @update:position="handleUpdatePosition(box.id, $event)"
+          @update:size="handleUpdateSize(box.id, $event)"
+          @update:name="handleUpdateName(box.id, $event)"
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
         />
