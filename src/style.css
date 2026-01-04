@@ -34,6 +34,7 @@
   /* Border Colors */
   --border-primary: black;        /* Primary borders, dividers */
   --border-secondary: #d1d5db;    /* Subtle borders */
+  --border-tertiary: #eee;        /* Very subtle borders, table row separators */
   --border-error: #c62828;        /* Error borders */
 
   /* Semantic Colors */
@@ -98,7 +99,7 @@
   --table-cell-padding: var(--space-2) var(--space-3);
   --table-border-width: var(--border-width-thin);
   --table-font-size: var(--font-size-body-sm);
-  --table-row-hover-bg: var(--surface-tertiary);
+  --table-row-hover-bg: #f8f9fa;
   --table-row-stripe-bg: #f5f5f5;
 
   /* Menu/Sidebar */

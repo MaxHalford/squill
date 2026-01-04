@@ -47,6 +47,19 @@ export function isBigQueryQuery(query: string, duckDBTables: string[] = []): boo
 
   if (referencesLocalTable) return false
 
+  // DuckDB-specific functions and patterns
+  const duckdbPatterns = [
+    'range(', 'generate_series(', 'unnest(', 'list_', 'struct_',
+    'read_csv', 'read_parquet', 'read_json', '::',
+    'duckdb_', 'pragma_', 'information_schema'
+  ]
+
+  const hasDuckDBPattern = duckdbPatterns.some(pattern =>
+    normalized.includes(pattern)
+  )
+
+  if (hasDuckDBPattern) return false
+
   // BigQuery-specific functions (some common ones)
   const bqFunctions = [
     'safe_cast', 'safe_divide', 'generate_uuid',

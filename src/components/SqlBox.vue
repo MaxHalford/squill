@@ -425,7 +425,6 @@ onUnmounted(() => {
 /* Splitter */
 .splitter {
   height: var(--border-width-thin);
-  background: var(--border-primary);
   cursor: ns-resize;
   flex-shrink: 0;
   position: relative;

@@ -64,7 +64,11 @@ onUnmounted(() => {
               aria-label="Connect to BigQuery cloud data warehouse"
               @click="emit('selectBigquery')"
             >
-              <div class="option-icon-text">☁️</div>
+              <img
+                src="https://cdn.worldvectorlogo.com/logos/google-bigquery-logo-1.svg"
+                alt="BigQuery"
+                class="option-icon"
+              />
               <h2>BigQuery</h2>
               <p>Connect to Google BigQuery for cloud data warehouse queries</p>
               <span class="option-badge">Requires OAuth</span>
@@ -76,7 +80,11 @@ onUnmounted(() => {
               aria-label="Use DuckDB local database"
               @click="emit('selectDuckdb')"
             >
-              <div class="option-icon-text">🦆</div>
+              <img
+                src="https://images.seeklogo.com/logo-png/55/1/duckdb-icon-logo-png_seeklogo-554697.png"
+                alt="DuckDB"
+                class="option-icon"
+              />
               <h2>DuckDB</h2>
               <p>Local database that runs in your browser with CSV support</p>
               <span class="option-badge">No setup needed</span>
@@ -88,11 +96,47 @@ onUnmounted(() => {
               aria-label="Import CSV files"
               @click="emit('selectCsv')"
             >
-              <div class="option-icon-text">📄</div>
+              <img
+                src="https://www.iconpacks.net/icons/2/free-csv-icon-1471-thumb.png"
+                alt="CSV"
+                class="option-icon"
+              />
               <h2>Import CSV</h2>
               <p>Drag & drop CSV files or click to upload directly</p>
               <span class="option-badge">Quick start</span>
             </button>
+
+            <!-- Snowflake Card (Coming Soon) -->
+            <div
+              class="option-card option-card-disabled"
+              aria-label="Snowflake - Coming soon"
+            >
+              <img
+                src="https://avatars.githubusercontent.com/u/6453780?s=280&v=4"
+                alt="Snowflake"
+                class="option-icon option-icon-disabled"
+              />
+
+
+              <h2>Snowflake</h2>
+              <p>Cloud data platform for analytics and data warehousing</p>
+              <span class="option-badge option-badge-soon">Coming Soon</span>
+            </div>
+
+            <!-- PostgreSQL Card (Coming Soon) -->
+            <div
+              class="option-card option-card-disabled"
+              aria-label="PostgreSQL - Coming soon"
+            >
+              <img
+                src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Postgresql_elephant.svg/1163px-Postgresql_elephant.svg.png"
+                alt="PostgreSQL"
+                class="option-icon option-icon-disabled"
+              />
+              <h2>PostgreSQL</h2>
+              <p>Connect to PostgreSQL databases for powerful relational queries</p>
+              <span class="option-badge option-badge-soon">Coming Soon</span>
+            </div>
           </div>
 
           <!-- Footer -->
@@ -192,10 +236,33 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 
-.option-icon-text {
-  font-size: 48px;
+.option-icon {
+  width: 48px;
+  height: 48px;
   margin-bottom: var(--space-2);
-  line-height: 1;
+  object-fit: contain;
+}
+
+.option-icon-disabled {
+  filter: grayscale(100%);
+  opacity: 0.5;
+}
+
+.option-card-disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.option-card-disabled:hover {
+  background: var(--surface-primary);
+  box-shadow: none;
+  transform: none;
+  border-color: var(--border-primary);
+}
+
+.option-badge-soon {
+  color: var(--text-secondary);
+  background: var(--surface-secondary);
 }
 
 .option-card h2 {

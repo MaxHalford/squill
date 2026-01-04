@@ -262,24 +262,24 @@ defineExpose({
             @mouseleave="hoveredRowIndex = null"
           >
             <td class="row-number-cell">
+              <span class="row-number" :class="{ hidden: hoveredRowIndex === index }">
+                {{ (currentPage - 1) * pageSize + index + 1 }}
+              </span>
               <button
-                v-if="hoveredRowIndex === index"
                 class="detail-icon"
+                :class="{ visible: hoveredRowIndex === index }"
                 @click.stop="handleShowDetail(row, index)"
                 title="View row details"
               >
                 👁
               </button>
-              <span v-else class="row-number">
-                {{ (currentPage - 1) * pageSize + index + 1 }}
-              </span>
             </td>
             <td
               v-for="column in columns"
               :key="column"
-              :class="getColumnClass(column)"
+              :class="[getColumnClass(column), { 'null-value': row[column] === null }]"
             >
-              {{ row[column] }}
+              {{ row[column] === null ? 'null' : row[column] }}
             </td>
           </tr>
         </tbody>
@@ -346,6 +346,7 @@ defineExpose({
   flex-direction: column;
   overflow: hidden;
   background: var(--surface-primary);
+  border-top: var(--border-width-thin) solid var(--border-primary);
 }
 
 .error-banner {
@@ -486,13 +487,21 @@ defineExpose({
 
 .results-table th {
   padding: var(--table-cell-padding);
-  font-weight: bold;
+  font-weight: 500;
   white-space: nowrap;
   background: var(--surface-primary);
+  position: sticky;
+  top: 0;
   z-index: 10;
-  border-bottom: var(--table-border-width) solid var(--border-primary);
+  border-bottom: 1px solid var(--border-secondary);
   min-width: 150px;
   vertical-align: bottom;
+  color: var(--text-primary);
+}
+
+/* Vertical separators between header columns */
+.results-table th:not(:last-child) {
+  border-right: 1px solid var(--border-secondary);
 }
 
 .results-table td {
@@ -502,6 +511,7 @@ defineExpose({
   vertical-align: baseline;
   user-select: text;
   cursor: text;
+  border-bottom: 1px solid var(--border-tertiary);
 }
 
 .results-table th {
@@ -536,16 +546,18 @@ defineExpose({
   text-align: left;
 }
 
-.results-table tbody tr:nth-child(even) {
-  background: var(--table-row-stripe-bg);
-}
-
-.results-table tbody tr:nth-child(odd) {
+.results-table tbody tr {
   background: var(--surface-primary);
 }
 
 .results-table tbody tr:hover {
   background: var(--table-row-hover-bg);
+}
+
+/* Null values displayed in muted gray */
+.null-value {
+  color: var(--text-tertiary);
+  font-style: italic;
 }
 
 .empty-state {
@@ -575,43 +587,56 @@ defineExpose({
 }
 
 .row-number-header {
-  width: 60px;
-  text-align: right;
-  padding-right: var(--space-3);
+  width: 1px;
+  white-space: nowrap;
+  text-align: center;
+  padding: var(--space-2);
   user-select: none;
+  min-width: 0 !important;
 }
 
 .row-number-cell {
-  width: 60px;
-  text-align: right;
+  width: 1px;
+  white-space: nowrap;
+  text-align: center;
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
   user-select: none;
   position: relative;
-  padding-right: var(--space-3);
+  padding: var(--space-2);
+  min-width: 0 !important;
 }
 
 .row-number {
-  display: inline-block;
   font-size: var(--font-size-caption);
+}
+
+.row-number.hidden {
+  opacity: 0;
 }
 
 .detail-icon {
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 0;
   font-size: 14px;
-  opacity: 0.7;
+  opacity: 0;
   transition: opacity 0.15s ease;
   position: absolute;
-  right: 4px;
+  left: 50%;
   top: 50%;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   line-height: 1;
+  pointer-events: none;
 }
 
-.detail-icon:hover {
+.detail-icon.visible {
+  opacity: 0.7;
+  pointer-events: auto;
+}
+
+.detail-icon.visible:hover {
   opacity: 1;
   background: var(--surface-secondary);
   border-radius: var(--border-radius-sm);
