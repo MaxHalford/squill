@@ -2,253 +2,190 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 
+interface QueryStats {
+  engine?: 'duckdb' | 'bigquery'
+  executionTimeMs?: number
+  totalBytesProcessed?: string
+  cacheHit?: boolean
+}
+
 const settingsStore = useSettingsStore()
 const tableRef = ref<HTMLElement | null>(null)
 
-const props = defineProps({
-  results: { type: Array, default: null },
-  stats: { type: Object, default: null },
-  error: { type: String, default: null },
-  boxName: { type: String, default: 'results' }
-})
+const props = defineProps<{
+  results?: Record<string, unknown>[] | null
+  stats?: QueryStats | null
+  error?: string | null
+  boxName?: string
+}>()
 
-const emit = defineEmits(['show-row-detail'])
+const emit = defineEmits<{
+  'show-row-detail': [payload: { rowData: Record<string, unknown>; rowIndex: number; globalRowIndex: number }]
+}>()
 
-// Track hovered row for showing detail icon
 const hoveredRowIndex = ref<number | null>(null)
-
-// Handle show detail button click
-const handleShowDetail = (row: any, index: number) => {
-  const globalRowIndex = (currentPage.value - 1) * pageSize.value + index
-  emit('show-row-detail', {
-    rowData: row,
-    rowIndex: index,
-    globalRowIndex: globalRowIndex
-  })
-}
-
-// Format bytes to human-readable format
-const formatBytes = (bytes) => {
-  if (!bytes || bytes === '0') return '0 B'
-  const num = parseInt(bytes)
-  if (num === 0) return '0 B'
-
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const k = 1024
-  const i = Math.floor(Math.log(num) / Math.log(k))
-  return Math.round(num / Math.pow(k, i) * 100) / 100 + ' ' + units[i]
-}
-
-// Format milliseconds to human-readable format
-const formatTime = (ms) => {
-  if (!ms) return '0ms'
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(2)}s`
-}
-
 const currentPage = ref(1)
+
 const pageSize = computed(() => settingsStore.paginationSize)
 
 const columns = computed(() => {
-  if (!props.results || props.results.length === 0) return []
+  if (!props.results?.length) return []
   return Object.keys(props.results[0])
 })
 
-// Detect if a column contains numeric data
-const isNumericColumn = computed(() => {
-  if (!props.results || props.results.length === 0) return {}
+const numericColumns = computed(() => {
+  if (!props.results?.length) return new Set<string>()
 
-  const numericColumns = {}
-  columns.value.forEach(column => {
-    // Sample first 10 rows to determine if column is numeric
-    const sampleSize = Math.min(10, props.results.length)
+  const numeric = new Set<string>()
+  const sampleSize = Math.min(10, props.results.length)
+
+  for (const column of columns.value) {
     let numericCount = 0
-
     for (let i = 0; i < sampleSize; i++) {
       const value = props.results[i][column]
       if (value === null || value === undefined || value === '') continue
-
-      // Check if value is a number or can be parsed as number
-      const numValue = Number(value)
-      if (!isNaN(numValue) && isFinite(numValue)) {
-        numericCount++
-      }
+      if (!isNaN(Number(value)) && isFinite(Number(value))) numericCount++
     }
+    if (numericCount / sampleSize > 0.8) numeric.add(column)
+  }
 
-    // If more than 80% of sampled values are numeric, treat as numeric column
-    numericColumns[column] = (numericCount / sampleSize) > 0.8
-  })
-
-  return numericColumns
+  return numeric
 })
 
-// Get CSS class for column alignment
-const getColumnClass = (column) => {
-  return isNumericColumn.value[column] ? 'numeric-column' : 'text-column'
-}
-
 const totalPages = computed(() => {
-  if (!props.results) return 0
+  if (!props.results?.length) return 0
   return Math.ceil(props.results.length / pageSize.value)
 })
 
 const paginatedData = computed(() => {
   if (!props.results) return []
   const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return props.results.slice(start, end)
+  return props.results.slice(start, start + pageSize.value)
 })
 
-const nextPage = (e) => {
-  e.stopPropagation()
-  if (currentPage.value < totalPages.value) {
-    currentPage.value++
-  }
+const hasResults = computed(() => props.results && props.results.length > 0)
+const isEmpty = computed(() => props.results && props.results.length === 0)
+
+// Format bytes to human-readable
+const formatBytes = (bytes: string | number | undefined): string => {
+  if (!bytes) return '0 B'
+  const num = typeof bytes === 'string' ? parseInt(bytes, 10) : bytes
+  if (num === 0) return '0 B'
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(num) / Math.log(1024))
+  return `${Math.round(num / Math.pow(1024, i) * 100) / 100} ${units[i]}`
 }
 
-const prevPage = (e) => {
-  e.stopPropagation()
-  if (currentPage.value > 1) {
-    currentPage.value--
-  }
+// Format milliseconds to human-readable
+const formatTime = (ms: number | undefined): string => {
+  if (!ms) return '0ms'
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
 }
 
-// Reset to page 1 when results change
+const handleShowDetail = (row: Record<string, unknown>, index: number) => {
+  emit('show-row-detail', {
+    rowData: row,
+    rowIndex: index,
+    globalRowIndex: (currentPage.value - 1) * pageSize.value + index
+  })
+}
+
+const nextPage = () => {
+  if (currentPage.value < totalPages.value) currentPage.value++
+}
+
+const prevPage = () => {
+  if (currentPage.value > 1) currentPage.value--
+}
+
 const resetPagination = () => {
   currentPage.value = 1
 }
 
-// Convert results to CSV and download
 const downloadCSV = () => {
-  if (!props.results || props.results.length === 0) return
+  if (!props.results?.length) return
 
-  // Convert to CSV format
-  const headers = columns.value
-  const csvRows = []
-
-  // Add header row
-  csvRows.push(headers.map(h => `"${String(h).replace(/"/g, '""')}"`).join(','))
-
-  // Add data rows
-  for (const row of props.results) {
-    const values = headers.map(header => {
-      const value = row[header]
-      if (value === null || value === undefined) return ''
-      // Escape quotes and wrap in quotes
-      return `"${String(value).replace(/"/g, '""')}"`
-    })
-    csvRows.push(values.join(','))
+  const escape = (val: unknown): string => {
+    if (val === null || val === undefined) return ''
+    return `"${String(val).replace(/"/g, '""')}"`
   }
 
-  const csvContent = csvRows.join('\n')
+  const rows = [
+    columns.value.map(escape).join(','),
+    ...props.results.map(row => columns.value.map(col => escape(row[col])).join(','))
+  ]
 
-  // Create blob and download
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-  const link = document.createElement('a')
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
-
-  link.setAttribute('href', url)
-  link.setAttribute('download', `${props.boxName}.csv`)
-  link.style.visibility = 'hidden'
+  const link = Object.assign(document.createElement('a'), {
+    href: url,
+    download: `${props.boxName || 'results'}.csv`,
+    style: 'display:none'
+  })
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
 }
 
-// Handle copy event for Google Sheets compatibility
+// Copy handler for Google Sheets compatibility (TSV format)
 const handleCopy = (event: ClipboardEvent) => {
   const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0 || !tableRef.value) return
+  if (!selection?.rangeCount || !tableRef.value) return
 
-  // Only handle if selection is within our table
   const range = selection.getRangeAt(0)
-  const isInTable = tableRef.value.contains(range.commonAncestorContainer)
-  if (!isInTable) return
-
-  // Extract selected cells as TSV
-  const tsvContent = extractSelectedCellsAsTSV(selection)
-  if (!tsvContent) return // Fallback to default copy behavior
-
-  // Write TSV to clipboard
-  event.preventDefault()
-  event.clipboardData?.setData('text/plain', tsvContent)
-}
-
-// Extract selected table cells and format as TSV
-const extractSelectedCellsAsTSV = (selection: Selection): string | null => {
-  if (!tableRef.value) return null
+  if (!tableRef.value.contains(range.commonAncestorContainer)) return
 
   const rows: string[][] = []
-  const allRows = tableRef.value.querySelectorAll('tr')
 
-  // Check each row for selected cells
-  allRows.forEach((row) => {
-    const rowCells: string[] = []
+  tableRef.value.querySelectorAll('tr').forEach(row => {
+    const cells: string[] = []
     let hasSelection = false
 
-    row.querySelectorAll('th, td').forEach((cell) => {
-      // Use built-in containsNode to check if cell is in selection
+    row.querySelectorAll('th, td').forEach(cell => {
       if (selection.containsNode(cell, true)) {
         hasSelection = true
-        rowCells.push(cell.textContent?.trim() || '')
+        cells.push(cell.textContent?.trim() || '')
       } else {
-        rowCells.push('') // Preserve column positions
+        cells.push('')
       }
     })
 
-    // Include row if it has at least one selected cell
     if (hasSelection) {
-      rows.push(trimEmptyCells(rowCells))
+      // Trim empty cells from start/end
+      let start = 0, end = cells.length - 1
+      while (start < cells.length && !cells[start]) start++
+      while (end >= 0 && !cells[end]) end--
+      rows.push(cells.slice(start, end + 1))
     }
   })
 
-  return rows.length > 0 ? rows.map(row => row.join('\t')).join('\n') : null
+  if (rows.length) {
+    event.preventDefault()
+    event.clipboardData?.setData('text/plain', rows.map(r => r.join('\t')).join('\n'))
+  }
 }
 
-// Remove leading and trailing empty cells while preserving internal structure
-const trimEmptyCells = (cells: string[]): string[] => {
-  let start = 0
-  let end = cells.length - 1
+onMounted(() => document.addEventListener('copy', handleCopy))
+onUnmounted(() => document.removeEventListener('copy', handleCopy))
 
-  while (start < cells.length && cells[start] === '') start++
-  while (end >= 0 && cells[end] === '') end--
-
-  return cells.slice(start, end + 1)
-}
-
-// Register copy handler at document level
-onMounted(() => {
-  document.addEventListener('copy', handleCopy)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('copy', handleCopy)
-})
-
-defineExpose({
-  resetPagination
-})
+defineExpose({ resetPagination })
 </script>
 
 <template>
-  <div class="results-section">
-    <div v-if="error" class="error-banner">
-      {{ error }}
-    </div>
+  <section class="results-section">
+    <div v-if="error" class="error-banner" role="alert">{{ error }}</div>
+
     <div class="table-container">
-      <table
-        v-if="results && results.length > 0"
-        ref="tableRef"
-        class="results-table"
-      >
+      <table v-if="hasResults" ref="tableRef" class="results-table">
         <thead>
           <tr>
-            <th class="row-number-header">#</th>
+            <th class="row-number-col">#</th>
             <th
               v-for="column in columns"
               :key="column"
-              :class="getColumnClass(column)"
+              :class="{ 'col-numeric': numericColumns.has(column) }"
             >
               {{ column }}
             </th>
@@ -257,85 +194,91 @@ defineExpose({
         <tbody>
           <tr
             v-for="(row, index) in paginatedData"
-            :key="`row-${currentPage}-${index}`"
+            :key="`${currentPage}-${index}`"
             @mouseenter="hoveredRowIndex = index"
             @mouseleave="hoveredRowIndex = null"
           >
-            <td class="row-number-cell">
+            <td class="row-number-col">
               <span class="row-number" :class="{ hidden: hoveredRowIndex === index }">
                 {{ (currentPage - 1) * pageSize + index + 1 }}
               </span>
               <button
-                class="detail-icon"
+                class="detail-btn"
                 :class="{ visible: hoveredRowIndex === index }"
                 @click.stop="handleShowDetail(row, index)"
-                title="View row details"
+                aria-label="View row details"
               >
-                👁
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
               </button>
             </td>
             <td
               v-for="column in columns"
               :key="column"
-              :class="[getColumnClass(column), { 'null-value': row[column] === null }]"
+              :class="{
+                'col-numeric': numericColumns.has(column),
+                'null-value': row[column] === null
+              }"
             >
               {{ row[column] === null ? 'null' : row[column] }}
             </td>
           </tr>
         </tbody>
       </table>
-      <div v-else-if="results && results.length === 0" class="empty-state">
-        No results found
-      </div>
+
+      <div v-else-if="isEmpty" class="empty-state">No results found</div>
     </div>
-    <div v-if="results && results.length > 0" class="results-footer">
-      <div class="results-info">
-        <span v-if="stats && stats.engine" class="engine-badge" :class="`engine-${stats.engine}`">
+
+    <footer v-if="hasResults" class="results-footer">
+      <div class="results-meta">
+        <span v-if="stats?.engine" class="engine-badge" :data-engine="stats.engine">
           {{ stats.engine === 'bigquery' ? 'BigQuery' : 'DuckDB' }}
         </span>
-        <span v-if="stats && stats.engine" class="stats-divider">•</span>
-        <span class="results-stat">{{ results.length }} {{ results.length === 1 ? 'row' : 'rows' }}</span>
-        <span v-if="stats && stats.executionTimeMs" class="stats-divider">•</span>
-        <span v-if="stats && stats.executionTimeMs" class="results-stat">
-          {{ formatTime(stats.executionTimeMs) }}
-        </span>
-        <span v-if="stats && stats.totalBytesProcessed" class="stats-divider">•</span>
-        <span v-if="stats && stats.totalBytesProcessed" class="results-stat">
-          {{ formatBytes(stats.totalBytesProcessed) }}
-        </span>
-        <span v-if="stats && stats.engine === 'bigquery'" class="stats-divider">•</span>
-        <span v-if="stats && stats.engine === 'bigquery'" class="results-stat" :class="{ 'cache-hit': stats.cacheHit }">
-          {{ stats.cacheHit ? '⚡ Cached' : '' }}
-        </span>
+        <span class="stat">{{ results!.length }} {{ results!.length === 1 ? 'row' : 'rows' }}</span>
+        <span v-if="stats?.executionTimeMs" class="stat">{{ formatTime(stats.executionTimeMs) }}</span>
+        <span v-if="stats?.totalBytesProcessed" class="stat">{{ formatBytes(stats.totalBytesProcessed) }}</span>
+        <span v-if="stats?.cacheHit" class="stat cache-hit">Cached</span>
       </div>
-      <div class="footer-actions">
-        <div class="pagination">
+
+      <div class="results-actions">
+        <nav class="pagination" aria-label="Results pagination">
           <button
-            @click.stop="prevPage"
-            :disabled="currentPage === 1"
             class="pagination-btn"
+            :disabled="currentPage === 1"
+            @click.stop="prevPage"
+            aria-label="Previous page"
           >
-            ←
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
           </button>
           <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
           <button
-            @click.stop="nextPage"
-            :disabled="currentPage === totalPages"
             class="pagination-btn"
+            :disabled="currentPage === totalPages"
+            @click.stop="nextPage"
+            aria-label="Next page"
           >
-            →
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
           </button>
-        </div>
+        </nav>
+
         <button
-          @click.stop="downloadCSV"
           class="download-btn"
-          title="Download as CSV"
+          @click.stop="downloadCSV"
+          aria-label="Download as CSV"
         >
-          ⬇
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
         </button>
       </div>
-    </div>
-  </div>
+    </footer>
+  </section>
 </template>
 
 <style scoped>
@@ -344,8 +287,7 @@ defineExpose({
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background: var(--surface-primary);
+  overflow: clip;
   border-top: var(--border-width-thin) solid var(--border-primary);
 }
 
@@ -355,126 +297,19 @@ defineExpose({
   border-bottom: var(--border-width-thin) solid var(--border-error);
   color: var(--color-error);
   font-size: var(--font-size-body-sm);
-  font-weight: bold;
+  font-weight: 600;
   flex-shrink: 0;
 }
 
-.results-footer {
-  padding: var(--space-2) var(--space-3);
-  background: var(--surface-primary);
-  border-top: var(--border-width-thin) solid var(--border-primary);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-  min-height: 36px;
-}
-
-.results-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex: 1;
-}
-
-.results-stat {
-  color: var(--text-primary);
-  font-size: var(--font-size-body-sm);
-  font-weight: normal;
-  white-space: nowrap;
-}
-
-.stats-divider {
-  color: var(--text-secondary);
-  font-size: var(--font-size-body-sm);
-  opacity: 0.5;
-  user-select: none;
-}
-
-.footer-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.download-btn {
-  background: transparent;
-  color: var(--text-primary);
-  border: none;
-  padding: 0;
-  border-radius: var(--button-border-radius);
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.15s ease, border-color 0.15s ease;
-  outline: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-}
-
-.download-btn:hover {
-  background: var(--surface-secondary);
-  border-color: var(--text-secondary);
-}
-
-.download-btn:focus {
-  outline: none;
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 2px;
-  border-radius: var(--button-border-radius);
-}
-
-.pagination-btn {
-  background: transparent;
-  color: var(--text-primary);
-  border: none;
-  padding: 4px 8px;
-  border-radius: calc(var(--button-border-radius) - 2px);
-  cursor: pointer;
-  font-size: var(--font-size-body-sm);
-  font-weight: 500;
-  transition: background 0.15s ease;
-  outline: none;
-  font-family: var(--font-family-ui);
-  min-width: 24px;
-}
-
-.pagination-btn:hover:not(:disabled) {
-  background: var(--surface-primary);
-}
-
-.pagination-btn:focus {
-  outline: none;
-}
-
-.pagination-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.page-info {
-  color: var(--text-primary);
-  font-size: var(--font-size-body-sm);
-  font-variant-numeric: tabular-nums;
-  padding: 0 4px;
-  user-select: none;
-}
-
+/* Table Container */
 .table-container {
   flex: 1;
   min-height: 0;
   overflow: auto;
   cursor: default;
-  position: relative;
 }
 
+/* Table Base */
 .results-table {
   width: max-content;
   min-width: 100%;
@@ -485,25 +320,40 @@ defineExpose({
   color: var(--text-primary);
 }
 
+.results-table ::selection {
+  background: var(--color-selection);
+}
+
+/* Table Header */
+.results-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-primary);
+}
+
 .results-table th {
   padding: var(--table-cell-padding);
   font-weight: 500;
   white-space: nowrap;
-  background: var(--surface-primary);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  background: inherit;
   border-bottom: 1px solid var(--border-secondary);
   min-width: 150px;
   vertical-align: bottom;
-  color: var(--text-primary);
+  user-select: text;
+  cursor: text;
 }
 
-/* Vertical separators between header columns */
 .results-table th:not(:last-child) {
   border-right: 1px solid var(--border-secondary);
 }
 
+/* All headers left-aligned, regardless of column type */
+.results-table th.col-numeric {
+  text-align: left;
+}
+
+/* Table Body */
 .results-table td {
   padding: var(--table-cell-padding);
   white-space: nowrap;
@@ -514,38 +364,6 @@ defineExpose({
   border-bottom: 1px solid var(--border-tertiary);
 }
 
-.results-table th {
-  user-select: text;
-  cursor: text;
-}
-
-/* Visual feedback for text selection */
-.results-table ::selection {
-  background: rgba(147, 51, 234, 0.3);
-  color: inherit;
-}
-
-/* Text columns: left-aligned */
-.text-column {
-  text-align: left;
-}
-
-/* Numeric columns: right-aligned with monospace font */
-.numeric-column {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--font-family-mono);
-}
-
-/* Headers always align with their column content */
-.results-table th.text-column {
-  text-align: left;
-}
-
-.results-table th.numeric-column {
-  text-align: left;
-}
-
 .results-table tbody tr {
   background: var(--surface-primary);
 }
@@ -554,12 +372,193 @@ defineExpose({
   background: var(--table-row-hover-bg);
 }
 
-/* Null values displayed in muted gray */
+/* Column Alignment */
+.col-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .null-value {
   color: var(--text-tertiary);
   font-style: italic;
 }
 
+/* Row Number Column - higher specificity to override th/td min-width */
+.results-table .row-number-col {
+  width: 0;
+  min-width: 0;
+  white-space: nowrap;
+  text-align: center;
+  padding: var(--space-2);
+  user-select: none;
+  position: relative;
+}
+
+.row-number {
+  font-size: var(--font-size-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  transition: opacity 0.1s;
+}
+
+.row-number.hidden {
+  opacity: 0;
+}
+
+/* Detail Button */
+.detail-btn {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.detail-btn.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.detail-btn:hover {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+}
+
+/* Footer */
+.results-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-primary);
+  border-top: var(--border-width-thin) solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.results-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stat {
+  font-size: var(--font-size-body-sm);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.stat::before {
+  content: '·';
+  margin-right: var(--space-2);
+  color: var(--text-tertiary);
+}
+
+.stat:first-child::before,
+.engine-badge + .stat::before {
+  display: none;
+}
+
+.cache-hit {
+  color: var(--color-success);
+}
+
+/* Engine Badge */
+.engine-badge {
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: var(--font-size-caption);
+}
+
+.engine-badge[data-engine="bigquery"] {
+  background: var(--color-bigquery);
+  color: white;
+}
+
+.engine-badge[data-engine="duckdb"] {
+  background: var(--color-duckdb);
+  color: black;
+}
+
+/* Actions */
+.results-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pagination-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--surface-secondary);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: var(--font-size-body-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  padding: 0 var(--space-1);
+  user-select: none;
+}
+
+/* Download Button */
+.download-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.download-btn:hover {
+  background: var(--surface-secondary);
+}
+
+/* Empty State */
 .empty-state {
   display: flex;
   align-items: center;
@@ -567,82 +566,5 @@ defineExpose({
   height: 100%;
   color: var(--text-secondary);
   font-size: var(--font-size-body);
-}
-
-.engine-badge {
-  font-weight: bold;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: var(--font-size-caption);
-}
-
-.engine-bigquery {
-  background: #4285f4;
-  color: white;
-}
-
-.engine-duckdb {
-  background: #ffc107;
-  color: black;
-}
-
-.row-number-header {
-  width: 1px;
-  white-space: nowrap;
-  text-align: center;
-  padding: var(--space-2);
-  user-select: none;
-  min-width: 0 !important;
-}
-
-.row-number-cell {
-  width: 1px;
-  white-space: nowrap;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
-  user-select: none;
-  position: relative;
-  padding: var(--space-2);
-  min-width: 0 !important;
-}
-
-.row-number {
-  font-size: var(--font-size-caption);
-}
-
-.row-number.hidden {
-  opacity: 0;
-}
-
-.detail-icon {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  font-size: 14px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  line-height: 1;
-  pointer-events: none;
-}
-
-.detail-icon.visible {
-  opacity: 0.7;
-  pointer-events: auto;
-}
-
-.detail-icon.visible:hover {
-  opacity: 1;
-  background: var(--surface-secondary);
-  border-radius: var(--border-radius-sm);
-}
-
-.detail-icon:focus {
-  outline: none;
 }
 </style>

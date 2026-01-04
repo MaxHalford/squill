@@ -44,6 +44,11 @@
   --color-success: #10b981;       /* Success states */
   --color-warning: #f59e0b;       /* Warning states */
   --color-purple: rgb(147, 51, 234);  /* Purple accent for selections and overlays */
+  --color-selection: rgba(147, 51, 234, 0.3);  /* Text selection highlight */
+
+  /* Engine Badge Colors */
+  --color-bigquery: #4285f4;
+  --color-duckdb: #ffc107;
 
   /* ===== SPACING ===== */
 

@@ -119,8 +119,7 @@ const formatValue = (value: any): string => {
 }
 
 .field-value::selection {
-  background: rgba(147, 51, 234, 0.3);
-  color: inherit;
+  background: var(--color-selection);
 }
 
 .empty-state {
