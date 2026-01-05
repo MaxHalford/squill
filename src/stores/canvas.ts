@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import type { Box, BoxType, Position, Size, CanvasState } from '../types/canvas'
+import { getDefaultQuery, type QueryEngine } from '../constants/defaultQueries'
 
 const STORAGE_KEY = 'squill_canvas_state'
 
@@ -55,7 +56,9 @@ export const useCanvasStore = defineStore('canvas', () => {
             zIndex: box.zIndex || 1,
             query: box.query || `SELECT *\nFROM bigquery-public-data.samples.shakespeare\nLIMIT 50`,
             name: box.name || `query_${box.id}`,
-            dependencies: box.dependencies || [] // Array of box IDs this box depends on
+            dependencies: box.dependencies || [], // Array of box IDs this box depends on
+            connectionId: box.connectionId, // Preserve connection association
+            projectId: box.projectId // Preserve project/database/catalog
           }))
       } else {
         // Initialize with default boxes if no saved state
@@ -151,7 +154,13 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Add a new box
-  const addBox = (type: BoxType = 'sql', position: Position | null = null): number => {
+  const addBox = (
+    type: BoxType = 'sql',
+    position: Position | null = null,
+    engine?: QueryEngine,
+    connectionId?: string,
+    projectId?: string
+  ): number => {
     saveToUndoStack()
 
     // Get viewport center if canvas ref is available
@@ -176,18 +185,20 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     const newBox: Box = {
       id: boxId,
-      type: type, // 'sql', 'schema', or 'note'
+      type: type,
       x: position ? position.x - width / 2 : (centerPosition ? centerPosition.x - width / 2 : defaultX),
       y: position ? position.y - height / 2 : (centerPosition ? centerPosition.y - height / 2 : defaultY),
       width: width,
       height: height,
       zIndex: getMaxZIndex() + 1,
-      query: type === 'sql' ? 'SELECT *\nFROM bigquery-public-data.samples.shakespeare\nLIMIT 50' : '',
+      query: type === 'sql' ? getDefaultQuery(engine) : '',
       name: type === 'sql' ? `query_${boxId}` :
             type === 'note' ? `note_${boxId}` :
             type === 'detail' ? `row_detail_${boxId}` :
             `schema_${boxId}`,
-      dependencies: []
+      dependencies: [],
+      connectionId: connectionId,
+      projectId: projectId
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -336,6 +347,22 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
+  // Update box connection ID
+  const updateBoxConnectionId = (id: number, connectionId: string | undefined) => {
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      box.connectionId = connectionId
+    }
+  }
+
+  // Update box project ID
+  const updateBoxProjectId = (id: number, projectId: string | undefined) => {
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      box.projectId = projectId
+    }
+  }
+
   // Clear all boxes
   const clearAll = () => {
     boxes.value = []
@@ -374,7 +401,9 @@ export const useCanvasStore = defineStore('canvas', () => {
       zIndex: getMaxZIndex() + 1,
       query: originalBox.query,
       name: newName,
-      dependencies: [] // Copied box starts with no dependencies
+      dependencies: [], // Copied box starts with no dependencies
+      connectionId: originalBox.connectionId, // Preserve connection association
+      projectId: originalBox.projectId // Preserve project/database/catalog
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -413,7 +442,9 @@ export const useCanvasStore = defineStore('canvas', () => {
         zIndex: getMaxZIndex() + 1,
         query: originalBox.query,
         name: newName,
-        dependencies: [] // Copied box starts with no dependencies
+        dependencies: [], // Copied box starts with no dependencies
+        connectionId: originalBox.connectionId, // Preserve connection association
+        projectId: originalBox.projectId // Preserve project/database/catalog
       }
       boxes.value.push(newBox)
       newBoxIds.push(boxId)
@@ -446,6 +477,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     updateBoxName,
     updateBoxZIndex,
     updateBoxDependencies,
+    updateBoxConnectionId,
+    updateBoxProjectId,
     getMaxZIndex,
     clearAll,
     resetToDefault,

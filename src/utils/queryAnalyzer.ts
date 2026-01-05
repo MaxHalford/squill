@@ -1,6 +1,14 @@
 /**
- * Query analyzer utility to detect target engine (BigQuery or DuckDB)
+ * Query analyzer utility for detecting table references
+ *
+ * The engine selection logic:
+ * 1. Each query box has an associated connection (BigQuery, DuckDB, Postgres, etc.)
+ * 2. The connection type determines the default execution engine
+ * 3. If the query references a local DuckDB table, it overrides to DuckDB
+ *    (since query results from all connections are stored in DuckDB)
  */
+
+import type { ConnectionType } from '../types/connection'
 
 /**
  * Extract table references from SQL query
@@ -26,56 +34,74 @@ export function extractTableReferences(query: string): string[] {
 }
 
 /**
- * Detect if query targets BigQuery based on patterns
+ * Check if query references any local DuckDB table
+ * Used to override connection-based routing to DuckDB when needed
  */
-export function isBigQueryQuery(query: string, duckDBTables: string[] = []): boolean {
-  // Normalize for comparison
-  const normalized = query.toLowerCase().trim()
+export function referencesLocalDuckDBTable(query: string, duckDBTables: string[]): boolean {
+  if (duckDBTables.length === 0) return false
 
-  // Explicit BigQuery project references (contains dots suggesting project.dataset.table)
-  // Pattern: backticks with at least 2 dots, or unquoted identifier with 2+ dots
-  const hasBQProjectRef = /(?:FROM|JOIN)\s+`?[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+`?/i.test(query)
-  if (hasBQProjectRef) return true
-
-  // Check if any referenced table exists in DuckDB
   const tableRefs = extractTableReferences(query)
-  const referencesLocalTable = tableRefs.some(ref => {
+
+  return tableRefs.some(ref => {
     // Extract just the table name (last part after dots)
     const tableName = ref.split('.').pop()!.replace(/`/g, '').toLowerCase()
     return duckDBTables.includes(tableName)
   })
-
-  if (referencesLocalTable) return false
-
-  // DuckDB-specific functions and patterns
-  const duckdbPatterns = [
-    'range(', 'generate_series(', 'unnest(', 'list_', 'struct_',
-    'read_csv', 'read_parquet', 'read_json', '::',
-    'duckdb_', 'pragma_', 'information_schema'
-  ]
-
-  const hasDuckDBPattern = duckdbPatterns.some(pattern =>
-    normalized.includes(pattern)
-  )
-
-  if (hasDuckDBPattern) return false
-
-  // BigQuery-specific functions (some common ones)
-  const bqFunctions = [
-    'safe_cast', 'safe_divide', 'generate_uuid',
-    'approx_count_distinct', 'approx_quantiles'
-  ]
-
-  const hasBQFunction = bqFunctions.some(fn =>
-    normalized.includes(fn)
-  )
-
-  // If no local tables referenced and no specific DuckDB patterns, assume BigQuery
-  // This maintains backward compatibility
-  return !referencesLocalTable
 }
 
 /**
+ * Determine the effective engine for a query based on connection and table references
+ *
+ * @param connectionType - The connection type from the box's assigned connection
+ * @param query - The SQL query text
+ * @param duckDBTables - List of available DuckDB table names
+ * @returns The connection type to use for execution
+ */
+export function getEffectiveEngine(
+  connectionType: ConnectionType | undefined,
+  query: string,
+  duckDBTables: string[]
+): ConnectionType {
+  // If query references a local DuckDB table, always use DuckDB
+  // This allows cross-connection analysis using stored query results
+  if (referencesLocalDuckDBTable(query, duckDBTables)) {
+    return 'duckdb'
+  }
+
+  // Otherwise, use the connection type (default to 'duckdb' if no connection)
+  return connectionType || 'duckdb'
+}
+
+/**
+ * Check if a connection type represents a local/in-memory database
+ * Currently only DuckDB is local, but this could include SQLite in the future
+ */
+export function isLocalDatabase(connectionType: ConnectionType | undefined): boolean {
+  return connectionType === 'duckdb'
+}
+
+// ============================================
+// DEPRECATED: Legacy functions for backwards compatibility
+// These are maintained during migration but should be removed
+// ============================================
+
+/**
+ * @deprecated Use getEffectiveEngine() instead
+ * Detect if query targets BigQuery based on patterns
+ */
+export function isBigQueryQuery(query: string, duckDBTables: string[] = []): boolean {
+  // Check if any referenced table exists in DuckDB
+  if (referencesLocalDuckDBTable(query, duckDBTables)) {
+    return false
+  }
+
+  // Without a connection context, we can't definitively say it's BigQuery
+  // Default to false (DuckDB) for safety
+  return false
+}
+
+/**
+ * @deprecated Use getEffectiveEngine() instead
  * Detect which engine should execute the query
  */
 export function detectQueryEngine(query: string, duckDBTables: string[] = []): 'bigquery' | 'duckdb' {

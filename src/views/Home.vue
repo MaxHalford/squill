@@ -7,6 +7,7 @@ import RowDetailBox from '../components/RowDetailBox.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
 import OnboardingModal from '../components/OnboardingModal.vue'
+import UploadProgress from '../components/UploadProgress.vue'
 import { ref, onMounted, onUnmounted, nextTick, provide, computed } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
@@ -26,6 +27,10 @@ const copiedBoxIds = ref<number[]>([])
 const csvFileInputRef = ref<HTMLInputElement | null>(null)
 const isStoresReady = ref(false)
 const onboardingDismissed = ref(false)
+
+// CSV upload progress state
+const uploadingFiles = ref<string[]>([])
+const uploadCurrentIndex = ref(0)
 
 // Registry for box query executors
 const boxExecutors = ref(new Map())
@@ -213,23 +218,35 @@ const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
     return
   }
 
+  // Filter valid files first
+  const MAX_SIZE = 50 * 1024 * 1024
+  const validFiles = csvFiles.filter(file => {
+    if (file.size > MAX_SIZE) {
+      alert(`File ${file.name} is too large (max 50MB)`)
+      return false
+    }
+    if (file.size === 0) {
+      alert(`File ${file.name} is empty`)
+      return false
+    }
+    return true
+  })
+
+  if (validFiles.length === 0) return
+
+  // Start upload progress
+  uploadingFiles.value = validFiles.map(f => f.name)
+  uploadCurrentIndex.value = 0
+
   let currentPosition = { ...position }
 
-  for (const file of csvFiles) {
+  // Process files asynchronously
+  for (let i = 0; i < validFiles.length; i++) {
+    const file = validFiles[i]
+    uploadCurrentIndex.value = i
+
     try {
-      // Validate file size (max 50MB)
-      const MAX_SIZE = 50 * 1024 * 1024
-      if (file.size > MAX_SIZE) {
-        alert(`File ${file.name} is too large (max 50MB)`)
-        continue
-      }
-
-      if (file.size === 0) {
-        alert(`File ${file.name} is empty`)
-        continue
-      }
-
-      // Load CSV into DuckDB first (without boxId association yet)
+      // Load CSV into DuckDB (this is the slow part)
       const tableName = await duckdbStore.loadCsvFile(file, null)
 
       if (!tableName) {
@@ -237,27 +254,25 @@ const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
         continue
       }
 
-      // Now create SqlBox with correct query and name from the start
-      const boxId = canvasStore.addBox('sql', currentPosition)
-
-      // Set the correct name and query
+      // Create SqlBox with correct query and name (CSV always uses DuckDB)
+      // DuckDB is local so no project context needed
+      const duckdbConnectionId = 'duckdb-local'
+      const boxId = canvasStore.addBox('sql', currentPosition, 'duckdb', duckdbConnectionId, undefined)
       const displayName = file.name.replace('.csv', '') + '_query'
       canvasStore.updateBoxName(boxId, displayName)
       canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${tableName}\nLIMIT 100`)
 
-      // Update the table metadata to associate it with this box
+      // Associate table with box
       duckdbStore.updateTableBoxId(tableName, boxId)
 
       // Select the newly created box
       canvasStore.selectBox(boxId)
 
-      // Auto-execute the query after a short delay to ensure the box is fully rendered
+      // Auto-execute the query
       await nextTick()
-      setTimeout(async () => {
-        await executeBoxQuery(boxId)
-      }, 100)
+      executeBoxQuery(boxId)
 
-      // Offset position for next file (if multiple dropped)
+      // Offset position for next file
       currentPosition = {
         x: currentPosition.x + 30,
         y: currentPosition.y + 30
@@ -268,6 +283,10 @@ const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
       alert(`Failed to load ${file.name}: ${err.message}`)
     }
   }
+
+  // Clear upload progress
+  uploadingFiles.value = []
+  uploadCurrentIndex.value = 0
 }
 
 const handleQueryTableFromSchema = async (data: {
@@ -294,8 +313,18 @@ const handleQueryTableFromSchema = async (data: {
     const query = generateSelectQuery(data.tableName, data.engine)
     const boxName = generateQueryBoxName(data.tableName)
 
-    // Create box
-    const boxId = canvasStore.addBox('sql', position)
+    // Get connection ID and project ID based on engine
+    const connectionId = data.engine === 'duckdb'
+      ? 'duckdb-local'
+      : connectionsStore.getConnectionsByType('bigquery')[0]?.id
+
+    // For BigQuery, include the active project; DuckDB doesn't need project
+    const projectId = data.engine === 'duckdb'
+      ? undefined
+      : canvasStore.activeProjectId || undefined
+
+    // Create box with appropriate engine, connection, and project
+    const boxId = canvasStore.addBox('sql', position, data.engine, connectionId, projectId)
 
     // Configure box
     canvasStore.updateBoxName(boxId, boxName)
@@ -529,6 +558,7 @@ onUnmounted(() => {
           :initial-z-index="box.zIndex"
           :initial-query="box.query"
           :initial-name="box.name"
+          :connection-id="box.connectionId"
           :is-selected="canvasStore.isBoxSelected(box.id)"
           @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
@@ -604,6 +634,11 @@ onUnmounted(() => {
         />
       </template>
     </InfiniteCanvas>
+
+    <UploadProgress
+      :files="uploadingFiles"
+      :current-index="uploadCurrentIndex"
+    />
   </div>
 </template>
 

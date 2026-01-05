@@ -131,9 +131,13 @@ const handleReconnect = async (connectionId, event) => {
   }
 }
 
-// Add box
+// Add box with engine, connection, and project based on active connection
 const addBox = (boxType) => {
-  const boxId = canvasStore.addBox(boxType)
+  const activeConnection = connectionsStore.activeConnection
+  const engine = activeConnection?.type || 'duckdb'
+  const connectionId = activeConnection?.id
+  const projectId = canvasStore.activeProjectId || undefined
+  const boxId = canvasStore.addBox(boxType, null, engine, connectionId, projectId)
   canvasStore.selectBox(boxId)
   closeDropdown()
 }

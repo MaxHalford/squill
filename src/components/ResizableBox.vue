@@ -1,74 +1,72 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, inject } from 'vue'
+import { ref, watch, onMounted, onUnmounted, inject } from 'vue'
+
+interface Position {
+  x: number
+  y: number
+}
+
+interface Size {
+  width: number
+  height: number
+}
+
+type ResizeDirection = 'n' | 'e' | 's' | 'w' | 'ne' | 'se' | 'sw' | 'nw'
 
 const MIN_WIDTH = 200
 const MIN_HEIGHT = 150
 
-const props = defineProps({
-  boxId: { type: Number, required: true },
-  initialX: { type: Number, default: 100 },
-  initialY: { type: Number, default: 100 },
-  initialWidth: { type: Number, default: 600 },
-  initialHeight: { type: Number, default: 500 },
-  initialZIndex: { type: Number, default: 1 },
-  isSelected: { type: Boolean, default: false }
-})
+const props = defineProps<{
+  boxId: number
+  initialX?: number
+  initialY?: number
+  initialWidth?: number
+  initialHeight?: number
+  initialZIndex?: number
+  isSelected?: boolean
+}>()
 
-// Inject canvas zoom to adjust mouse coordinates
 const canvasZoom = inject('canvasZoom', ref(1))
 
-const emit = defineEmits(['select', 'update:position', 'update:size'])
+const emit = defineEmits<{
+  'select': [payload: { shouldPan: boolean }]
+  'update:position': [position: Position]
+  'update:size': [size: Size]
+}>()
 
-const boxRef = ref(null)
-const headerRef = ref(null)
+const boxRef = ref<HTMLElement | null>(null)
+const headerRef = ref<HTMLElement | null>(null)
 
-const position = ref({ x: props.initialX, y: props.initialY })
-const size = ref({ width: props.initialWidth, height: props.initialHeight })
-const zIndex = ref(props.initialZIndex)
+const position = ref<Position>({ x: props.initialX ?? 100, y: props.initialY ?? 100 })
+const size = ref<Size>({ width: props.initialWidth ?? 600, height: props.initialHeight ?? 500 })
+const zIndex = ref(props.initialZIndex ?? 1)
+
 const isDragging = ref(false)
 const isResizing = ref(false)
-const resizeDirection = ref(null)
-const dragStart = ref({ x: 0, y: 0 })
-const initialSize = ref({ width: 0, height: 0 })
-const initialPosition = ref({ x: 0, y: 0 })
+const resizeDirection = ref<ResizeDirection | null>(null)
+const dragStart = ref<Position>({ x: 0, y: 0 })
+const initialSize = ref<Size>({ width: 0, height: 0 })
+const initialPosition = ref<Position>({ x: 0, y: 0 })
 
-// Watch for changes from parent
-import { watch } from 'vue'
-watch(() => props.initialZIndex, (newZIndex) => {
-  zIndex.value = newZIndex
-})
+// Sync with prop changes
+watch(() => props.initialZIndex, (v) => { if (v !== undefined) zIndex.value = v })
+watch(() => props.initialWidth, (v) => { if (v !== undefined) size.value.width = v })
+watch(() => props.initialHeight, (v) => { if (v !== undefined) size.value.height = v })
+watch(() => props.initialX, (v) => { if (v !== undefined) position.value.x = v })
+watch(() => props.initialY, (v) => { if (v !== undefined) position.value.y = v })
 
-watch(() => props.initialWidth, (newWidth) => {
-  size.value.width = newWidth
-})
-
-watch(() => props.initialHeight, (newHeight) => {
-  size.value.height = newHeight
-})
-
-watch(() => props.initialX, (newX) => {
-  position.value.x = newX
-})
-
-watch(() => props.initialY, (newY) => {
-  position.value.y = newY
-})
-
-// Handle selection from content area (should trigger pan)
-const handleContentClick = (e) => {
+const handleContentClick = (e: MouseEvent) => {
   e.stopPropagation()
   emit('select', { shouldPan: true })
 }
 
-// Handle dragging
-const handleHeaderMouseDown = (e) => {
-  // Only start dragging if clicking on the header itself
-  if (!headerRef.value || !headerRef.value.contains(e.target)) {
-    return
-  }
+const handleHeaderMouseDown = (e: MouseEvent) => {
+  if (!headerRef.value?.contains(e.target as Node)) return
+
   e.stopPropagation()
   emit('select', { shouldPan: false })
   isDragging.value = true
+
   const zoom = canvasZoom.value
   dragStart.value = {
     x: e.clientX - position.value.x * zoom,
@@ -76,11 +74,11 @@ const handleHeaderMouseDown = (e) => {
   }
 }
 
-// Handle resizing
-const handleResizeStart = (e, direction) => {
+const handleResizeStart = (e: MouseEvent, direction: ResizeDirection) => {
   e.stopPropagation()
   e.preventDefault()
   emit('select', { shouldPan: false })
+
   isResizing.value = true
   resizeDirection.value = direction
   dragStart.value = { x: e.clientX, y: e.clientY }
@@ -88,7 +86,7 @@ const handleResizeStart = (e, direction) => {
   initialPosition.value = { ...position.value }
 }
 
-const handleMouseMove = (e) => {
+const handleMouseMove = (e: MouseEvent) => {
   const zoom = canvasZoom.value
 
   if (isDragging.value) {
@@ -98,43 +96,46 @@ const handleMouseMove = (e) => {
     }
     position.value = newPosition
     emit('update:position', newPosition)
-  } else if (isResizing.value) {
-    const deltaX = (e.clientX - dragStart.value.x) / zoom
-    const deltaY = (e.clientY - dragStart.value.y) / zoom
-    const dir = resizeDirection.value
-
-    let newWidth = initialSize.value.width
-    let newHeight = initialSize.value.height
-    let newX = initialPosition.value.x
-    let newY = initialPosition.value.y
-
-    // Handle horizontal resizing
-    if (dir.includes('e')) {
-      newWidth = Math.max(MIN_WIDTH, initialSize.value.width + deltaX)
-    } else if (dir.includes('w')) {
-      const proposedWidth = initialSize.value.width - deltaX
-      if (proposedWidth >= MIN_WIDTH) {
-        newWidth = proposedWidth
-        newX = initialPosition.value.x + deltaX
-      }
-    }
-
-    // Handle vertical resizing
-    if (dir.includes('s')) {
-      newHeight = Math.max(MIN_HEIGHT, initialSize.value.height + deltaY)
-    } else if (dir.includes('n')) {
-      const proposedHeight = initialSize.value.height - deltaY
-      if (proposedHeight >= MIN_HEIGHT) {
-        newHeight = proposedHeight
-        newY = initialPosition.value.y + deltaY
-      }
-    }
-
-    size.value = { width: newWidth, height: newHeight }
-    position.value = { x: newX, y: newY }
-    emit('update:size', { width: newWidth, height: newHeight })
-    emit('update:position', { x: newX, y: newY })
+    return
   }
+
+  if (!isResizing.value || !resizeDirection.value) return
+
+  const deltaX = (e.clientX - dragStart.value.x) / zoom
+  const deltaY = (e.clientY - dragStart.value.y) / zoom
+  const dir = resizeDirection.value
+
+  let newWidth = initialSize.value.width
+  let newHeight = initialSize.value.height
+  let newX = initialPosition.value.x
+  let newY = initialPosition.value.y
+
+  // Horizontal resize
+  if (dir.includes('e')) {
+    newWidth = Math.max(MIN_WIDTH, initialSize.value.width + deltaX)
+  } else if (dir.includes('w')) {
+    const proposedWidth = initialSize.value.width - deltaX
+    if (proposedWidth >= MIN_WIDTH) {
+      newWidth = proposedWidth
+      newX = initialPosition.value.x + deltaX
+    }
+  }
+
+  // Vertical resize
+  if (dir.includes('s')) {
+    newHeight = Math.max(MIN_HEIGHT, initialSize.value.height + deltaY)
+  } else if (dir.includes('n')) {
+    const proposedHeight = initialSize.value.height - deltaY
+    if (proposedHeight >= MIN_HEIGHT) {
+      newHeight = proposedHeight
+      newY = initialPosition.value.y + deltaY
+    }
+  }
+
+  size.value = { width: newWidth, height: newHeight }
+  position.value = { x: newX, y: newY }
+  emit('update:size', { width: newWidth, height: newHeight })
+  emit('update:position', { x: newX, y: newY })
 }
 
 const handleMouseUp = () => {
@@ -158,42 +159,33 @@ onUnmounted(() => {
   <div
     ref="boxRef"
     class="resizable-box"
-    :class="{
-      'selected': isSelected,
-      'dragging': isDragging || isResizing
-    }"
+    :class="{ selected: isSelected, dragging: isDragging || isResizing }"
     :style="{
       left: `${position.x}px`,
       top: `${position.y}px`,
       width: `${size.width}px`,
       height: `${size.height}px`,
-      zIndex: zIndex
+      zIndex
     }"
   >
-    <div
-      ref="headerRef"
-      class="box-header"
-      @mousedown="handleHeaderMouseDown"
-    >
-      <slot name="header"></slot>
-    </div>
+    <header ref="headerRef" class="box-header" @mousedown="handleHeaderMouseDown">
+      <slot name="header" />
+    </header>
 
     <div class="box-content" @click="handleContentClick">
-      <slot></slot>
+      <slot />
     </div>
 
-    <!-- Resize handles - only show when selected -->
+    <!-- Resize handles (only when selected) -->
     <template v-if="isSelected">
-      <!-- Edge handles -->
-      <div class="resize-handle n" @mousedown="handleResizeStart($event, 'n')"></div>
-      <div class="resize-handle e" @mousedown="handleResizeStart($event, 'e')"></div>
-      <div class="resize-handle s" @mousedown="handleResizeStart($event, 's')"></div>
-      <div class="resize-handle w" @mousedown="handleResizeStart($event, 'w')"></div>
-      <!-- Corner handles -->
-      <div class="resize-handle ne" @mousedown="handleResizeStart($event, 'ne')"></div>
-      <div class="resize-handle se" @mousedown="handleResizeStart($event, 'se')"></div>
-      <div class="resize-handle sw" @mousedown="handleResizeStart($event, 'sw')"></div>
-      <div class="resize-handle nw" @mousedown="handleResizeStart($event, 'nw')"></div>
+      <div class="resize-handle n" @mousedown="handleResizeStart($event, 'n')" />
+      <div class="resize-handle e" @mousedown="handleResizeStart($event, 'e')" />
+      <div class="resize-handle s" @mousedown="handleResizeStart($event, 's')" />
+      <div class="resize-handle w" @mousedown="handleResizeStart($event, 'w')" />
+      <div class="resize-handle ne" @mousedown="handleResizeStart($event, 'ne')" />
+      <div class="resize-handle se" @mousedown="handleResizeStart($event, 'se')" />
+      <div class="resize-handle sw" @mousedown="handleResizeStart($event, 'sw')" />
+      <div class="resize-handle nw" @mousedown="handleResizeStart($event, 'nw')" />
     </template>
   </div>
 </template>
@@ -201,38 +193,32 @@ onUnmounted(() => {
 <style scoped>
 .resizable-box {
   position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--surface-primary);
   border: var(--box-border-width) solid var(--box-border-color);
   border-radius: var(--box-border-radius);
   box-shadow: var(--box-shadow);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  outline: none;
-  transition: none;
   isolation: isolate;
-  z-index: 1;
 }
 
 .resizable-box.selected {
-  box-shadow:
-    0 0 0 3px rgba(147, 51, 234, 0.3),
-    0 0 20px 5px rgba(147, 51, 234, 0.4),
-    0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 10;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-purple) 30%, transparent),
+    0 0 20px 5px color-mix(in srgb, var(--color-purple) 40%, transparent),
+    0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .resizable-box.selected::before {
   content: '';
   position: absolute;
-  top: calc(var(--space-1) * -1);
-  left: calc(var(--space-1) * -1);
-  right: calc(var(--space-1) * -1);
-  bottom: calc(var(--space-1) * -1);
-  border: var(--border-width-thick) solid rgba(147, 51, 234, 0.8);
+  inset: calc(var(--space-1) * -1);
+  border: var(--border-width-thick) solid color-mix(in srgb, var(--color-purple) 80%, transparent);
   border-radius: var(--box-border-radius);
+  box-shadow: inset 0 0 20px color-mix(in srgb, var(--color-purple) 20%, transparent);
   pointer-events: none;
-  box-shadow: inset 0 0 20px rgba(147, 51, 234, 0.2);
 }
 
 .resizable-box.dragging {
@@ -240,17 +226,16 @@ onUnmounted(() => {
 }
 
 .box-header {
-  background: var(--box-header-bg);
-  color: var(--box-header-text);
-  padding: var(--box-header-padding);
-  cursor: grab;
-  user-select: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: none;
-  flex-shrink: 0;
+  padding: var(--box-header-padding);
+  background: var(--box-header-bg);
+  color: var(--box-header-text);
   font-size: var(--font-size-body);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
 }
 
 .box-header:active {
@@ -265,11 +250,11 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* Resize handles */
+/* Resize Handles */
 .resize-handle {
-    position: absolute;
-    background: transparent;
-    z-index: 10;
+  position: absolute;
+  background: transparent;
+  z-index: 10;
 }
 
 /* Edge handles */
@@ -278,7 +263,6 @@ onUnmounted(() => {
   height: var(--handle-size);
   left: 0;
   right: 0;
-  cursor: ns-resize;
 }
 
 .resize-handle.e,
@@ -286,10 +270,14 @@ onUnmounted(() => {
   width: var(--handle-size);
   top: 0;
   bottom: 0;
-  cursor: ew-resize;
 }
 
-/* Invisible larger hit area for easier resizing */
+.resize-handle.n { top: calc(var(--handle-size) / -2); cursor: ns-resize; }
+.resize-handle.s { bottom: calc(var(--handle-size) / -2); cursor: ns-resize; }
+.resize-handle.e { right: calc(var(--handle-size) / -2); cursor: ew-resize; }
+.resize-handle.w { left: calc(var(--handle-size) / -2); cursor: ew-resize; }
+
+/* Larger hit area for edge handles */
 .resize-handle.n::before,
 .resize-handle.s::before {
   content: '';
@@ -310,22 +298,6 @@ onUnmounted(() => {
   bottom: 0;
 }
 
-.resize-handle.n {
-  top: calc(var(--handle-size) / -2);
-}
-
-.resize-handle.s {
-  bottom: calc(var(--handle-size) / -2);
-}
-
-.resize-handle.e {
-  right: calc(var(--handle-size) / -2);
-}
-
-.resize-handle.w {
-  left: calc(var(--handle-size) / -2);
-}
-
 /* Corner handles */
 .resize-handle.ne,
 .resize-handle.se,
@@ -335,31 +307,8 @@ onUnmounted(() => {
   height: var(--handle-size);
 }
 
-.resize-handle.ne {
-  top: calc(var(--handle-size) / -2);
-  right: calc(var(--handle-size) / -2);
-  cursor: nesw-resize;
-}
-
-.resize-handle.se {
-  bottom: calc(var(--handle-size) / -2);
-  right: calc(var(--handle-size) / -2);
-  cursor: nwse-resize;
-}
-
-.resize-handle.sw {
-  bottom: calc(var(--handle-size) / -2);
-  left: calc(var(--handle-size) / -2);
-  cursor: nesw-resize;
-}
-
-.resize-handle.nw {
-  top: calc(var(--handle-size) / -2);
-  left: calc(var(--handle-size) / -2);
-  cursor: nwse-resize;
-}
-
-.resize-handle:hover {
-  background: transparent;
-}
+.resize-handle.ne { top: calc(var(--handle-size) / -2); right: calc(var(--handle-size) / -2); cursor: nesw-resize; }
+.resize-handle.se { bottom: calc(var(--handle-size) / -2); right: calc(var(--handle-size) / -2); cursor: nwse-resize; }
+.resize-handle.sw { bottom: calc(var(--handle-size) / -2); left: calc(var(--handle-size) / -2); cursor: nesw-resize; }
+.resize-handle.nw { top: calc(var(--handle-size) / -2); left: calc(var(--handle-size) / -2); cursor: nwse-resize; }
 </style>

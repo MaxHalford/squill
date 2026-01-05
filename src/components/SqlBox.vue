@@ -7,13 +7,15 @@ import { useAuthStore } from '../stores/auth'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useCanvasStore } from '../stores/canvas'
 import { useSchemaStore } from '../stores/schema'
-import { detectQueryEngine, extractTableReferences } from '../utils/queryAnalyzer'
+import { useConnectionsStore } from '../stores/connections'
+import { getEffectiveEngine, extractTableReferences, isLocalDatabase } from '../utils/queryAnalyzer'
 import { buildDuckDBSchema, buildBigQuerySchema, combineSchemas } from '../utils/schemaBuilder'
 
 const authStore = useAuthStore()
 const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()
 const schemaStore = useSchemaStore()
+const connectionsStore = useConnectionsStore()
 
 // Inject canvas zoom for splitter dragging
 const canvasZoom = inject('canvasZoom', ref(1))
@@ -32,7 +34,8 @@ const props = defineProps({
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
   initialQuery: { type: String, default: 'SELECT *\nFROM bigquery-public-data.samples.shakespeare\nLIMIT 50' },
-  initialName: { type: String, default: 'SQL Query' }
+  initialName: { type: String, default: 'SQL Query' },
+  connectionId: { type: String, default: undefined }
 })
 
 const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query', 'show-row-detail'])
@@ -61,11 +64,18 @@ let abortController = null
 const editorRef = ref(null)
 const resultsRef = ref(null)
 
-// Detect dialect from query content
+// Get the connection object for this box
+const boxConnection = computed(() => {
+  if (!props.connectionId) return null
+  return connectionsStore.connections.find(c => c.id === props.connectionId) || null
+})
+
+// Get the effective engine based on connection and query content
+// Connection type is the default, but DuckDB table references override to DuckDB
 const currentDialect = computed(() => {
   const tables = duckdbStore.tables
-  const engine = detectQueryEngine(queryText.value, Object.keys(tables))
-  return engine
+  const connectionType = boxConnection.value?.type
+  return getEffectiveEngine(connectionType, queryText.value, Object.keys(tables))
 })
 
 // Build combined schema for autocompletion
@@ -120,11 +130,12 @@ const updateDependenciesFromQuery = async (query) => {
     // Get fresh table names
     const availableTables = await duckdbStore.getFreshTableNames()
 
-    // Detect engine
-    const engine = detectQueryEngine(query, availableTables)
+    // Get effective engine based on connection and query
+    const connectionType = boxConnection.value?.type
+    const engine = getEffectiveEngine(connectionType, query, availableTables)
 
-    // Only track dependencies for DuckDB queries
-    if (engine === 'duckdb') {
+    // Only track dependencies for local database queries (DuckDB)
+    if (isLocalDatabase(engine)) {
       const tableRefs = extractTableReferences(query)
       const dependencyBoxIds = tableRefs
         .map(ref => {
@@ -139,7 +150,7 @@ const updateDependenciesFromQuery = async (query) => {
       console.log(`🔗 Box ${props.boxId} (${baseBoxRef.value?.boxName}): Dependencies updated to [${uniqueDeps.join(', ')}]`)
       canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
     } else {
-      console.log(`🔗 Box ${props.boxId} (${baseBoxRef.value?.boxName}): BigQuery query, clearing dependencies`)
+      console.log(`🔗 Box ${props.boxId} (${baseBoxRef.value?.boxName}): Remote query, clearing dependencies`)
       canvasStore.updateBoxDependencies(props.boxId, [])
     }
   } catch (err) {
@@ -206,14 +217,16 @@ const runQuery = async () => {
     // Get fresh table names from DuckDB before detecting engine
     const availableTables = await duckdbStore.getFreshTableNames()
 
-    // Detect which engine to use
-    const engine = detectQueryEngine(query, availableTables)
+    // Get effective engine based on connection and query content
+    const connectionType = boxConnection.value?.type
+    const engine = getEffectiveEngine(connectionType, query, availableTables)
     detectedEngine.value = engine
 
     let result
 
-    if (engine === 'duckdb') {
-      // Execute in DuckDB
+    // Execute query based on effective engine
+    if (isLocalDatabase(engine)) {
+      // Execute in local DuckDB
       result = await duckdbStore.runQuery(query)
 
       // Store results so they can be queried by other boxes
@@ -223,13 +236,18 @@ const runQuery = async () => {
         console.warn('Failed to store DuckDB results:', storageErr)
       }
     } else {
-      // Check for BigQuery credentials
-      if (!authStore.isAuthenticated) {
-        throw new Error('Please upload service account credentials in the sidebar')
+      // Execute in remote database based on connection type
+      // Currently supports: BigQuery
+      // Future: Postgres, Snowflake, etc.
+      if (engine === 'bigquery') {
+        if (!authStore.isAuthenticated) {
+          throw new Error('Please connect to BigQuery first')
+        }
+        result = await authStore.runQuery(query, abortController.signal)
+      } else {
+        // Placeholder for future database types
+        throw new Error(`Database type "${engine}" is not yet supported`)
       }
-
-      // Execute in BigQuery
-      result = await authStore.runQuery(query, abortController.signal)
 
       // Store results in DuckDB for cross-query analysis
       try {
@@ -255,8 +273,9 @@ const runQuery = async () => {
       resultsRef.value.resetPagination()
     }
 
-    // Update dependencies for DuckDB queries
-    if (engine === 'duckdb') {
+    // Update dependencies for local database queries (DuckDB)
+    // Dependencies track which boxes produce tables that this query references
+    if (isLocalDatabase(engine)) {
       try {
         const tableRefs = extractTableReferences(query)
         const dependencyBoxIds = tableRefs
@@ -271,6 +290,7 @@ const runQuery = async () => {
         console.warn('Failed to update dependencies:', depErr)
       }
     } else {
+      // Remote database queries don't have local dependencies
       canvasStore.updateBoxDependencies(props.boxId, [])
     }
   } catch (err: any) {

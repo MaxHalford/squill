@@ -5,121 +5,113 @@ import { sql, PostgreSQL, schemaCompletionSource } from '@codemirror/lang-sql'
 import { Compartment } from '@codemirror/state'
 import { BigQueryDialect } from '../utils/bigQueryDialect'
 
-const props = defineProps({
-  modelValue: { type: String, default: '' },
-  height: { type: Number, default: 150 },
-  isRunning: { type: Boolean, default: false },
-  isAuthenticated: { type: Boolean, default: false },
-  dialect: { type: String, default: 'bigquery' }, // 'bigquery' | 'duckdb'
-  schema: { type: Object, default: () => ({}) }    // Schema for autocompletion
-})
+interface SchemaTable {
+  [tableName: string]: string[]
+}
 
-const emit = defineEmits(['update:modelValue', 'run', 'stop'])
+const props = defineProps<{
+  modelValue?: string
+  height?: number
+  isRunning?: boolean
+  isAuthenticated?: boolean
+  dialect?: 'bigquery' | 'duckdb'
+  schema?: SchemaTable
+}>()
 
-const editorRef = ref(null)
-let editorView = ref<EditorView | null>(null)
+const emit = defineEmits<{
+  'update:modelValue': [value: string]
+  'run': []
+  'stop': []
+}>()
 
-// Create compartment for dynamic language reconfiguration
+const editorRef = ref<HTMLElement | null>(null)
+const editorView = ref<EditorView | null>(null)
+
 const languageCompartment = new Compartment()
 
 // Timer for query execution
 const elapsedTime = ref(0)
-let timerInterval = null
+let timerInterval: ReturnType<typeof setInterval> | null = null
 
-// Watch isRunning to start/stop timer
 watch(() => props.isRunning, (running) => {
   if (running) {
     elapsedTime.value = 0
     timerInterval = setInterval(() => {
       elapsedTime.value += 0.1
     }, 100)
-  } else {
-    if (timerInterval) {
-      clearInterval(timerInterval)
-      timerInterval = null
-    }
+  } else if (timerInterval) {
+    clearInterval(timerInterval)
+    timerInterval = null
   }
 })
 
-// Retro light theme
-const retroTheme = EditorView.theme({
+// CodeMirror theme - values match CSS variables in style.css
+const editorTheme = EditorView.theme({
   '&': {
-    backgroundColor: 'white',
-    color: 'black',
+    backgroundColor: 'var(--editor-bg)',
+    color: 'var(--text-primary)',
     fontFamily: 'var(--font-family-mono)',
-    textAlign: 'left',
   },
   '.cm-content': {
-    caretColor: 'black',
+    caretColor: 'var(--text-primary)',
     fontFamily: 'var(--font-family-mono)',
-    textAlign: 'left',
   },
   '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: 'black',
+    borderLeftColor: 'var(--text-primary)',
   },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-    backgroundColor: '#d7d7d7',
+    backgroundColor: 'var(--editor-selection-bg)',
   },
   '.cm-activeLine': {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'var(--editor-active-line-bg)',
   },
   '.cm-gutters': {
-    backgroundColor: 'white',
-    color: '#999',
+    backgroundColor: 'var(--editor-bg)',
+    color: 'var(--editor-gutter-color)',
     border: 'none',
   },
   '.cm-activeLineGutter': {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: 'var(--editor-active-line-bg)',
   },
   '.cm-scroller': {
     fontFamily: 'var(--font-family-mono)',
-    textAlign: 'left',
-  },
-  '.cm-line': {
-    fontFamily: 'var(--font-family-mono)',
-    textAlign: 'left',
   },
   '.cm-tooltip-autocomplete': {
-    backgroundColor: 'white',
-    border: '1px solid black',
+    backgroundColor: 'var(--surface-primary)',
+    border: '1px solid var(--border-primary)',
     fontFamily: 'var(--font-family-mono)',
   },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-    backgroundColor: '#d7d7d7',
-    color: 'black',
+    backgroundColor: 'var(--editor-selection-bg)',
+    color: 'var(--text-primary)',
   },
 }, { dark: false })
 
-// Build SQL extension with dialect and schema
-const buildSQLExtension = (dialect: string, schema: any) => {
+const buildSQLExtension = (dialect: string, schema: SchemaTable) => {
   const sqlDialect = dialect === 'duckdb' ? PostgreSQL : BigQueryDialect
-
   return [
-    sql({
-      dialect: sqlDialect,
-      upperCaseKeywords: true
-    }),
+    sql({ dialect: sqlDialect, upperCaseKeywords: true }),
     sqlDialect.language.data.of({
       autocomplete: schemaCompletionSource({ schema })
     })
   ]
 }
 
-// Watch for prop changes and reconfigure editor
 watch([() => props.dialect, () => props.schema], ([newDialect, newSchema]) => {
   if (editorView.value) {
     editorView.value.dispatch({
       effects: languageCompartment.reconfigure(
-        buildSQLExtension(newDialect, newSchema)
+        buildSQLExtension(newDialect || 'bigquery', newSchema || {})
       )
     })
   }
 }, { deep: true })
 
 onMounted(() => {
-  // Keyboard shortcut for running query
+  if (!editorRef.value) return
+
   const runShortcut = EditorView.domEventHandlers({
-    keydown(event, view) {
+    keydown(event) {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault()
         emit('run')
@@ -129,12 +121,11 @@ onMounted(() => {
     }
   })
 
-  // Initialize CodeMirror with dynamic language configuration
   editorView.value = new EditorView({
     extensions: [
       basicSetup,
-      languageCompartment.of(buildSQLExtension(props.dialect, props.schema)),
-      retroTheme,
+      languageCompartment.of(buildSQLExtension(props.dialect || 'bigquery', props.schema || {})),
+      editorTheme,
       runShortcut,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
@@ -143,20 +134,15 @@ onMounted(() => {
       })
     ],
     parent: editorRef.value,
-    doc: props.modelValue
+    doc: props.modelValue || ''
   })
 })
 
 onUnmounted(() => {
-  if (editorView.value) {
-    editorView.value.destroy()
-  }
-  if (timerInterval) {
-    clearInterval(timerInterval)
-  }
+  editorView.value?.destroy()
+  if (timerInterval) clearInterval(timerInterval)
 })
 
-// Expose methods
 defineExpose({
   getQuery: () => editorView.value?.state.doc.toString() || '',
   focus: () => editorView.value?.focus()
@@ -164,22 +150,24 @@ defineExpose({
 </script>
 
 <template>
-  <div
-    class="query-editor-wrapper"
-    :style="{ height: `${height}px` }"
-  >
-    <div
-      ref="editorRef"
-      class="query-editor"
-    ></div>
+  <div class="query-editor-wrapper" :style="{ height: `${height || 150}px` }">
+    <div ref="editorRef" class="query-editor" />
+
     <button
-      @click.stop="isRunning ? emit('stop') : emit('run')"
+      class="run-btn"
       :disabled="!isAuthenticated"
-      class="run-button"
-      :title="isRunning ? 'Stop query' : (isAuthenticated ? 'Run query (Ctrl + Enter)' : 'Upload credentials in sidebar first')"
+      :title="isRunning ? 'Stop query' : (isAuthenticated ? 'Run query (Ctrl+Enter)' : 'Upload credentials first')"
+      @click.stop="isRunning ? emit('stop') : emit('run')"
     >
-      <span v-if="isRunning">■ {{ elapsedTime.toFixed(1) }}s</span>
-      <span v-else>▶</span>
+      <template v-if="isRunning">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="4" y="4" width="16" height="16" rx="2"/>
+        </svg>
+        <span class="elapsed">{{ elapsedTime.toFixed(1) }}s</span>
+      </template>
+      <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
     </button>
   </div>
 </template>
@@ -189,61 +177,52 @@ defineExpose({
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
-  cursor: text;
-  user-select: text;
 }
 
 .query-editor {
   height: 100%;
   overflow: auto;
-  cursor: text;
 }
 
 .query-editor :deep(.cm-editor) {
   height: 100%;
-  cursor: text;
 }
 
 .query-editor :deep(.cm-scroller) {
   overflow: auto;
-  cursor: text;
 }
 
-.query-editor :deep(.cm-content) {
-  cursor: text;
-}
-
-.run-button {
+/* Run Button */
+.run-btn {
   position: absolute;
   bottom: var(--space-2);
   right: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
   background: var(--surface-primary);
-  color: var(--text-primary);
   border: none;
-  padding: var(--button-padding);
-  border-radius: var(--button-border-radius);
-  font-size: var(--button-font-size);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
   font-family: var(--font-family-mono);
-  cursor: pointer;
-  transition: none;
+  font-size: var(--font-size-body-sm);
   line-height: 1;
-  z-index: 10;
-  outline: none;
-  text-align: center;
+  cursor: pointer;
+  z-index: 1;
 }
 
-.run-button:hover:not(:disabled) {
+.run-btn:hover:not(:disabled) {
   background: var(--surface-secondary);
 }
 
-.run-button:focus {
-  outline: none;
-}
-
-.run-button:disabled {
-  background: var(--surface-secondary);
+.run-btn:disabled {
   color: var(--text-tertiary);
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.elapsed {
+  font-variant-numeric: tabular-nums;
 }
 </style>

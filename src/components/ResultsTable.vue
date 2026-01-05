@@ -177,14 +177,15 @@ defineExpose({ resetPagination })
   <section class="results-section">
     <div v-if="error" class="error-banner" role="alert">{{ error }}</div>
 
-    <div class="table-container">
+    <div class="table-container" role="region" aria-label="Query results" tabindex="0">
       <table v-if="hasResults" ref="tableRef" class="results-table">
         <thead>
           <tr>
-            <th class="row-number-col">#</th>
+            <th scope="col" class="row-number-col">#</th>
             <th
               v-for="column in columns"
               :key="column"
+              scope="col"
               :class="{ 'col-numeric': numericColumns.has(column) }"
             >
               {{ column }}
@@ -198,7 +199,7 @@ defineExpose({ resetPagination })
             @mouseenter="hoveredRowIndex = index"
             @mouseleave="hoveredRowIndex = null"
           >
-            <td class="row-number-col">
+            <th scope="row" class="row-number-col">
               <span class="row-number" :class="{ hidden: hoveredRowIndex === index }">
                 {{ (currentPage - 1) * pageSize + index + 1 }}
               </span>
@@ -213,7 +214,7 @@ defineExpose({ resetPagination })
                   <circle cx="12" cy="12" r="3"/>
                 </svg>
               </button>
-            </td>
+            </th>
             <td
               v-for="column in columns"
               :key="column"
@@ -288,20 +289,20 @@ defineExpose({ resetPagination })
   display: flex;
   flex-direction: column;
   overflow: clip;
-  border-top: var(--border-width-thin) solid var(--border-primary);
+  border-block-start: var(--border-width-thin) solid var(--border-primary);
 }
 
 .error-banner {
   padding: var(--space-2) var(--space-3);
   background: var(--color-error-bg);
-  border-bottom: var(--border-width-thin) solid var(--border-error);
+  border-block-end: var(--border-width-thin) solid var(--border-error);
   color: var(--color-error);
   font-size: var(--font-size-body-sm);
   font-weight: 600;
   flex-shrink: 0;
 }
 
-/* Table Container */
+/* Table Container - scrollable region with accessibility support */
 .table-container {
   flex: 1;
   min-height: 0;
@@ -309,61 +310,61 @@ defineExpose({ resetPagination })
   cursor: default;
 }
 
-/* Table Base */
+/* Table Base - using border-collapse: collapse for modern approach */
 .results-table {
-  width: max-content;
-  min-width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
   font-size: var(--table-font-size);
   font-family: var(--font-family-mono);
   color: var(--text-primary);
+  text-align: start;
 }
 
 .results-table ::selection {
   background: var(--color-selection);
 }
 
-/* Table Header */
-.results-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--surface-primary);
-}
-
-.results-table th {
-  padding: var(--table-cell-padding);
-  font-weight: 500;
-  white-space: nowrap;
-  background: inherit;
-  border-bottom: 1px solid var(--border-secondary);
-  min-width: 150px;
-  vertical-align: bottom;
-  user-select: text;
-  cursor: text;
-}
-
-.results-table th:not(:last-child) {
-  border-right: 1px solid var(--border-secondary);
-}
-
-/* All headers left-aligned, regardless of column type */
-.results-table th.col-numeric {
-  text-align: left;
-}
-
-/* Table Body */
+/* All cells base styles */
+.results-table th,
 .results-table td {
   padding: var(--table-cell-padding);
   white-space: nowrap;
-  min-width: 150px;
   vertical-align: baseline;
-  user-select: text;
-  cursor: text;
-  border-bottom: 1px solid var(--border-tertiary);
 }
 
+/* Header cells */
+.results-table thead th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background: var(--surface-primary);
+  font-weight: 500;
+  text-align: start;
+  min-width: 150px;
+  user-select: text;
+  cursor: text;
+  /* Use box-shadow for border since regular borders have issues with sticky */
+  box-shadow: inset 0 -1px 0 var(--border-secondary);
+}
+
+/* Vertical separator between header columns */
+.results-table thead th:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 1px;
+  background: var(--border-secondary);
+}
+
+/* Data cells */
+.results-table td {
+  min-width: 150px;
+  user-select: text;
+  cursor: text;
+  border-block-end: 1px solid var(--border-tertiary);
+}
+
+/* Row backgrounds */
 .results-table tbody tr {
   background: var(--surface-primary);
 }
@@ -372,26 +373,44 @@ defineExpose({ resetPagination })
   background: var(--table-row-hover-bg);
 }
 
-/* Column Alignment */
+/* Numeric column alignment */
 .col-numeric {
-  text-align: right;
+  text-align: end;
   font-variant-numeric: tabular-nums;
 }
 
+/* Null values */
 .null-value {
   color: var(--text-tertiary);
   font-style: italic;
 }
 
-/* Row Number Column - higher specificity to override th/td min-width */
+/* Row Number Column - sticky on inline-start (left in LTR) */
 .results-table .row-number-col {
+  position: sticky;
+  inset-inline-start: 0;
   width: 0;
   min-width: 0;
-  white-space: nowrap;
-  text-align: center;
   padding: var(--space-2);
+  text-align: center;
   user-select: none;
-  position: relative;
+  background: var(--surface-primary);
+  /* Border via box-shadow to work with sticky */
+  box-shadow: inset -1px 0 0 var(--border-secondary);
+}
+
+/* Header row number cell - highest z-index since it's sticky in both directions */
+.results-table thead .row-number-col {
+  z-index: 3;
+  /* Combined shadows for both borders */
+  box-shadow:
+    inset 0 -1px 0 var(--border-secondary),
+    inset -1px 0 0 var(--border-secondary);
+}
+
+/* Body row number cells need proper background for hover state */
+.results-table tbody tr:hover .row-number-col {
+  background: var(--table-row-hover-bg);
 }
 
 .row-number {
@@ -443,7 +462,7 @@ defineExpose({ resetPagination })
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   background: var(--surface-primary);
-  border-top: var(--border-width-thin) solid var(--border-primary);
+  border-block-start: var(--border-width-thin) solid var(--border-primary);
   flex-shrink: 0;
 }
 
@@ -461,7 +480,7 @@ defineExpose({ resetPagination })
 
 .stat::before {
   content: '·';
-  margin-right: var(--space-2);
+  margin-inline-end: var(--space-2);
   color: var(--text-tertiary);
 }
 

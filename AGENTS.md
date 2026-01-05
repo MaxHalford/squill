@@ -21,7 +21,7 @@
   - We're going for a minimalist retro look, using a limited color palette and simple shapes.
 - Use the semantic design system in style.css for consistent styling.
 
-## Development guidelines
+## Code style and guidelines
 
 - Don't hesitate to refactor and improve the structure as needed.
 - It's important to keep the code clean, simple, and maintainable.
@@ -30,3 +30,4 @@
 - The app is expected to be used in a desktop web browser.
 - Always use plan mode, and don't mind asking for clarifications.
 - Use bun.js to run commands, e.g. `bun run type-check` to type-check the code.
+- Use modern CSS features

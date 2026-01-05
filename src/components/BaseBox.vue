@@ -2,38 +2,51 @@
 import { ref, watch, nextTick } from 'vue'
 import ResizableBox from './ResizableBox.vue'
 
-const props = defineProps({
-  boxId: { type: Number, required: true },
-  initialX: { type: Number, default: 100 },
-  initialY: { type: Number, default: 100 },
-  initialWidth: { type: Number, default: 600 },
-  initialHeight: { type: Number, default: 500 },
-  initialZIndex: { type: Number, default: 1 },
-  isSelected: { type: Boolean, default: false },
-  initialName: { type: String, default: 'Box' },
-  showHeaderName: { type: Boolean, default: true }
-})
+interface Position {
+  x: number
+  y: number
+}
 
-const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name'])
+interface Size {
+  width: number
+  height: number
+}
 
-// Editable name state
+const props = defineProps<{
+  boxId: number
+  initialX?: number
+  initialY?: number
+  initialWidth?: number
+  initialHeight?: number
+  initialZIndex?: number
+  isSelected?: boolean
+  initialName?: string
+  showHeaderName?: boolean
+}>()
+
+const emit = defineEmits<{
+  'select': [payload: { shouldPan: boolean }]
+  'update:position': [position: Position]
+  'update:size': [size: Size]
+  'delete': []
+  'maximize': []
+  'update:name': [name: string]
+}>()
+
 const isEditingName = ref(false)
-const boxName = ref(props.initialName)
-const nameInputRef = ref(null)
+const boxName = ref(props.initialName || 'Box')
+const nameInputRef = ref<HTMLInputElement | null>(null)
 
 watch(() => props.initialName, (newName) => {
-  boxName.value = newName
+  if (newName) boxName.value = newName
 })
 
-// Handle name editing
-const startEditingName = (e) => {
+const startEditingName = (e: MouseEvent) => {
   e.stopPropagation()
   isEditingName.value = true
   nextTick(() => {
-    if (nameInputRef.value) {
-      nameInputRef.value.focus()
-      nameInputRef.value.select()
-    }
+    nameInputRef.value?.focus()
+    nameInputRef.value?.select()
   })
 }
 
@@ -44,62 +57,46 @@ const finishEditingName = () => {
   if (newName && newName !== props.initialName) {
     emit('update:name', newName)
   } else if (!newName) {
-    boxName.value = props.initialName
+    boxName.value = props.initialName || 'Box'
   }
 }
 
-const handleNameKeydown = (e) => {
+const handleNameKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter') {
     e.preventDefault()
     finishEditingName()
   } else if (e.key === 'Escape') {
     e.preventDefault()
-    boxName.value = props.initialName
+    boxName.value = props.initialName || 'Box'
     isEditingName.value = false
   }
 }
 
-// Event handlers
-const handleSelect = (eventData) => {
-  emit('select', eventData)
-}
-
-const handleUpdatePosition = (newPosition) => {
-  emit('update:position', newPosition)
-}
-
-const handleUpdateSize = (newSize) => {
-  emit('update:size', newSize)
-}
-
-const handleMaximize = (e) => {
+const handleMaximize = (e: MouseEvent) => {
   e.stopPropagation()
   emit('maximize')
 }
 
-const handleDelete = (e) => {
+const handleDelete = (e: MouseEvent) => {
   e.stopPropagation()
   emit('delete')
 }
 
-// Expose box name for child components
-defineExpose({
-  boxName
-})
+defineExpose({ boxName })
 </script>
 
 <template>
   <ResizableBox
     :box-id="boxId"
-    :initial-x="initialX"
-    :initial-y="initialY"
-    :initial-width="initialWidth"
-    :initial-height="initialHeight"
-    :initial-z-index="initialZIndex"
-    :is-selected="isSelected"
-    @select="handleSelect"
-    @update:position="handleUpdatePosition"
-    @update:size="handleUpdateSize"
+    :initial-x="initialX ?? 100"
+    :initial-y="initialY ?? 100"
+    :initial-width="initialWidth ?? 600"
+    :initial-height="initialHeight ?? 500"
+    :initial-z-index="initialZIndex ?? 1"
+    :is-selected="isSelected ?? false"
+    @select="emit('select', $event)"
+    @update:position="emit('update:position', $event)"
+    @update:size="emit('update:size', $event)"
   >
     <template #header>
       <div v-if="showHeaderName" class="box-name-container">
@@ -107,55 +104,64 @@ defineExpose({
           v-if="isEditingName"
           ref="nameInputRef"
           v-model="boxName"
+          type="text"
+          class="name-input"
           @blur="finishEditingName"
           @keydown="handleNameKeydown"
           @click.stop
-          class="name-input"
-          type="text"
         />
         <span
           v-else
           class="box-name"
-          @dblclick="startEditingName"
           title="Double-click to edit"
+          @dblclick="startEditingName"
         >{{ boxName }}</span>
       </div>
+
       <div class="header-buttons" :class="{ 'no-name': !showHeaderName }">
         <button
-          class="header-btn maximize-btn"
-          @click="handleMaximize"
+          class="header-btn"
           title="Maximize"
-        >⛶</button>
+          aria-label="Maximize"
+          @click="handleMaximize"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
+        </button>
         <button
           class="header-btn delete-btn"
-          @click="handleDelete"
           title="Delete"
-        >✕</button>
+          aria-label="Delete"
+          @click="handleDelete"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
       </div>
     </template>
 
-    <!-- Allow child components to provide their own content -->
-    <slot></slot>
+    <slot />
   </ResizableBox>
 </template>
 
 <style scoped>
-/* Header name container */
 .box-name-container {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin-right: auto;
+  min-width: 0;
 }
 
 .box-name {
   cursor: pointer;
   user-select: none;
-  display: inline-block;
-  line-height: var(--line-height-tight);
-  height: 14px;
-  padding: 0;
-  margin: 0;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .box-name:hover {
@@ -167,22 +173,18 @@ defineExpose({
   border: none;
   outline: none;
   color: inherit;
-  font-size: inherit;
-  font-family: inherit;
-  font-weight: inherit;
+  font: inherit;
   padding: 0;
   margin: 0;
   min-width: 100px;
   max-width: 400px;
-  line-height: var(--line-height-tight);
-  height: 14px;
-  display: inline-block;
+  line-height: 1;
 }
 
-/* Header buttons */
 .header-buttons {
   display: flex;
   gap: var(--space-1);
+  flex-shrink: 0;
 }
 
 .header-buttons.no-name {
@@ -190,25 +192,18 @@ defineExpose({
 }
 
 .header-btn {
-  width: 20px;
-  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   background: transparent;
   border: none;
+  border-radius: var(--border-radius-sm);
   color: var(--text-inverse);
   cursor: pointer;
-  font-size: var(--font-size-body-lg);
-  font-weight: bold;
-  padding: 0;
-  line-height: 1;
-  transition: all 0.2s;
-  outline: none;
-}
-
-.header-btn:focus {
-  outline: none;
+  transition: background 0.1s, color 0.1s;
 }
 
 .header-btn:hover {
@@ -218,7 +213,6 @@ defineExpose({
 
 .delete-btn:hover {
   background: var(--color-error);
-  border-color: var(--color-error);
   color: var(--text-inverse);
 }
 </style>
