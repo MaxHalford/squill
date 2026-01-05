@@ -9,6 +9,7 @@
  */
 
 import type { ConnectionType } from '../types/connection'
+import { isLocalConnectionType } from './connectionHelpers'
 
 /**
  * Extract table references from SQL query
@@ -72,38 +73,5 @@ export function getEffectiveEngine(
   return connectionType || 'duckdb'
 }
 
-/**
- * Check if a connection type represents a local/in-memory database
- * Currently only DuckDB is local, but this could include SQLite in the future
- */
-export function isLocalDatabase(connectionType: ConnectionType | undefined): boolean {
-  return connectionType === 'duckdb'
-}
-
-// ============================================
-// DEPRECATED: Legacy functions for backwards compatibility
-// These are maintained during migration but should be removed
-// ============================================
-
-/**
- * @deprecated Use getEffectiveEngine() instead
- * Detect if query targets BigQuery based on patterns
- */
-export function isBigQueryQuery(query: string, duckDBTables: string[] = []): boolean {
-  // Check if any referenced table exists in DuckDB
-  if (referencesLocalDuckDBTable(query, duckDBTables)) {
-    return false
-  }
-
-  // Without a connection context, we can't definitively say it's BigQuery
-  // Default to false (DuckDB) for safety
-  return false
-}
-
-/**
- * @deprecated Use getEffectiveEngine() instead
- * Detect which engine should execute the query
- */
-export function detectQueryEngine(query: string, duckDBTables: string[] = []): 'bigquery' | 'duckdb' {
-  return isBigQueryQuery(query, duckDBTables) ? 'bigquery' : 'duckdb'
-}
+// Re-export for convenience
+export { isLocalConnectionType }

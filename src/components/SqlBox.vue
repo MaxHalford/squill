@@ -8,7 +8,7 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { useCanvasStore } from '../stores/canvas'
 import { useSchemaStore } from '../stores/schema'
 import { useConnectionsStore } from '../stores/connections'
-import { getEffectiveEngine, extractTableReferences, isLocalDatabase } from '../utils/queryAnalyzer'
+import { getEffectiveEngine, extractTableReferences, isLocalConnectionType } from '../utils/queryAnalyzer'
 import { buildDuckDBSchema, buildBigQuerySchema, combineSchemas } from '../utils/schemaBuilder'
 
 const authStore = useAuthStore()
@@ -81,9 +81,11 @@ const currentDialect = computed(() => {
 // Build combined schema for autocompletion
 const editorSchema = computed(() => {
   const duckdbSchema = buildDuckDBSchema(duckdbStore.tables)
+  // Get project from connection for BigQuery schema
+  const projectId = boxConnection.value?.projectId
   const bigquerySchema = buildBigQuerySchema(
     schemaStore.bigQuerySchemas,
-    canvasStore.activeProjectId
+    projectId
   )
 
   return combineSchemas(duckdbSchema, bigquerySchema)
@@ -135,7 +137,7 @@ const updateDependenciesFromQuery = async (query) => {
     const engine = getEffectiveEngine(connectionType, query, availableTables)
 
     // Only track dependencies for local database queries (DuckDB)
-    if (isLocalDatabase(engine)) {
+    if (isLocalConnectionType(engine)) {
       const tableRefs = extractTableReferences(query)
       const dependencyBoxIds = tableRefs
         .map(ref => {
@@ -225,7 +227,7 @@ const runQuery = async () => {
     let result
 
     // Execute query based on effective engine
-    if (isLocalDatabase(engine)) {
+    if (isLocalConnectionType(engine)) {
       // Execute in local DuckDB
       result = await duckdbStore.runQuery(query)
 
@@ -275,7 +277,7 @@ const runQuery = async () => {
 
     // Update dependencies for local database queries (DuckDB)
     // Dependencies track which boxes produce tables that this query references
-    if (isLocalDatabase(engine)) {
+    if (isLocalConnectionType(engine)) {
       try {
         const tableRefs = extractTableReferences(query)
         const dependencyBoxIds = tableRefs

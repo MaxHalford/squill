@@ -173,6 +173,20 @@ export const useConnectionsStore = defineStore('connections', () => {
     }
   }
 
+  // Update connection's project ID (for BigQuery and similar)
+  const setConnectionProjectId = (connectionId: string, projectId: string | undefined) => {
+    const connection = connections.value.find(c => c.id === connectionId)
+    if (connection) {
+      connection.projectId = projectId
+      saveState()
+    }
+  }
+
+  // Get the active connection's project ID
+  const getActiveProjectId = (): string | undefined => {
+    return activeConnection.value?.projectId
+  }
+
   // Get connections by type
   const getConnectionsByType = (type: ConnectionType): Connection[] => {
     return connections.value.filter(c => c.type === type)
@@ -202,6 +216,8 @@ export const useConnectionsStore = defineStore('connections', () => {
     setActiveConnection,
     removeConnection,
     reconnectConnection,
+    setConnectionProjectId,
+    getActiveProjectId,
     getConnectionsByType,
     isConnectionExpired
   }

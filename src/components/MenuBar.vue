@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
 import { useSettingsStore } from '../stores/settings'
-import { getConnectionTypeName, connectionRequiresAuth } from '../utils/connectionUtils'
+import {
+  getConnectionTypeName,
+  getConnectionDisplayName,
+  connectionRequiresAuth
+} from '../utils/connectionHelpers'
 
 const authStore = useAuthStore()
 const canvasStore = useCanvasStore()
@@ -28,13 +32,6 @@ const addDatabaseMenuOpen = ref(false)
 // Settings state
 const limitInputValue = ref(settingsStore.autoLimitValue)
 const paginationInputValue = ref(settingsStore.paginationSize)
-
-// Connection display name
-const getConnectionDisplayName = (connection) => {
-  const dbName = getConnectionTypeName(connection.type)
-  const identifier = connection.type === 'duckdb' ? 'local' : connection.email
-  return `${dbName} - ${identifier}`
-}
 
 // Toggle dropdown
 const toggleDropdown = (dropdown) => {
@@ -71,18 +68,23 @@ const handleConnectionSelect = async (connectionId) => {
   // Only load projects for BigQuery connections
   if (connection.type === 'bigquery') {
     await authStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
+    // Sync auth store with connection's project
+    if (connection.projectId) {
+      authStore.setProjectId(connection.projectId)
+    }
   } else {
-    // Clear project for non-BigQuery connections
-    canvasStore.setActiveProjectId(null)
     authStore.setProjectId(null)
   }
 
   closeDropdown()
 }
 
-// Handle project selection
+// Handle project selection - stores project on the active connection
 const handleProjectSelect = async (projectId) => {
-  canvasStore.setActiveProjectId(projectId)
+  const activeConnectionId = connectionsStore.activeConnectionId
+  if (activeConnectionId) {
+    connectionsStore.setConnectionProjectId(activeConnectionId, projectId)
+  }
   authStore.setProjectId(projectId)
   closeDropdown()
 
@@ -91,7 +93,6 @@ const handleProjectSelect = async (projectId) => {
     await authStore.fetchAllSchemas()
   } catch (error) {
     console.error('Failed to fetch schemas:', error)
-    // Don't block the UI if schema fetch fails
   }
 }
 
@@ -131,13 +132,12 @@ const handleReconnect = async (connectionId, event) => {
   }
 }
 
-// Add box with engine, connection, and project based on active connection
+// Add box with engine and connection based on active connection
 const addBox = (boxType) => {
   const activeConnection = connectionsStore.activeConnection
   const engine = activeConnection?.type || 'duckdb'
   const connectionId = activeConnection?.id
-  const projectId = canvasStore.activeProjectId || undefined
-  const boxId = canvasStore.addBox(boxType, null, engine, connectionId, projectId)
+  const boxId = canvasStore.addBox(boxType, null, engine, connectionId)
   canvasStore.selectBox(boxId)
   closeDropdown()
 }
@@ -231,8 +231,8 @@ onUnmounted(() => {
       <!-- Unified Connection Dropdown -->
       <div class="menu-item" :class="{ active: isConnectionDropdownOpen }">
         <button class="menu-button" @click.stop="toggleDropdown('connection')">
-          <span v-if="connectionsStore.activeConnection?.type === 'bigquery' && canvasStore.activeProjectId" class="menu-text">
-            {{ getConnectionDisplayName(connectionsStore.activeConnection) }} / {{ canvasStore.activeProjectId }}
+          <span v-if="connectionsStore.activeConnection?.type === 'bigquery' && connectionsStore.activeConnection?.projectId" class="menu-text">
+            {{ getConnectionDisplayName(connectionsStore.activeConnection) }} / {{ connectionsStore.activeConnection.projectId }}
             <span v-if="connectionsStore.isActiveTokenExpired" class="token-expired-indicator"> (Expired)</span>
           </span>
           <span v-else-if="connectionsStore.activeConnection" class="menu-text">
@@ -296,11 +296,11 @@ onUnmounted(() => {
               v-for="project in authStore.projects"
               :key="project.projectId"
               class="dropdown-item project-item"
-              :class="{ selected: project.projectId === canvasStore.activeProjectId }"
+              :class="{ selected: project.projectId === connectionsStore.activeConnection?.projectId }"
               @click="handleProjectSelect(project.projectId)"
             >
               <span class="item-text">{{ project.name || project.projectId }}</span>
-              <span v-if="project.projectId === canvasStore.activeProjectId" class="item-check">✓</span>
+              <span v-if="project.projectId === connectionsStore.activeConnection?.projectId" class="item-check">✓</span>
             </button>
           </div>
 

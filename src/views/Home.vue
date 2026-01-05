@@ -255,9 +255,8 @@ const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
       }
 
       // Create SqlBox with correct query and name (CSV always uses DuckDB)
-      // DuckDB is local so no project context needed
       const duckdbConnectionId = 'duckdb-local'
-      const boxId = canvasStore.addBox('sql', currentPosition, 'duckdb', duckdbConnectionId, undefined)
+      const boxId = canvasStore.addBox('sql', currentPosition, 'duckdb', duckdbConnectionId)
       const displayName = file.name.replace('.csv', '') + '_query'
       canvasStore.updateBoxName(boxId, displayName)
       canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${tableName}\nLIMIT 100`)
@@ -313,18 +312,14 @@ const handleQueryTableFromSchema = async (data: {
     const query = generateSelectQuery(data.tableName, data.engine)
     const boxName = generateQueryBoxName(data.tableName)
 
-    // Get connection ID and project ID based on engine
+    // Get connection ID based on engine
+    // Project is stored on the connection, not the box
     const connectionId = data.engine === 'duckdb'
       ? 'duckdb-local'
       : connectionsStore.getConnectionsByType('bigquery')[0]?.id
 
-    // For BigQuery, include the active project; DuckDB doesn't need project
-    const projectId = data.engine === 'duckdb'
-      ? undefined
-      : canvasStore.activeProjectId || undefined
-
-    // Create box with appropriate engine, connection, and project
-    const boxId = canvasStore.addBox('sql', position, data.engine, connectionId, projectId)
+    // Create box with appropriate engine and connection
+    const boxId = canvasStore.addBox('sql', position, data.engine, connectionId)
 
     // Configure box
     canvasStore.updateBoxName(boxId, boxName)

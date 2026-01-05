@@ -17,9 +17,6 @@ export const useCanvasStore = defineStore('canvas', () => {
   const previousSelectedBoxId = ref<number | null>(null)
   const nextBoxId = ref(1)
 
-  // Active project ID (database type determined by active connection)
-  const activeProjectId = ref<string | null>(null)
-
   // Canvas reference for getting viewport center
   const canvasRef = ref<any>(null)
 
@@ -38,30 +35,27 @@ export const useCanvasStore = defineStore('canvas', () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
-        const state: CanvasState & { selectedProject?: string | null } = JSON.parse(saved)
+        const state: CanvasState = JSON.parse(saved)
         boxes.value = state.boxes || []
         nextBoxId.value = state.nextBoxId || 1
-        activeProjectId.value = state.activeProjectId || state.selectedProject || null
 
         // Ensure all boxes have required properties and filter out invalid boxes
         boxes.value = boxes.value
-          .filter(box => box && box.id != null) // Filter out boxes with null/undefined IDs
+          .filter(box => box && box.id != null)
           .map(box => ({
             id: box.id,
-            type: box.type || 'sql', // 'sql' or 'schema'
+            type: box.type || 'sql',
             x: box.x || 100,
             y: box.y || 100,
             width: box.width || 600,
             height: box.height || 500,
             zIndex: box.zIndex || 1,
-            query: box.query || `SELECT *\nFROM bigquery-public-data.samples.shakespeare\nLIMIT 50`,
+            query: box.query || '',
             name: box.name || `query_${box.id}`,
-            dependencies: box.dependencies || [], // Array of box IDs this box depends on
-            connectionId: box.connectionId, // Preserve connection association
-            projectId: box.projectId // Preserve project/database/catalog
+            dependencies: box.dependencies || [],
+            connectionId: box.connectionId
           }))
       } else {
-        // Initialize with default boxes if no saved state
         initializeDefaultBoxes()
       }
     } catch (error) {
@@ -74,7 +68,6 @@ export const useCanvasStore = defineStore('canvas', () => {
   const initializeDefaultBoxes = () => {
     boxes.value = []
     nextBoxId.value = 1
-    activeProjectId.value = null
   }
 
   // Save state to localStorage
@@ -82,8 +75,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     try {
       const state: CanvasState = {
         boxes: boxes.value,
-        nextBoxId: nextBoxId.value,
-        activeProjectId: activeProjectId.value
+        nextBoxId: nextBoxId.value
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
     } catch (error) {
@@ -92,7 +84,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // Watch for changes and auto-save
-  watch([boxes, nextBoxId, activeProjectId], () => {
+  watch([boxes, nextBoxId], () => {
     saveState()
   }, { deep: true })
 
@@ -109,11 +101,9 @@ export const useCanvasStore = defineStore('canvas', () => {
       selectedBoxId: selectedBoxId.value,
       nextBoxId: nextBoxId.value
     })
-    // Limit undo stack size to 50 items
     if (undoStack.value.length > 50) {
       undoStack.value.shift()
     }
-    // Clear redo stack when new action is performed
     redoStack.value = []
   }
 
@@ -121,14 +111,12 @@ export const useCanvasStore = defineStore('canvas', () => {
   const undo = () => {
     if (undoStack.value.length === 0) return
 
-    // Save current state to redo stack
     redoStack.value.push({
       boxes: JSON.parse(JSON.stringify(boxes.value)),
       selectedBoxId: selectedBoxId.value,
       nextBoxId: nextBoxId.value
     })
 
-    // Restore previous state
     const previousState = undoStack.value.pop()!
     boxes.value = previousState.boxes
     selectedBoxId.value = previousState.selectedBoxId
@@ -139,14 +127,12 @@ export const useCanvasStore = defineStore('canvas', () => {
   const redo = () => {
     if (redoStack.value.length === 0) return
 
-    // Save current state to undo stack
     undoStack.value.push({
       boxes: JSON.parse(JSON.stringify(boxes.value)),
       selectedBoxId: selectedBoxId.value,
       nextBoxId: nextBoxId.value
     })
 
-    // Restore next state
     const nextState = redoStack.value.pop()!
     boxes.value = nextState.boxes
     selectedBoxId.value = nextState.selectedBoxId
@@ -158,24 +144,20 @@ export const useCanvasStore = defineStore('canvas', () => {
     type: BoxType = 'sql',
     position: Position | null = null,
     engine?: QueryEngine,
-    connectionId?: string,
-    projectId?: string
+    connectionId?: string
   ): number => {
     saveToUndoStack()
 
-    // Get viewport center if canvas ref is available
     let centerPosition: Position | null = null
     if (!position && canvasRef.value) {
       centerPosition = canvasRef.value.getViewportCenter()
     }
 
-    // Default position if none provided
     const defaultX = 100 + Math.random() * 200
     const defaultY = 100 + Math.random() * 200
 
     const boxId = nextBoxId.value++
 
-    // Size depends on type
     const width = type === 'note' ? 400 :
                   type === 'detail' ? 400 :
                   type === 'schema' ? 800 : 600
@@ -197,16 +179,10 @@ export const useCanvasStore = defineStore('canvas', () => {
             type === 'detail' ? `row_detail_${boxId}` :
             `schema_${boxId}`,
       dependencies: [],
-      connectionId: connectionId,
-      projectId: projectId
+      connectionId: connectionId
     }
     boxes.value.push(newBox)
     return newBox.id
-  }
-
-  // Set active project ID
-  const setActiveProjectId = (projectId: string | null) => {
-    activeProjectId.value = projectId
   }
 
   // Set canvas ref
@@ -221,11 +197,10 @@ export const useCanvasStore = defineStore('canvas', () => {
       saveToUndoStack()
       boxes.value.splice(index, 1)
 
-      // If we're deleting the selected box, return the previous box ID for panning
       if (selectedBoxId.value === id) {
         if (previousSelectedBoxId.value !== null && boxes.value.find(b => b.id === previousSelectedBoxId.value)) {
           const prevId = previousSelectedBoxId.value
-          selectedBoxId.value = null // Clear selection temporarily (Home.vue will select with pan)
+          selectedBoxId.value = null
           previousSelectedBoxId.value = null
           return prevId
         } else {
@@ -238,14 +213,12 @@ export const useCanvasStore = defineStore('canvas', () => {
 
   // Select a box and bring to front
   const selectBox = (id: number) => {
-    // Save current selection as previous before changing
     if (selectedBoxId.value !== null && selectedBoxId.value !== id) {
       previousSelectedBoxId.value = selectedBoxId.value
     }
 
     selectedBoxId.value = id
 
-    // Bring selected box to front
     const box = boxes.value.find(b => b.id === id)
     if (box) {
       const maxZ = getMaxZIndex()
@@ -268,7 +241,7 @@ export const useCanvasStore = defineStore('canvas', () => {
 
   // Select multiple boxes (for rectangle selection)
   const selectMultipleBoxes = (boxIds: number[]) => {
-    selectedBoxId.value = null // Clear single selection
+    selectedBoxId.value = null
     selectedBoxIds.value = new Set(boxIds)
   }
 
@@ -292,7 +265,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     const idsToRemove = new Set(boxIds)
     boxes.value = boxes.value.filter(box => !idsToRemove.has(box.id))
 
-    // Clear selections
     selectedBoxId.value = null
     selectedBoxIds.value.clear()
   }
@@ -355,14 +327,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
-  // Update box project ID
-  const updateBoxProjectId = (id: number, projectId: string | undefined) => {
-    const box = boxes.value.find(b => b.id === id)
-    if (box) {
-      box.projectId = projectId
-    }
-  }
-
   // Clear all boxes
   const clearAll = () => {
     boxes.value = []
@@ -382,10 +346,9 @@ export const useCanvasStore = defineStore('canvas', () => {
     if (!originalBox) return null
 
     saveToUndoStack()
-    const OFFSET = 30 // Offset for copied box
+    const OFFSET = 30
     const boxId = nextBoxId.value++
 
-    // Generate incremented name based on type
     const newName = originalBox.type === 'sql' ? `query_${boxId}` :
                     originalBox.type === 'note' ? `note_${boxId}` :
                     originalBox.type === 'detail' ? `row_detail_${boxId}` :
@@ -401,9 +364,8 @@ export const useCanvasStore = defineStore('canvas', () => {
       zIndex: getMaxZIndex() + 1,
       query: originalBox.query,
       name: newName,
-      dependencies: [], // Copied box starts with no dependencies
-      connectionId: originalBox.connectionId, // Preserve connection association
-      projectId: originalBox.projectId // Preserve project/database/catalog
+      dependencies: [],
+      connectionId: originalBox.connectionId
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -420,13 +382,12 @@ export const useCanvasStore = defineStore('canvas', () => {
     if (originalBoxes.length === 0) return []
 
     saveToUndoStack()
-    const OFFSET = 30 // Offset for copied boxes
+    const OFFSET = 30
     const newBoxIds: number[] = []
 
     originalBoxes.forEach(originalBox => {
       const boxId = nextBoxId.value++
 
-      // Generate incremented name based on type
       const newName = originalBox.type === 'sql' ? `query_${boxId}` :
                       originalBox.type === 'note' ? `note_${boxId}` :
                       originalBox.type === 'detail' ? `row_detail_${boxId}` :
@@ -442,9 +403,8 @@ export const useCanvasStore = defineStore('canvas', () => {
         zIndex: getMaxZIndex() + 1,
         query: originalBox.query,
         name: newName,
-        dependencies: [], // Copied box starts with no dependencies
-        connectionId: originalBox.connectionId, // Preserve connection association
-        projectId: originalBox.projectId // Preserve project/database/catalog
+        dependencies: [],
+        connectionId: originalBox.connectionId
       }
       boxes.value.push(newBox)
       newBoxIds.push(boxId)
@@ -459,7 +419,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     previousSelectedBoxId,
     selectedBoxIds,
     rectangleSelection,
-    activeProjectId,
     canvasRef,
     loadState,
     addBox,
@@ -478,7 +437,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     updateBoxZIndex,
     updateBoxDependencies,
     updateBoxConnectionId,
-    updateBoxProjectId,
     getMaxZIndex,
     clearAll,
     resetToDefault,
@@ -486,7 +444,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     copyMultipleBoxes,
     undo,
     redo,
-    setActiveProjectId,
     setCanvasRef
   }
 })
