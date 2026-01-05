@@ -14,7 +14,7 @@ interface UndoRedoState {
 export const useCanvasStore = defineStore('canvas', () => {
   const boxes = ref<Box[]>([])
   const selectedBoxId = ref<number | null>(null)
-  const previousSelectedBoxId = ref<number | null>(null)
+  const selectionHistory = ref<number[]>([]) // Stack of previously selected box IDs
   const nextBoxId = ref(1)
 
   // Canvas reference for getting viewport center
@@ -197,14 +197,18 @@ export const useCanvasStore = defineStore('canvas', () => {
       saveToUndoStack()
       boxes.value.splice(index, 1)
 
+      // Also remove deleted box from selection history
+      selectionHistory.value = selectionHistory.value.filter(historyId => historyId !== id)
+
       if (selectedBoxId.value === id) {
-        if (previousSelectedBoxId.value !== null && boxes.value.find(b => b.id === previousSelectedBoxId.value)) {
-          const prevId = previousSelectedBoxId.value
-          selectedBoxId.value = null
-          previousSelectedBoxId.value = null
-          return prevId
-        } else {
-          selectedBoxId.value = null
+        selectedBoxId.value = null
+
+        // Pop from history until we find a box that still exists
+        while (selectionHistory.value.length > 0) {
+          const prevId = selectionHistory.value.pop()!
+          if (boxes.value.find(b => b.id === prevId)) {
+            return prevId
+          }
         }
       }
     }
@@ -214,7 +218,12 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Select a box and bring to front
   const selectBox = (id: number) => {
     if (selectedBoxId.value !== null && selectedBoxId.value !== id) {
-      previousSelectedBoxId.value = selectedBoxId.value
+      // Push current selection to history stack
+      selectionHistory.value.push(selectedBoxId.value)
+      // Keep history bounded to prevent memory issues
+      if (selectionHistory.value.length > 50) {
+        selectionHistory.value.shift()
+      }
     }
 
     selectedBoxId.value = id
@@ -416,7 +425,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   return {
     boxes,
     selectedBoxId,
-    previousSelectedBoxId,
+    selectionHistory,
     selectedBoxIds,
     rectangleSelection,
     canvasRef,
