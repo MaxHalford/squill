@@ -25,6 +25,8 @@ const emit = defineEmits<{
 
 const hoveredRowIndex = ref<number | null>(null)
 const currentPage = ref(1)
+const sortColumn = ref<string | null>(null)
+const sortDirection = ref<'asc' | 'desc'>('asc')
 
 const pageSize = computed(() => settingsStore.paginationSize)
 
@@ -52,15 +54,49 @@ const numericColumns = computed(() => {
   return numeric
 })
 
+const sortedData = computed(() => {
+  if (!props.results || !sortColumn.value) return props.results || []
+
+  const data = [...props.results]
+  const column = sortColumn.value
+  const direction = sortDirection.value
+
+  return data.sort((a, b) => {
+    const aValue = a[column]
+    const bValue = b[column]
+
+    // Handle null/undefined values - always sort them to the end
+    if (aValue === null || aValue === undefined) return 1
+    if (bValue === null || bValue === undefined) return -1
+
+    // Check if both values are numeric
+    const aNum = Number(aValue)
+    const bNum = Number(bValue)
+    const bothNumeric = !isNaN(aNum) && !isNaN(bNum) && isFinite(aNum) && isFinite(bNum)
+
+    let comparison = 0
+    if (bothNumeric) {
+      comparison = aNum - bNum
+    } else {
+      // String comparison
+      const aStr = String(aValue).toLowerCase()
+      const bStr = String(bValue).toLowerCase()
+      comparison = aStr.localeCompare(bStr)
+    }
+
+    return direction === 'asc' ? comparison : -comparison
+  })
+})
+
 const totalPages = computed(() => {
-  if (!props.results?.length) return 0
-  return Math.ceil(props.results.length / pageSize.value)
+  if (!sortedData.value.length) return 0
+  return Math.ceil(sortedData.value.length / pageSize.value)
 })
 
 const paginatedData = computed(() => {
-  if (!props.results) return []
+  if (!sortedData.value.length) return []
   const start = (currentPage.value - 1) * pageSize.value
-  return props.results.slice(start, start + pageSize.value)
+  return sortedData.value.slice(start, start + pageSize.value)
 })
 
 const hasResults = computed(() => props.results && props.results.length > 0)
@@ -100,6 +136,19 @@ const prevPage = () => {
 }
 
 const resetPagination = () => {
+  currentPage.value = 1
+}
+
+const handleSort = (column: string) => {
+  if (sortColumn.value === column) {
+    // Toggle direction if clicking the same column
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    // New column - default to ascending
+    sortColumn.value = column
+    sortDirection.value = 'asc'
+  }
+  // Reset to first page when sorting changes
   currentPage.value = 1
 }
 
@@ -186,9 +235,42 @@ defineExpose({ resetPagination })
               v-for="column in columns"
               :key="column"
               scope="col"
-              :class="{ 'col-numeric': numericColumns.has(column) }"
+              :class="{
+                'col-numeric': numericColumns.has(column),
+                'sortable': true,
+                'sorted': sortColumn === column
+              }"
+              @click="handleSort(column)"
             >
-              {{ column }}
+              <span class="column-header">
+                <span class="column-name">{{ column }}</span>
+                <span class="sort-indicator">
+                  <svg
+                    v-if="sortColumn === column && sortDirection === 'asc'"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-label="Sorted ascending"
+                  >
+                    <path d="M12 19V5M5 12l7-7 7 7"/>
+                  </svg>
+                  <svg
+                    v-else-if="sortColumn === column && sortDirection === 'desc'"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-label="Sorted descending"
+                  >
+                    <path d="M12 5v14M5 12l7 7 7-7"/>
+                  </svg>
+                </span>
+              </span>
             </th>
           </tr>
         </thead>
@@ -237,7 +319,7 @@ defineExpose({ resetPagination })
         <span v-if="stats?.engine" class="engine-badge" :data-engine="stats.engine">
           {{ stats.engine === 'bigquery' ? 'BigQuery' : 'DuckDB' }}
         </span>
-        <span class="stat">{{ results!.length }} {{ results!.length === 1 ? 'row' : 'rows' }}</span>
+        <span class="stat">{{ sortedData.length }} {{ sortedData.length === 1 ? 'row' : 'rows' }}</span>
         <span v-if="stats?.executionTimeMs" class="stat">{{ formatTime(stats.executionTimeMs) }}</span>
         <span v-if="stats?.totalBytesProcessed" class="stat">{{ formatBytes(stats.totalBytesProcessed) }}</span>
         <span v-if="stats?.cacheHit" class="stat cache-hit">Cached</span>
@@ -344,6 +426,46 @@ defineExpose({ resetPagination })
   cursor: text;
   /* Use box-shadow for border since regular borders have issues with sticky */
   box-shadow: inset 0 -1px 0 var(--border-secondary);
+}
+
+/* Sortable header cells */
+.results-table thead th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.results-table thead th.sortable:hover {
+  background: var(--table-row-hover-bg);
+}
+
+.results-table thead th.sortable.sorted {
+  font-weight: 600;
+}
+
+/* Column header layout */
+.column-header {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.column-name {
+  flex: 1;
+}
+
+.sort-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.sorted .sort-indicator {
+  color: var(--text-primary);
 }
 
 /* Vertical separator between header columns */
