@@ -1,6 +1,6 @@
 export function generateSelectQuery(
   tableName: string,
-  engine: 'bigquery' | 'duckdb',
+  _engine: 'bigquery' | 'duckdb',
   limit: number = 100
 ): string {
   let escapedName = tableName

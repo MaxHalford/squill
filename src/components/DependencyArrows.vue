@@ -6,8 +6,11 @@ const props = defineProps<{
   boxes: Box[]
 }>()
 
+type Direction = 'left' | 'right' | 'up' | 'down'
+type Point = { x: number; y: number }
+
 // Determine best connection points based on relative box positions
-const getConnectionPoints = (sourceBox, targetBox) => {
+const getConnectionPoints = (sourceBox: Box, targetBox: Box) => {
   const sourceCenterX = sourceBox.x + sourceBox.width / 2
   const sourceCenterY = sourceBox.y + sourceBox.height / 2
   const targetCenterX = targetBox.x + targetBox.width / 2
@@ -16,7 +19,7 @@ const getConnectionPoints = (sourceBox, targetBox) => {
   const dx = targetCenterX - sourceCenterX
   const dy = targetCenterY - sourceCenterY
 
-  let sourcePoint, targetPoint, sourceDir, targetDir
+  let sourcePoint: Point, targetPoint: Point, sourceDir: Direction, targetDir: Direction
 
   // Determine connection sides based on relative positions
   if (Math.abs(dx) > Math.abs(dy)) {
@@ -79,7 +82,7 @@ const getConnectionPoints = (sourceBox, targetBox) => {
 }
 
 // Create orthogonal path with smooth routing
-const getOrthogonalPath = (sourcePoint, targetPoint, sourceDir, targetDir) => {
+const getOrthogonalPath = (sourcePoint: Point, targetPoint: Point, sourceDir: Direction, _targetDir: Direction) => {
   const { x: x1, y: y1 } = sourcePoint
   const { x: x2, y: y2 } = targetPoint
 
@@ -123,7 +126,14 @@ const getOrthogonalPath = (sourcePoint, targetPoint, sourceDir, targetDir) => {
 
 // Calculate all arrows with smart routing
 const arrows = computed(() => {
-  const result = []
+  const result: Array<{
+    id: string
+    sourceBoxId: number
+    targetBoxId: number
+    path: string
+    targetPoint: Point
+    targetDir: Direction
+  }> = []
 
   props.boxes.forEach(box => {
     if (!box.dependencies || box.dependencies.length === 0) return
@@ -151,17 +161,6 @@ const arrows = computed(() => {
 
   return result
 })
-
-// Get rotation angle for arrowhead based on target direction
-const getArrowRotation = (targetDir) => {
-  switch (targetDir) {
-    case 'right': return 0
-    case 'left': return 180
-    case 'down': return 90
-    case 'up': return 270
-    default: return 0
-  }
-}
 </script>
 
 <template>

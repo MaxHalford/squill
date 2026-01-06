@@ -2,13 +2,11 @@
 import { ref, computed, inject } from 'vue'
 import BaseBox from './BaseBox.vue'
 import { useAuthStore } from '../stores/auth'
-import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useSchemaStore } from '../stores/schema'
 
 const authStore = useAuthStore()
-const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 const schemaStore = useSchemaStore()
@@ -24,7 +22,7 @@ try {
   // Use default zoom if injection fails
 }
 
-const props = defineProps({
+defineProps({
   boxId: { type: Number, required: true },
   initialX: { type: Number, default: 100 },
   initialY: { type: Number, default: 100 },
@@ -38,19 +36,19 @@ const props = defineProps({
 const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'query-table'])
 
 // Column navigation state
-const selectedProject = ref(null)
-const selectedDataset = ref(null)
-const selectedTable = ref(null)
+const selectedProject = ref<string | null>(null)
+const selectedDataset = ref<string | null>(null)
+const selectedTable = ref<string | null>(null)
 
 // Data cache
-const datasets = ref({}) // { projectId: [datasets] }
-const tables = ref({}) // { datasetId: [tables] }
-const schemas = ref({}) // { tableId: schema }
+const datasets = ref<Record<string, any[]>>({}) // { projectId: [datasets] }
+const tables = ref<Record<string, any[]>>({}) // { datasetId: [tables] }
+const schemas = ref<Record<string, any[]>>({}) // { tableId: schema }
 
 // Loading states
-const loadingDatasets = ref({})
-const loadingTables = ref({})
-const loadingSchema = ref({})
+const loadingDatasets = ref<Record<string, boolean>>({})
+const loadingTables = ref<Record<string, boolean>>({})
+const loadingSchema = ref<Record<string, boolean>>({})
 
 // Column widths (resizable)
 const MIN_COLUMN_WIDTH = 120
@@ -116,7 +114,7 @@ const column4Items = computed(() => {
 })
 
 // Select project
-const selectProject = async (projectId) => {
+const selectProject = async (projectId: string) => {
   selectedProject.value = projectId
   selectedDataset.value = null
   selectedTable.value = null
@@ -128,7 +126,7 @@ const selectProject = async (projectId) => {
 }
 
 // Select dataset
-const selectDataset = async (datasetId) => {
+const selectDataset = async (datasetId: string) => {
   selectedDataset.value = datasetId
   selectedTable.value = null
 
@@ -139,7 +137,7 @@ const selectDataset = async (datasetId) => {
 }
 
 // Select table
-const selectTable = async (tableId) => {
+const selectTable = async (tableId: string) => {
   selectedTable.value = tableId
 
   // Load schema
@@ -153,13 +151,13 @@ const selectTable = async (tableId) => {
 }
 
 // Load BigQuery datasets
-const loadDatasets = async (projectId) => {
+const loadDatasets = async (projectId: string) => {
   if (!authStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
 
   loadingDatasets.value[projectId] = true
   try {
     const fetchedDatasets = await authStore.fetchDatasets(projectId)
-    datasets.value[projectId] = fetchedDatasets.map(ds => ({
+    datasets.value[projectId] = fetchedDatasets.map((ds: any) => ({
       id: ds.datasetReference.datasetId,
       name: ds.datasetReference.datasetId,
       type: 'dataset'
@@ -172,13 +170,13 @@ const loadDatasets = async (projectId) => {
 }
 
 // Load BigQuery tables
-const loadTables = async (datasetId) => {
+const loadTables = async (datasetId: string) => {
   if (!authStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
 
   loadingTables.value[datasetId] = true
   try {
     const fetchedTables = await authStore.fetchTables(datasetId, selectedProject.value)
-    tables.value[datasetId] = fetchedTables.map(t => ({
+    tables.value[datasetId] = fetchedTables.map((t: any) => ({
       id: t.tableReference.tableId,
       name: t.tableReference.tableId,
       type: 'table'
@@ -191,7 +189,7 @@ const loadTables = async (datasetId) => {
 }
 
 // Load table schema
-const loadSchema = async (tableId, key) => {
+const loadSchema = async (tableId: string, key: string) => {
   if (selectedProject.value === 'duckdb') {
     // DuckDB schema
     const table = duckdbStore.tables[tableId]
@@ -207,7 +205,7 @@ const loadSchema = async (tableId, key) => {
 
     loadingSchema.value[key] = true
     try {
-      const schema = await authStore.fetchTableSchema(selectedDataset.value, tableId, selectedProject.value)
+      const schema = await authStore.fetchTableSchema(selectedDataset.value!, tableId, selectedProject.value!)
       schemas.value[key] = schema
 
       // Also populate the schema store for autocompletion
@@ -228,7 +226,7 @@ const loadSchema = async (tableId, key) => {
 }
 
 // Insert table name into query
-const insertTableName = (item) => {
+const insertTableName = (item: any) => {
   let tableName = ''
 
   if (selectedProject.value === 'duckdb') {
@@ -244,7 +242,7 @@ const insertTableName = (item) => {
 }
 
 // Query table - creates a new query box with SELECT * query
-const queryTable = (item) => {
+const queryTable = (item: any) => {
   // Determine engine and build full table name
   const engine = selectedProject.value === 'duckdb' ? 'duckdb' : 'bigquery'
 

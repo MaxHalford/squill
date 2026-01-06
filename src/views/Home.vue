@@ -21,8 +21,8 @@ const settingsStore = useSettingsStore()
 const duckdbStore = useDuckDBStore()
 const connectionsStore = useConnectionsStore()
 const authStore = useAuthStore()
-const canvasRef = ref(null)
-const copiedBoxId = ref(null)
+const canvasRef = ref<any>(null)
+const copiedBoxId = ref<number | null>(null)
 const copiedBoxIds = ref<number[]>([])
 const csvFileInputRef = ref<HTMLInputElement | null>(null)
 const isStoresReady = ref(false)
@@ -36,17 +36,17 @@ const uploadCurrentIndex = ref(0)
 const boxExecutors = ref(new Map())
 
 // Register a box's run method
-const registerBoxExecutor = (boxId, runFn) => {
+const registerBoxExecutor = (boxId: number, runFn: () => Promise<void>) => {
   boxExecutors.value.set(boxId, runFn)
 }
 
 // Unregister a box's run method
-const unregisterBoxExecutor = (boxId) => {
+const unregisterBoxExecutor = (boxId: number) => {
   boxExecutors.value.delete(boxId)
 }
 
 // Execute a query for a specific box
-const executeBoxQuery = async (boxId) => {
+const executeBoxQuery = async (boxId: number) => {
   const executor = boxExecutors.value.get(boxId)
   if (executor) {
     await executor()
@@ -136,7 +136,7 @@ const handleCloseOnboarding = () => {
   console.log('Onboarding skipped')
 }
 
-const selectBox = (id, eventData) => {
+const selectBox = (id: number, eventData?: { shouldPan?: boolean }) => {
   canvasStore.selectBox(id)
   // Smoothly pan viewport to the selected box (if enabled in settings and event allows it)
   if (settingsStore.panToBoxOnSelect && eventData?.shouldPan && canvasRef.value) {
@@ -152,19 +152,19 @@ const deselectBox = () => {
   canvasStore.deselectBox()
 }
 
-const handleUpdatePosition = (id, position) => {
+const handleUpdatePosition = (id: number, position: { x: number; y: number }) => {
   canvasStore.updateBoxPosition(id, position)
 }
 
-const handleUpdateSize = (id, size) => {
+const handleUpdateSize = (id: number, size: { width: number; height: number }) => {
   canvasStore.updateBoxSize(id, size)
 }
 
-const handleUpdateMultiPosition = (data) => {
+const handleUpdateMultiPosition = (data: { id: number; x: number; y: number }) => {
   canvasStore.updateBoxPosition(data.id, { x: data.x, y: data.y })
 }
 
-const handleDelete = (id) => {
+const handleDelete = (id: number) => {
   const previousBoxId = canvasStore.removeBox(id)
   // If there was a previous box, select it and pan to it
   if (previousBoxId !== null) {
@@ -172,7 +172,7 @@ const handleDelete = (id) => {
   }
 }
 
-const handleMaximize = (id) => {
+const handleMaximize = (id: number) => {
   // Get the viewport center in canvas coordinates
   const center = canvasRef.value?.getViewportCenter()
   if (!center) return
@@ -194,11 +194,11 @@ const handleMaximize = (id) => {
   canvasStore.updateBoxSize(id, { width: targetWidth, height: targetHeight })
 }
 
-const handleUpdateName = (id, name) => {
+const handleUpdateName = (id: number, name: string) => {
   canvasStore.updateBoxName(id, name)
 }
 
-const handleUpdateQuery = (id, query) => {
+const handleUpdateQuery = (id: number, query: string) => {
   canvasStore.updateBoxQuery(id, query)
 }
 
@@ -336,7 +336,7 @@ const handleQueryTableFromSchema = async (data: {
 
   } catch (error) {
     console.error('Failed to create query box:', error)
-    alert(`Failed to query table: ${error.message}`)
+    alert(`Failed to query table: ${(error as Error).message}`)
   }
 }
 
@@ -372,16 +372,16 @@ const handleShowRowDetail = (data: {
 
   } catch (error) {
     console.error('Failed to create detail box:', error)
-    alert(`Failed to show row details: ${error.message}`)
+    alert(`Failed to show row details: ${(error as Error).message}`)
   }
 }
 
-const handleKeyDown = (e) => {
+const handleKeyDown = (e: KeyboardEvent) => {
   // Don't handle shortcuts if user is typing in an input/textarea or CodeMirror editor
   const activeElement = document.activeElement
-  const isTyping = activeElement.tagName === 'INPUT' ||
-                   activeElement.tagName === 'TEXTAREA' ||
-                   activeElement.classList.contains('cm-content')
+  const isTyping = activeElement?.tagName === 'INPUT' ||
+                   activeElement?.tagName === 'TEXTAREA' ||
+                   activeElement?.classList.contains('cm-content')
 
   // Delete/Backspace to remove selected box(es)
   if ((e.key === 'Delete' || e.key === 'Backspace') && !isTyping) {

@@ -4,8 +4,8 @@ import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
 import { useSettingsStore } from '../stores/settings'
+import type { BoxType } from '../types/canvas'
 import {
-  getConnectionTypeName,
   getConnectionDisplayName,
   connectionRequiresAuth
 } from '../utils/connectionHelpers'
@@ -16,13 +16,13 @@ const connectionsStore = useConnectionsStore()
 const settingsStore = useSettingsStore()
 
 // Dropdown states
-const activeDropdown = ref(null) // 'connection', 'box', 'settings', 'about'
+const activeDropdown = ref<string | null>(null) // 'connection', 'box', 'settings', 'about'
 
 // About modal state
 const isAboutModalOpen = ref(false)
 
 // Box types
-const boxTypes = [
+const boxTypes: Array<{ id: BoxType; name: string }> = [
   { id: 'sql', name: 'SQL editor' },
   { id: 'schema', name: 'Schema browser' },
   { id: 'note', name: 'Sticky note' }
@@ -33,11 +33,11 @@ const isConnectionDropdownOpen = ref(false)
 const addDatabaseMenuOpen = ref(false)
 
 // Settings state
-const limitInputValue = ref(settingsStore.autoLimitValue)
-const paginationInputValue = ref(settingsStore.paginationSize)
+const limitInputValue = ref<number | string>(settingsStore.autoLimitValue)
+const paginationInputValue = ref<number | string>(settingsStore.paginationSize)
 
 // Toggle dropdown
-const toggleDropdown = (dropdown) => {
+const toggleDropdown = (dropdown: string) => {
   if (dropdown === 'connection') {
     isConnectionDropdownOpen.value = !isConnectionDropdownOpen.value
     // Load projects when opening connection dropdown (BigQuery only)
@@ -62,7 +62,7 @@ const closeDropdown = () => {
 }
 
 // Handle connection selection
-const handleConnectionSelect = async (connectionId) => {
+const handleConnectionSelect = async (connectionId: string) => {
   const connection = connectionsStore.connections.find(c => c.id === connectionId)
   if (!connection) return
 
@@ -76,14 +76,14 @@ const handleConnectionSelect = async (connectionId) => {
       authStore.setProjectId(connection.projectId)
     }
   } else {
-    authStore.setProjectId(null)
+    authStore.setProjectId(null as any)
   }
 
   closeDropdown()
 }
 
 // Handle project selection - stores project on the active connection
-const handleProjectSelect = async (projectId) => {
+const handleProjectSelect = async (projectId: string) => {
   const activeConnectionId = connectionsStore.activeConnectionId
   if (activeConnectionId) {
     connectionsStore.setConnectionProjectId(activeConnectionId, projectId)
@@ -100,7 +100,7 @@ const handleProjectSelect = async (projectId) => {
 }
 
 // Handle add database
-const handleAddDatabase = async (databaseType) => {
+const handleAddDatabase = async (databaseType: string) => {
   addDatabaseMenuOpen.value = false
   isConnectionDropdownOpen.value = false
 
@@ -119,13 +119,13 @@ const handleAddDatabase = async (databaseType) => {
 }
 
 // Handle delete connection
-const handleDeleteConnection = (connectionId, event) => {
+const handleDeleteConnection = (connectionId: string, event: Event) => {
   event.stopPropagation()
   connectionsStore.removeConnection(connectionId)
 }
 
 // Handle reconnect
-const handleReconnect = async (connectionId, event) => {
+const handleReconnect = async (connectionId: string, event: Event) => {
   event.stopPropagation()
   try {
     await authStore.reconnectConnection(connectionId)
@@ -136,7 +136,7 @@ const handleReconnect = async (connectionId, event) => {
 }
 
 // Add box with engine and connection based on active connection
-const addBox = (boxType) => {
+const addBox = (boxType: BoxType) => {
   const activeConnection = connectionsStore.activeConnection
   const engine = activeConnection?.type || 'duckdb'
   const connectionId = activeConnection?.id
@@ -187,9 +187,9 @@ const sendEmail = () => {
 }
 
 // Handle limit value changes with debouncing
-let limitDebounceTimer = null
-const handleLimitChange = (e) => {
-  const value = e.target.value
+let limitDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const handleLimitChange = (e: Event) => {
+  const value = (e.target as HTMLInputElement).value
   limitInputValue.value = value
 
   // Debounce setting the value
@@ -203,9 +203,9 @@ const handleLimitChange = (e) => {
 }
 
 // Handle pagination size changes with debouncing
-let paginationDebounceTimer = null
-const handlePaginationChange = (e) => {
-  const value = e.target.value
+let paginationDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const handlePaginationChange = (e: Event) => {
+  const value = (e.target as HTMLInputElement).value
   paginationInputValue.value = value
 
   // Debounce setting the value
@@ -231,8 +231,8 @@ watch(() => settingsStore.paginationSize, (newValue) => {
 // Close dropdown when clicking outside
 import { onMounted, onUnmounted } from 'vue'
 
-const handleClickOutside = (e) => {
-  if (!e.target.closest('.menu-item')) {
+const handleClickOutside = (e: Event) => {
+  if (!(e.target as HTMLElement).closest('.menu-item')) {
     closeDropdown()
   }
 }

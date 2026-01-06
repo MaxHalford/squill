@@ -21,9 +21,9 @@ const connectionsStore = useConnectionsStore()
 const canvasZoom = inject('canvasZoom', ref(1))
 
 // Inject box executor registry for recursive dependency execution
-const registerBoxExecutor = inject('registerBoxExecutor', null)
-const unregisterBoxExecutor = inject('unregisterBoxExecutor', null)
-const executeBoxQuery = inject('executeBoxQuery', null)
+const registerBoxExecutor = inject<((boxId: number, runFn: () => Promise<void>) => void) | null>('registerBoxExecutor', null)
+const unregisterBoxExecutor = inject<((boxId: number) => void) | null>('unregisterBoxExecutor', null)
+const executeBoxQuery = inject<((boxId: number) => Promise<void>) | null>('executeBoxQuery', null)
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -41,7 +41,7 @@ const props = defineProps({
 const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query', 'show-row-detail'])
 
 // Reference to BaseBox to access boxName
-const baseBoxRef = ref(null)
+const baseBoxRef = ref<any>(null)
 
 const MIN_EDITOR_HEIGHT = 100
 const MIN_RESULTS_HEIGHT = 200
@@ -54,15 +54,15 @@ const dragStart = ref({ y: 0 })
 
 // Query state
 const queryText = ref(props.initialQuery)
-const queryResults = ref(null)
-const queryStats = ref(null)
+const queryResults = ref<any[] | null>(null)
+const queryStats = ref<any | null>(null)
 const isRunning = ref(false)
-const error = ref(null)
-const detectedEngine = ref(null)
-let abortController = null
+const error = ref<string | null>(null)
+const detectedEngine = ref<string | null>(null)
+let abortController: AbortController | null = null
 
-const editorRef = ref(null)
-const resultsRef = ref(null)
+const editorRef = ref<any>(null)
+const resultsRef = ref<any>(null)
 
 // Get the connection object for this box
 const boxConnection = computed(() => {
@@ -114,7 +114,7 @@ watch(() => duckdbStore.schemaVersion, () => {
 })
 
 // Emit query changes to parent for persistence (debounced)
-let queryTimeout = null
+let queryTimeout: ReturnType<typeof setTimeout> | null = null
 watch(queryText, (newQuery) => {
   if (isUpdatingFromProp) return
 
@@ -127,7 +127,7 @@ watch(queryText, (newQuery) => {
 })
 
 // Reactively update dependencies when query text changes
-const updateDependenciesFromQuery = async (query) => {
+const updateDependenciesFromQuery = async (query: string) => {
   try {
     // Get fresh table names
     const availableTables = await duckdbStore.getFreshTableNames()
@@ -141,12 +141,12 @@ const updateDependenciesFromQuery = async (query) => {
       const tableRefs = extractTableReferences(query)
       const dependencyBoxIds = tableRefs
         .map(ref => {
-          const tableName = ref.split('.').pop().replace(/`/g, '').toLowerCase()
+          const tableName = ref.split('.').pop()!.replace(/`/g, '').toLowerCase()
           const boxId = duckdbStore.getTableBoxId(tableName)
           console.log(`🔗 Box ${props.boxId}: Table "${tableName}" -> BoxId ${boxId}`)
           return boxId
         })
-        .filter(boxId => boxId && boxId !== props.boxId)
+        .filter((boxId): boxId is number => boxId !== null && boxId !== undefined && boxId !== props.boxId)
 
       const uniqueDeps = [...new Set(dependencyBoxIds)]
       console.log(`🔗 Box ${props.boxId} (${baseBoxRef.value?.boxName}): Dependencies updated to [${uniqueDeps.join(', ')}]`)
@@ -161,7 +161,7 @@ const updateDependenciesFromQuery = async (query) => {
 }
 
 // Detect and run missing dependencies recursively
-const runMissingDependencies = async (query) => {
+const runMissingDependencies = async (query: string) => {
   const tableRefs = extractTableReferences(query)
   if (tableRefs.length === 0) return
 
@@ -170,11 +170,11 @@ const runMissingDependencies = async (query) => {
   // Find missing local tables (exclude BigQuery tables with project.dataset.table pattern)
   const missingTables = tableRefs
     .filter(ref => {
-      const tableName = ref.split('.').pop().replace(/`/g, '').toLowerCase()
+      const tableName = ref.split('.').pop()!.replace(/`/g, '').toLowerCase()
       const isBigQueryTable = ref.includes('.') && ref.split('.').length >= 2
       return !isBigQueryTable && !availableTables.includes(tableName)
     })
-    .map(ref => ref.split('.').pop().replace(/`/g, '').toLowerCase())
+    .map(ref => ref.split('.').pop()!.replace(/`/g, '').toLowerCase())
 
   if (missingTables.length === 0) return
 
@@ -187,7 +187,7 @@ const runMissingDependencies = async (query) => {
       const box = canvasStore.boxes.find(b =>
         duckdbStore.sanitizeTableName(b.name) === tableName
       )
-      boxIdToRun = box?.id
+      boxIdToRun = box?.id ?? null
     }
 
     if (boxIdToRun && boxIdToRun !== props.boxId && executeBoxQuery) {
@@ -272,7 +272,7 @@ const runQuery = async () => {
     }
 
     if (resultsRef.value) {
-      resultsRef.value.resetPagination()
+      resultsRef.value?.resetPagination()
     }
 
     // Update dependencies for local database queries (DuckDB)
@@ -282,10 +282,10 @@ const runQuery = async () => {
         const tableRefs = extractTableReferences(query)
         const dependencyBoxIds = tableRefs
           .map(ref => {
-            const tableName = ref.split('.').pop().replace(/`/g, '').toLowerCase()
+            const tableName = ref.split('.').pop()!.replace(/`/g, '').toLowerCase()
             return duckdbStore.getTableBoxId(tableName)
           })
-          .filter(boxId => boxId && boxId !== props.boxId)
+          .filter((boxId): boxId is number => boxId !== null && boxId !== undefined && boxId !== props.boxId)
 
         canvasStore.updateBoxDependencies(props.boxId, [...new Set(dependencyBoxIds)])
       } catch (depErr) {
@@ -321,14 +321,14 @@ const stopQuery = () => {
 }
 
 // Handle splitter dragging
-const handleSplitterMouseDown = (e) => {
+const handleSplitterMouseDown = (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
   isDraggingSplitter.value = true
   dragStart.value.y = e.clientY
 }
 
-const handleMouseMove = (e) => {
+const handleMouseMove = (e: MouseEvent) => {
   if (isDraggingSplitter.value) {
     const zoom = canvasZoom.value
     const deltaY = (e.clientY - dragStart.value.y) / zoom
@@ -346,13 +346,13 @@ const handleMouseUp = () => {
   isDraggingSplitter.value = false
 }
 
-const handleUpdateSize = (newSize) => {
+const handleUpdateSize = (newSize: { width: number; height: number }) => {
   boxHeight.value = newSize.height
   emit('update:size', newSize)
 }
 
 // Handle name update from BaseBox - rename DuckDB table
-const handleUpdateName = async (newName) => {
+const handleUpdateName = async (newName: string) => {
   try {
     await duckdbStore.renameTable(props.initialName, newName)
   } catch (err) {

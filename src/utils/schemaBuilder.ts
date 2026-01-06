@@ -6,14 +6,6 @@ export interface TableMetadata {
   boxId?: number | null
 }
 
-// Completion object type
-interface CompletionItem {
-  label: string
-  apply?: string
-  type?: string
-  detail?: string
-}
-
 // Build schema from DuckDB tables for CodeMirror autocompletion
 export function buildDuckDBSchema(tables: Record<string, TableMetadata>): Record<string, any> {
   const schema: Record<string, any> = {}
