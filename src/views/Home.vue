@@ -643,5 +643,6 @@ onUnmounted(() => {
   width: 100%;
   height: 100vh;
   padding-top: 32px; /* Height of macOS-style menu bar */
+  overflow: hidden;
 }
 </style>
