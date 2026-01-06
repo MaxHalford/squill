@@ -582,7 +582,7 @@ defineExpose({ resetPagination })
   justify-content: space-between;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--box-header-padding);
   background: var(--surface-primary);
   border-block-start: var(--border-width-thin) solid var(--border-primary);
   flex-shrink: 0;
