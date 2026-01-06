@@ -47,24 +47,7 @@ watch(() => props.isRunning, (running) => {
 
 // CodeMirror theme - values match CSS variables in style.css
 const editorTheme = EditorView.theme({
-  '&': {
-    backgroundColor: 'var(--editor-bg)',
-    color: 'var(--text-primary)',
-    fontFamily: 'var(--font-family-mono)',
-  },
-  '.cm-content': {
-    caretColor: 'var(--text-primary)',
-    fontFamily: 'var(--font-family-mono)',
-  },
-  '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: 'var(--text-primary)',
-  },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-    backgroundColor: 'var(--editor-selection-bg)',
-  },
-  '.cm-activeLine': {
-    backgroundColor: 'var(--editor-active-line-bg)',
-  },
+
   '.cm-gutters': {
     backgroundColor: 'var(--editor-bg)',
     color: 'var(--editor-gutter-color)',
@@ -73,17 +56,17 @@ const editorTheme = EditorView.theme({
   '.cm-activeLineGutter': {
     backgroundColor: 'var(--editor-active-line-bg)',
   },
+  '&': {
+    fontFamily: 'var(--font-family-mono)',
+  },
+  '.cm-content': {
+    fontFamily: 'var(--font-family-mono)',
+  },
   '.cm-scroller': {
     fontFamily: 'var(--font-family-mono)',
   },
   '.cm-tooltip-autocomplete': {
-    backgroundColor: 'var(--surface-primary)',
-    border: '1px solid var(--border-primary)',
     fontFamily: 'var(--font-family-mono)',
-  },
-  '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-    backgroundColor: 'var(--editor-selection-bg)',
-    color: 'var(--text-primary)',
   },
 }, { dark: false })
 
