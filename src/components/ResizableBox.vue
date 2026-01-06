@@ -248,6 +248,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  cursor: auto;
 }
 
 /* Resize Handles */
