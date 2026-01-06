@@ -7,7 +7,8 @@ export default defineConfig(() => ({
   plugins: [vue()],
   base: process.env.VITE_BASE_PATH || '/',
   build: {
-    chunkSizeWarningLimit: 1000
+    chunkSizeWarningLimit: 1000,
+    target: 'esnext',
   },
   optimizeDeps: {
     exclude: ['@duckdb/duckdb-wasm'],
@@ -21,6 +22,18 @@ export default defineConfig(() => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src')
+    }
+  },
+  server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    }
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     }
   }
 }))
