@@ -307,6 +307,87 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     return tableName in tables.value
   }
 
+  // Query a page of data from a table with optional sorting
+  // Used for efficient pagination without loading all data into JS
+  const queryTablePage = async (
+    tableName: string,
+    page: number,
+    pageSize: number,
+    sortColumn?: string | null,
+    sortDirection?: 'asc' | 'desc'
+  ): Promise<{ rows: Record<string, any>[], columns: string[] }> => {
+    if (!isInitialized.value) {
+      await initialize()
+    }
+
+    const offset = (page - 1) * pageSize
+
+    // Build query with optional sorting
+    let query = `SELECT * FROM ${tableName}`
+    if (sortColumn) {
+      const direction = sortDirection === 'desc' ? 'DESC' : 'ASC'
+      // Quote column name to handle special characters
+      query += ` ORDER BY "${sortColumn}" ${direction}`
+    }
+    query += ` LIMIT ${pageSize} OFFSET ${offset}`
+
+    try {
+      const result = await conn.value!.query(query)
+      const columns = result.schema.fields.map(f => f.name)
+      const rows = result.toArray().map(row => {
+        const obj: Record<string, any> = {}
+        columns.forEach(col => {
+          obj[col] = row[col]
+        })
+        return obj
+      })
+
+      return { rows, columns }
+    } catch (err: any) {
+      console.error('DuckDB page query failed:', err)
+      throw new Error(`Failed to query table page: ${err.message}`)
+    }
+  }
+
+  // Get column names for a table
+  const getTableColumns = async (tableName: string): Promise<string[]> => {
+    if (!isInitialized.value) {
+      await initialize()
+    }
+
+    try {
+      // Query with LIMIT 0 to get schema without data
+      const result = await conn.value!.query(`SELECT * FROM ${tableName} LIMIT 0`)
+      return result.schema.fields.map(f => f.name)
+    } catch (err: any) {
+      console.error('Failed to get table columns:', err)
+      throw new Error(`Failed to get columns for ${tableName}: ${err.message}`)
+    }
+  }
+
+  // Get total row count for a table
+  const getTableRowCount = async (tableName: string): Promise<number> => {
+    if (!isInitialized.value) {
+      await initialize()
+    }
+
+    // First check metadata cache
+    const metadata = tables.value[tableName]
+    if (metadata?.rowCount !== undefined) {
+      return metadata.rowCount
+    }
+
+    // Fallback to COUNT(*) query
+    try {
+      const result = await conn.value!.query(`SELECT COUNT(*) as count FROM ${tableName}`)
+      const rows = result.toArray()
+      return Number(rows[0]?.count || 0)
+    } catch (err: any) {
+      console.error('Failed to get row count:', err)
+      return 0
+    }
+  }
+
   // Get list of all table names
   const getTableNames = computed(() => Object.keys(tables.value))
 
@@ -432,6 +513,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     storeResults,
     runQuery,
     runQueryWithStorage,
+    queryTablePage,
+    getTableColumns,
+    getTableRowCount,
     tableExists,
     sanitizeTableName,
     loadTablesMetadata,

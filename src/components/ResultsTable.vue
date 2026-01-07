@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
+import { useDuckDBStore } from '../stores/duckdb'
 
 interface QueryStats {
   engine?: 'duckdb' | 'bigquery'
@@ -10,10 +11,11 @@ interface QueryStats {
 }
 
 const settingsStore = useSettingsStore()
+const duckdbStore = useDuckDBStore()
 const tableRef = ref<HTMLElement | null>(null)
 
 const props = defineProps<{
-  results?: Record<string, unknown>[] | null
+  tableName?: string | null
   stats?: QueryStats | null
   error?: string | null
   boxName?: string
@@ -23,84 +25,95 @@ const emit = defineEmits<{
   'show-row-detail': [payload: { rowData: Record<string, unknown>; rowIndex: number; globalRowIndex: number }]
 }>()
 
+// UI state
 const hoveredRowIndex = ref<number | null>(null)
 const currentPage = ref(1)
 const sortColumn = ref<string | null>(null)
 const sortDirection = ref<'asc' | 'desc'>('asc')
 
+// Data state - fetched from DuckDB
+const pageData = ref<Record<string, any>[]>([])
+const columns = ref<string[]>([])
+const totalRows = ref(0)
+const isLoading = ref(false)
+
 const pageSize = computed(() => settingsStore.paginationSize)
 
-const columns = computed(() => {
-  if (!props.results?.length) return []
-  return Object.keys(props.results[0])
+const totalPages = computed(() => {
+  if (!totalRows.value) return 0
+  return Math.ceil(totalRows.value / pageSize.value)
 })
 
-const numericColumns = computed(() => {
-  if (!props.results?.length) return new Set<string>()
+const hasResults = computed(() => totalRows.value > 0)
+const isEmpty = computed(() => props.tableName && totalRows.value === 0 && !isLoading.value)
 
-  const numeric = new Set<string>()
-  const sampleSize = Math.min(10, props.results.length)
-
-  for (const column of columns.value) {
-    let numericCount = 0
-    for (let i = 0; i < sampleSize; i++) {
-      const value = props.results[i][column]
-      if (value === null || value === undefined || value === '') continue
-      if (!isNaN(Number(value)) && isFinite(Number(value))) numericCount++
-    }
-    if (numericCount / sampleSize > 0.8) numeric.add(column)
+// Fetch a page of data from DuckDB
+const fetchPage = async () => {
+  if (!props.tableName) {
+    pageData.value = []
+    columns.value = []
+    totalRows.value = 0
+    return
   }
 
-  return numeric
+  isLoading.value = true
+  try {
+    const result = await duckdbStore.queryTablePage(
+      props.tableName,
+      currentPage.value,
+      pageSize.value,
+      sortColumn.value,
+      sortDirection.value
+    )
+    pageData.value = result.rows
+    columns.value = result.columns
+  } catch (err) {
+    console.error('Failed to fetch page:', err)
+    pageData.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Fetch total row count
+const fetchRowCount = async () => {
+  if (!props.tableName) {
+    totalRows.value = 0
+    return
+  }
+
+  try {
+    totalRows.value = await duckdbStore.getTableRowCount(props.tableName)
+  } catch (err) {
+    console.error('Failed to fetch row count:', err)
+    totalRows.value = 0
+  }
+}
+
+// Watch tableName changes - reset and fetch new data
+watch(() => props.tableName, async (newTableName) => {
+  currentPage.value = 1
+  sortColumn.value = null
+  sortDirection.value = 'asc'
+
+  if (newTableName) {
+    await fetchRowCount()
+    await fetchPage()
+  } else {
+    pageData.value = []
+    columns.value = []
+    totalRows.value = 0
+  }
+}, { immediate: true })
+
+// Watch pagination changes
+watch(currentPage, fetchPage)
+
+// Watch sort changes - reset to page 1 and fetch
+watch([sortColumn, sortDirection], () => {
+  currentPage.value = 1
+  fetchPage()
 })
-
-const sortedData = computed(() => {
-  if (!props.results || !sortColumn.value) return props.results || []
-
-  const data = [...props.results]
-  const column = sortColumn.value
-  const direction = sortDirection.value
-
-  return data.sort((a, b) => {
-    const aValue = a[column]
-    const bValue = b[column]
-
-    // Handle null/undefined values - always sort them to the end
-    if (aValue === null || aValue === undefined) return 1
-    if (bValue === null || bValue === undefined) return -1
-
-    // Check if both values are numeric
-    const aNum = Number(aValue)
-    const bNum = Number(bValue)
-    const bothNumeric = !isNaN(aNum) && !isNaN(bNum) && isFinite(aNum) && isFinite(bNum)
-
-    let comparison = 0
-    if (bothNumeric) {
-      comparison = aNum - bNum
-    } else {
-      // String comparison
-      const aStr = String(aValue).toLowerCase()
-      const bStr = String(bValue).toLowerCase()
-      comparison = aStr.localeCompare(bStr)
-    }
-
-    return direction === 'asc' ? comparison : -comparison
-  })
-})
-
-const totalPages = computed(() => {
-  if (!sortedData.value.length) return 0
-  return Math.ceil(sortedData.value.length / pageSize.value)
-})
-
-const paginatedData = computed(() => {
-  if (!sortedData.value.length) return []
-  const start = (currentPage.value - 1) * pageSize.value
-  return sortedData.value.slice(start, start + pageSize.value)
-})
-
-const hasResults = computed(() => props.results && props.results.length > 0)
-const isEmpty = computed(() => props.results && props.results.length === 0)
 
 // Format bytes to human-readable
 const formatBytes = (bytes: string | number | undefined): string => {
@@ -148,34 +161,49 @@ const handleSort = (column: string) => {
     sortColumn.value = column
     sortDirection.value = 'asc'
   }
-  // Reset to first page when sorting changes
-  currentPage.value = 1
 }
 
-const downloadCSV = () => {
-  if (!props.results?.length) return
+// Download all results as CSV (queries DuckDB for full data)
+const downloadCSV = async () => {
+  if (!props.tableName) return
 
-  const escape = (val: unknown): string => {
-    if (val === null || val === undefined) return ''
-    return `"${String(val).replace(/"/g, '""')}"`
+  try {
+    // Query all rows from DuckDB with current sort
+    let query = `SELECT * FROM ${props.tableName}`
+    if (sortColumn.value) {
+      const direction = sortDirection.value === 'desc' ? 'DESC' : 'ASC'
+      query += ` ORDER BY "${sortColumn.value}" ${direction}`
+    }
+
+    const result = await duckdbStore.runQuery(query)
+    if (!result.rows.length) return
+
+    const allColumns = Object.keys(result.rows[0])
+
+    const escape = (val: unknown): string => {
+      if (val === null || val === undefined) return ''
+      return `"${String(val).replace(/"/g, '""')}"`
+    }
+
+    const rows = [
+      allColumns.map(escape).join(','),
+      ...result.rows.map(row => allColumns.map(col => escape(row[col])).join(','))
+    ]
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = Object.assign(document.createElement('a'), {
+      href: url,
+      download: `${props.boxName || 'results'}.csv`,
+      style: 'display:none'
+    })
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('Failed to download CSV:', err)
   }
-
-  const rows = [
-    columns.value.map(escape).join(','),
-    ...props.results.map(row => columns.value.map(col => escape(row[col])).join(','))
-  ]
-
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = Object.assign(document.createElement('a'), {
-    href: url,
-    download: `${props.boxName || 'results'}.csv`,
-    style: 'display:none'
-  })
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
 }
 
 // Copy handler for Google Sheets compatibility (TSV format)
@@ -227,6 +255,10 @@ defineExpose({ resetPagination })
     <div v-if="error" class="error-banner" role="alert">{{ error }}</div>
 
     <div class="table-container" role="region" aria-label="Query results" tabindex="0">
+      <div v-if="isLoading" class="loading-overlay">
+        <span class="loading-text">Loading...</span>
+      </div>
+
       <table v-if="hasResults" ref="tableRef" class="results-table">
         <thead>
           <tr>
@@ -236,7 +268,6 @@ defineExpose({ resetPagination })
               :key="column"
               scope="col"
               :class="{
-                'col-numeric': numericColumns.has(column),
                 'sortable': true,
                 'sorted': sortColumn === column
               }"
@@ -276,7 +307,7 @@ defineExpose({ resetPagination })
         </thead>
         <tbody>
           <tr
-            v-for="(row, index) in paginatedData"
+            v-for="(row, index) in pageData"
             :key="`${currentPage}-${index}`"
             @mouseenter="hoveredRowIndex = index"
             @mouseleave="hoveredRowIndex = null"
@@ -301,7 +332,6 @@ defineExpose({ resetPagination })
               v-for="column in columns"
               :key="column"
               :class="{
-                'col-numeric': numericColumns.has(column),
                 'null-value': row[column] === null
               }"
             >
@@ -314,12 +344,12 @@ defineExpose({ resetPagination })
       <div v-else-if="isEmpty" class="empty-state">No results found</div>
     </div>
 
-    <footer v-if="hasResults" class="results-footer">
+    <footer v-if="hasResults || isLoading" class="results-footer">
       <div class="results-meta">
         <span v-if="stats?.engine" class="engine-badge" :data-engine="stats.engine">
           {{ stats.engine === 'bigquery' ? 'BigQuery' : 'DuckDB' }}
         </span>
-        <span class="stat">{{ sortedData.length }} {{ sortedData.length === 1 ? 'row' : 'rows' }}</span>
+        <span class="stat">{{ totalRows }} {{ totalRows === 1 ? 'row' : 'rows' }}</span>
         <span v-if="stats?.executionTimeMs" class="stat">{{ formatTime(stats.executionTimeMs) }}</span>
         <span v-if="stats?.totalBytesProcessed" class="stat">{{ formatBytes(stats.totalBytesProcessed) }}</span>
         <span v-if="stats?.cacheHit" class="stat cache-hit">Cached</span>
@@ -329,7 +359,7 @@ defineExpose({ resetPagination })
         <nav class="pagination" aria-label="Results pagination">
           <button
             class="pagination-btn"
-            :disabled="currentPage === 1"
+            :disabled="currentPage === 1 || isLoading"
             @click.stop="prevPage"
             aria-label="Previous page"
           >
@@ -337,10 +367,10 @@ defineExpose({ resetPagination })
               <path d="M15 18l-6-6 6-6"/>
             </svg>
           </button>
-          <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+          <span class="page-info">{{ currentPage }} / {{ totalPages || 1 }}</span>
           <button
             class="pagination-btn"
-            :disabled="currentPage === totalPages"
+            :disabled="currentPage === totalPages || isLoading"
             @click.stop="nextPage"
             aria-label="Next page"
           >
@@ -353,6 +383,7 @@ defineExpose({ resetPagination })
         <button
           class="download-btn"
           @click.stop="downloadCSV"
+          :disabled="isLoading"
           aria-label="Download as CSV"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -390,6 +421,24 @@ defineExpose({ resetPagination })
   min-height: 0;
   overflow: auto;
   cursor: default;
+  position: relative;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-primary);
+  opacity: 0.8;
+  z-index: 10;
+}
+
+.loading-text {
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
 }
 
 /* Table Base - using border-collapse: collapse for modern approach */
@@ -493,12 +542,6 @@ defineExpose({ resetPagination })
 
 .results-table tbody tr:hover {
   background: var(--table-row-hover-bg);
-}
-
-/* Numeric column alignment */
-.col-numeric {
-  text-align: end;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Null values */
@@ -695,8 +738,13 @@ defineExpose({ resetPagination })
   transition: background 0.1s;
 }
 
-.download-btn:hover {
+.download-btn:hover:not(:disabled) {
   background: var(--surface-secondary);
+}
+
+.download-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 /* Empty State */

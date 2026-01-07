@@ -54,7 +54,7 @@ const dragStart = ref({ y: 0 })
 
 // Query state
 const queryText = ref(props.initialQuery)
-const queryResults = ref<any[] | null>(null)
+const resultTableName = ref<string | null>(null)
 const queryStats = ref<any | null>(null)
 const isRunning = ref(false)
 const error = ref<string | null>(null)
@@ -62,7 +62,6 @@ const detectedEngine = ref<string | null>(null)
 let abortController: AbortController | null = null
 
 const editorRef = ref<any>(null)
-const resultsRef = ref<any>(null)
 
 // Get the connection object for this box
 const boxConnection = computed(() => {
@@ -271,15 +270,14 @@ const runQuery = async () => {
     // Calculate execution time
     const executionTimeMs = endTime - startTime
 
-    queryResults.value = result.rows
+    // Set the table name for ResultsTable to query from DuckDB
+    const boxName = baseBoxRef.value?.boxName || props.initialName
+    resultTableName.value = duckdbStore.sanitizeTableName(boxName)
+
     queryStats.value = {
       ...result.stats,
       executionTimeMs: Math.round(executionTimeMs),
       engine: engine
-    }
-
-    if (resultsRef.value) {
-      resultsRef.value?.resetPagination()
     }
 
     // Update dependencies after query execution
@@ -294,7 +292,7 @@ const runQuery = async () => {
       error.value = errorMessage
       console.error('Query error:', err)
     }
-    queryResults.value = null
+    resultTableName.value = null
     queryStats.value = null
   } finally {
     isRunning.value = false
@@ -422,8 +420,7 @@ onUnmounted(() => {
     ></div>
 
     <ResultsTable
-      ref="resultsRef"
-      :results="queryResults"
+      :table-name="resultTableName"
       :stats="queryStats"
       :error="error"
       :box-name="baseBoxRef?.boxName || initialName"
