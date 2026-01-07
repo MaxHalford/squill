@@ -163,6 +163,11 @@ defineExpose({
 .query-editor {
   height: 100%;
   overflow: auto;
+  scrollbar-width: none;
+}
+
+.query-editor::-webkit-scrollbar {
+  display: none;
 }
 
 .query-editor :deep(.cm-editor) {
@@ -171,6 +176,11 @@ defineExpose({
 
 .query-editor :deep(.cm-scroller) {
   overflow: auto;
+  scrollbar-width: none;
+}
+
+.query-editor :deep(.cm-scroller)::-webkit-scrollbar {
+  display: none;
 }
 
 /* Run Button */

@@ -202,7 +202,7 @@ const handleSort = (column: string) => {
 const showExportMenu = ref(false)
 const isExporting = ref(false)
 
-type ExportFormat = 'csv' | 'json' | 'parquet' | 'xlsx'
+type ExportFormat = 'csv' | 'json' | 'parquet'
 
 // Download results using DuckDB's native export
 const downloadAs = async (format: ExportFormat) => {
@@ -309,7 +309,7 @@ defineExpose({ resetPagination })
       <table v-if="hasResults" ref="tableRef" class="results-table">
         <thead>
           <tr>
-            <th scope="col" class="row-number-col">#</th>
+            <th scope="col" class="row-number-col"></th>
             <th
               v-for="column in columns"
               :key="column"
@@ -483,10 +483,6 @@ defineExpose({ resetPagination })
               <span class="format-name">Parquet</span>
               <span class="format-desc">Columnar format (compressed)</span>
             </button>
-            <button class="export-option" role="menuitem" @click="downloadAs('xlsx')">
-              <span class="format-name">Excel</span>
-              <span class="format-desc">Microsoft Excel spreadsheet</span>
-            </button>
           </div>
         </div>
       </div>
@@ -521,6 +517,11 @@ defineExpose({ resetPagination })
   overflow: auto;
   cursor: default;
   position: relative;
+  scrollbar-width: none;
+}
+
+.table-container::-webkit-scrollbar {
+  display: none;
 }
 
 /* Loading Overlay */

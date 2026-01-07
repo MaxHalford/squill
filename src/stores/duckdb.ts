@@ -520,9 +520,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         case 'parquet':
           copyCommand = `COPY (${selectQuery}) TO '${tempFile}' (FORMAT PARQUET, COMPRESSION zstd)`
           break
-        case 'xlsx':
-          copyCommand = `COPY (${selectQuery}) TO '${tempFile}' (FORMAT XLSX, HEADER true)`
-          break
         default:
           throw new Error(`Unsupported export format: ${format}`)
       }
