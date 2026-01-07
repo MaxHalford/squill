@@ -31,6 +31,8 @@ const emit = defineEmits<{
   'delete': []
   'maximize': []
   'update:name': [name: string]
+  'drag-start': []
+  'drag-end': []
 }>()
 
 const isEditingName = ref(false)
@@ -97,6 +99,8 @@ defineExpose({ boxName })
     @select="emit('select', $event)"
     @update:position="emit('update:position', $event)"
     @update:size="emit('update:size', $event)"
+    @drag-start="emit('drag-start')"
+    @drag-end="emit('drag-end')"
   >
     <template #header>
       <div v-if="showHeaderName" class="box-name-container">

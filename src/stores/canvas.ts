@@ -23,6 +23,9 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Multi-selection state
   const selectedBoxIds = ref<Set<number>>(new Set())
 
+  // Dragging state (for hiding UI elements during drag)
+  const isDraggingBox = ref(false)
+
   // Rectangle selection state (for visual rendering during drag)
   const rectangleSelection = ref<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
 
@@ -265,6 +268,11 @@ export const useCanvasStore = defineStore('canvas', () => {
     rectangleSelection.value = coords
   }
 
+  // Set dragging state
+  const setDraggingBox = (dragging: boolean) => {
+    isDraggingBox.value = dragging
+  }
+
   // Remove multiple boxes (for multi-selection delete)
   const removeMultipleBoxes = (boxIds: number[]) => {
     if (boxIds.length === 0) return
@@ -428,6 +436,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     selectionHistory,
     selectedBoxIds,
     rectangleSelection,
+    isDraggingBox,
     canvasRef,
     loadState,
     addBox,
@@ -438,6 +447,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     selectMultipleBoxes,
     clearSelection,
     setRectangleSelection,
+    setDraggingBox,
     removeMultipleBoxes,
     updateBoxPosition,
     updateBoxSize,

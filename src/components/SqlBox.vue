@@ -38,7 +38,7 @@ const props = defineProps({
   connectionId: { type: String, default: undefined }
 })
 
-const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query', 'show-row-detail'])
+const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query', 'show-row-detail', 'drag-start', 'drag-end'])
 
 // Reference to BaseBox to access boxName
 const baseBoxRef = ref<any>(null)
@@ -400,6 +400,8 @@ onUnmounted(() => {
     @delete="emit('delete')"
     @maximize="emit('maximize')"
     @update:name="handleUpdateName"
+    @drag-start="emit('drag-start')"
+    @drag-end="emit('drag-end')"
   >
     <QueryEditor
       ref="editorRef"

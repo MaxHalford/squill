@@ -142,6 +142,7 @@ const isOverBox = (element: HTMLElement | null): boolean => {
   let current = element
   while (current && current !== canvasRef.value) {
     if (current.classList?.contains('resizable-box')) return true
+    if (current.classList?.contains('box-creation-buttons')) return true
     current = current.parentElement
   }
   return false
@@ -347,6 +348,9 @@ onUnmounted(() => {
       :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }"
     >
       <slot />
+
+      <!-- Teleport target for box creation buttons -->
+      <div id="box-creation-buttons-container"></div>
 
       <div
         v-if="canvasStore.rectangleSelection"

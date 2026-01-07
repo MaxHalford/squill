@@ -32,6 +32,8 @@ const emit = defineEmits<{
   'select': [payload: { shouldPan: boolean }]
   'update:position': [position: Position]
   'update:size': [size: Size]
+  'drag-start': []
+  'drag-end': []
 }>()
 
 const boxRef = ref<HTMLElement | null>(null)
@@ -66,6 +68,7 @@ const handleHeaderMouseDown = (e: MouseEvent) => {
   e.stopPropagation()
   emit('select', { shouldPan: false })
   isDragging.value = true
+  emit('drag-start')
 
   const zoom = canvasZoom.value
   dragStart.value = {
@@ -81,6 +84,7 @@ const handleResizeStart = (e: MouseEvent, direction: ResizeDirection) => {
 
   isResizing.value = true
   resizeDirection.value = direction
+  emit('drag-start')
   dragStart.value = { x: e.clientX, y: e.clientY }
   initialSize.value = { ...size.value }
   initialPosition.value = { ...position.value }
@@ -139,6 +143,9 @@ const handleMouseMove = (e: MouseEvent) => {
 }
 
 const handleMouseUp = () => {
+  if (isDragging.value || isResizing.value) {
+    emit('drag-end')
+  }
   isDragging.value = false
   isResizing.value = false
   resizeDirection.value = null
