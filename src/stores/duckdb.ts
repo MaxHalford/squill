@@ -205,44 +205,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
-  // Execute DuckDB query
-  const runQuery = async (query: string): Promise<QueryResult> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
-
-    // Refresh table metadata before executing to ensure we have the latest
-    await loadTablesMetadata()
-
-    const startTime = performance.now()
-
-    try {
-      const result = await conn.value!.query(query)
-      const endTime = performance.now()
-
-      // Convert Arrow result to array of objects
-      const rows = result.toArray().map(row => {
-        const obj: Record<string, any> = {}
-        result.schema.fields.forEach((field) => {
-          obj[field.name] = row[field.name]
-        })
-        return obj
-      })
-
-      return {
-        rows,
-        stats: {
-          executionTimeMs: Math.round(endTime - startTime),
-          rowCount: rows.length,
-          engine: 'duckdb'
-        }
-      }
-    } catch (err: any) {
-      console.error('DuckDB query failed:', err)
-      throw new Error(`DuckDB query failed: ${err.message}`)
-    }
-  }
-
   // Execute DuckDB query and store results as a table using CTAS
   // This is more efficient than runQuery + storeResults as it avoids
   // converting Arrow to JS objects and back to SQL INSERT statements
@@ -587,7 +549,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     updateTableBoxId,
     initialize,
     storeResults,
-    runQuery,
     runQueryWithStorage,
     queryTablePage,
     getTableColumns,
