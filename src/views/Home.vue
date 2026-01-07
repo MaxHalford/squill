@@ -359,21 +359,13 @@ const handleQueryTableFromSchema = async (data: {
 const handleShowRowDetail = (data: {
   rowData: Record<string, any>,
   rowIndex: number,
-  globalRowIndex: number
+  globalRowIndex: number,
+  clickX: number,
+  clickY: number
 }) => {
   try {
-    // Find SQL box to position detail box nearby
-    const sqlBox = canvasStore.boxes.find(box => box.type === 'sql')
-
-    let position = null
-    if (sqlBox) {
-      position = {
-        x: sqlBox.x + sqlBox.width + 30,
-        y: sqlBox.y
-      }
-    } else {
-      position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
-    }
+    // Convert click position to canvas coordinates
+    const position = canvasRef.value?.screenToCanvas(data.clickX, data.clickY) || { x: 400, y: 300 }
 
     // Create detail box
     const boxId = canvasStore.addBox('detail', position)
@@ -383,8 +375,8 @@ const handleShowRowDetail = (data: {
     canvasStore.updateBoxName(boxId, boxName)
     canvasStore.updateBoxQuery(boxId, JSON.stringify(data.rowData))
 
-    // Select and pan to box
-    selectBox(boxId, { shouldPan: true })
+    // Select the box but don't pan since it's already at click location
+    selectBox(boxId, { shouldPan: false })
 
   } catch (error) {
     console.error('Failed to create detail box:', error)

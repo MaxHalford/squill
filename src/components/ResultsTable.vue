@@ -22,7 +22,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'show-row-detail': [payload: { rowData: Record<string, unknown>; rowIndex: number; globalRowIndex: number }]
+  'show-row-detail': [payload: { rowData: Record<string, unknown>; rowIndex: number; globalRowIndex: number; clickX: number; clickY: number }]
 }>()
 
 // UI state
@@ -167,11 +167,13 @@ const formatTime = (ms: number | undefined): string => {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
 }
 
-const handleShowDetail = (row: Record<string, unknown>, index: number) => {
+const handleShowDetail = (event: MouseEvent, row: Record<string, unknown>, index: number) => {
   emit('show-row-detail', {
     rowData: row,
     rowIndex: index,
-    globalRowIndex: (currentPage.value - 1) * pageSize.value + index
+    globalRowIndex: (currentPage.value - 1) * pageSize.value + index,
+    clickX: event.clientX,
+    clickY: event.clientY
   })
 }
 
@@ -396,7 +398,7 @@ defineExpose({ resetPagination })
               <button
                 class="detail-btn"
                 :class="{ visible: hoveredRowIndex === index }"
-                @click.stop="handleShowDetail(row, index)"
+                @click.stop="handleShowDetail($event, row, index)"
                 aria-label="View row details"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

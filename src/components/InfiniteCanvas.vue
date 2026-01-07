@@ -136,7 +136,16 @@ const panToBox = (boxId: number) => {
   animationFrameId = requestAnimationFrame(animate)
 }
 
-defineExpose({ fitToView, getViewportCenter, panToBox })
+const screenToCanvas = (screenX: number, screenY: number): Point => {
+  if (!canvasRef.value) return { x: 0, y: 0 }
+  const rect = canvasRef.value.getBoundingClientRect()
+  return {
+    x: (screenX - rect.left - pan.value.x) / zoom.value,
+    y: (screenY - rect.top - pan.value.y) / zoom.value
+  }
+}
+
+defineExpose({ fitToView, getViewportCenter, panToBox, screenToCanvas })
 
 const isOverBox = (element: HTMLElement | null): boolean => {
   let current = element
@@ -156,15 +165,6 @@ const isOverScrollableArea = (element: HTMLElement | null): boolean => {
     current = current.parentElement
   }
   return false
-}
-
-const screenToCanvas = (screenX: number, screenY: number): Point => {
-  if (!canvasRef.value) return { x: 0, y: 0 }
-  const rect = canvasRef.value.getBoundingClientRect()
-  return {
-    x: (screenX - rect.left - pan.value.x) / zoom.value,
-    y: (screenY - rect.top - pan.value.y) / zoom.value
-  }
 }
 
 const boxIntersectsRectangle = (box: Box, startX: number, startY: number, endX: number, endY: number): boolean => {
