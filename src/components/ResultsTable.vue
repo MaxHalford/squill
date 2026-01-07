@@ -500,8 +500,7 @@ defineExpose({ resetPagination })
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: clip;
-  border-block-start: var(--border-width-thin) solid var(--border-primary);
+  overflow: hidden;
 }
 
 .error-banner {
@@ -514,14 +513,17 @@ defineExpose({ resetPagination })
   flex-shrink: 0;
 }
 
-/* Table Container - scrollable region with accessibility support */
+/* Table Container - scrollable region */
 .table-container {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   cursor: default;
   position: relative;
   scrollbar-width: none;
+  /* Contain layout for performance */
+  contain: strict;
 }
 
 .table-container::-webkit-scrollbar {
@@ -545,8 +547,10 @@ defineExpose({ resetPagination })
   color: var(--text-secondary);
 }
 
-/* Table Base - using border-collapse: collapse for modern approach */
+/* Table Base */
 .results-table {
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: var(--table-font-size);
   font-family: var(--font-family-mono);
@@ -579,6 +583,8 @@ defineExpose({ resetPagination })
   cursor: text;
   /* Use box-shadow for border since regular borders have issues with sticky */
   box-shadow: inset 0 -1px 0 var(--border-secondary);
+  /* Needed for ::after pseudo-element positioning */
+  isolation: isolate;
 }
 
 /* Sortable header cells */
@@ -678,8 +684,8 @@ defineExpose({ resetPagination })
 .results-table .row-number-col {
   position: sticky;
   inset-inline-start: 0;
-  width: 0;
-  min-width: 0;
+  width: 48px;
+  min-width: 48px;
   padding: var(--space-2);
   text-align: center;
   user-select: none;

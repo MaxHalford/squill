@@ -208,6 +208,9 @@ onUnmounted(() => {
   border-radius: var(--box-border-radius);
   box-shadow: var(--box-shadow);
   isolation: isolate;
+  /* Improve rendering performance */
+  contain: layout style;
+  will-change: transform;
 }
 
 .resizable-box.selected {

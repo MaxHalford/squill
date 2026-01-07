@@ -158,24 +158,21 @@ defineExpose({
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
+  contain: layout;
 }
 
 .query-editor {
   height: 100%;
-  overflow: auto;
-  scrollbar-width: none;
-}
-
-.query-editor::-webkit-scrollbar {
-  display: none;
+  overflow: hidden;
 }
 
 .query-editor :deep(.cm-editor) {
   height: 100%;
+  overflow: hidden;
 }
 
 .query-editor :deep(.cm-scroller) {
-  overflow: auto;
+  overflow: auto !important;
   scrollbar-width: none;
 }
 

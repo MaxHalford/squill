@@ -431,21 +431,20 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Splitter */
+/* Splitter - acts as the visual border between editor and results */
 .splitter {
   height: var(--border-width-thin);
+  background: var(--border-primary);
   cursor: ns-resize;
   flex-shrink: 0;
   position: relative;
+  z-index: 1;
 }
 
-/* Invisible larger hit area for easier dragging */
+/* Larger hit area for easier dragging */
 .splitter::before {
   content: '';
   position: absolute;
-  top: calc(var(--space-1) * -1);
-  bottom: calc(var(--space-1) * -1);
-  left: 0;
-  right: 0;
+  inset: calc(var(--space-2) * -1) 0;
 }
 </style>
