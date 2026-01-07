@@ -21,6 +21,24 @@ interface QueryResult {
   }
 }
 
+// Convert DuckDB/Arrow values to JSON-serializable types
+const serializeDuckDBValue = (value: any): any => {
+  if (value === null || value === undefined) return value
+  if (typeof value === 'bigint') return Number(value)
+  if (value instanceof Date) return value.toISOString()
+  if (value instanceof Uint8Array) return Array.from(value)
+  if (Array.isArray(value)) return value.map(serializeDuckDBValue)
+  if (typeof value === 'object' && value !== null) {
+    // Handle plain objects (structs, maps)
+    const result: Record<string, any> = {}
+    for (const key of Object.keys(value)) {
+      result[key] = serializeDuckDBValue(value[key])
+    }
+    return result
+  }
+  return value
+}
+
 export const useDuckDBStore = defineStore('duckdb', () => {
   // DuckDB instances
   const db = ref<AsyncDuckDB | null>(null)
@@ -235,7 +253,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       const rows = result.toArray().map(row => {
         const obj: Record<string, any> = {}
         result.schema.fields.forEach((field) => {
-          obj[field.name] = row[field.name]
+          obj[field.name] = serializeDuckDBValue(row[field.name])
         })
         return obj
       })
@@ -299,7 +317,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       const rows = result.toArray().map(row => {
         const obj: Record<string, any> = {}
         columns.forEach(col => {
-          obj[col] = row[col]
+          obj[col] = serializeDuckDBValue(row[col])
         })
         return obj
       })
