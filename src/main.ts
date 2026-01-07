@@ -3,12 +3,14 @@ import { createPinia } from 'pinia'
 import './style.css'
 import App from './App.vue'
 import type { RouteRecordRaw } from 'vue-router'
+import LandingPage from './views/LandingPage.vue'
 import Home from './views/Home.vue'
 import PrivacyPolicy from './views/PrivacyPolicy.vue'
 import TermsOfService from './views/TermsOfService.vue'
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', component: Home },
+  { path: '/', component: LandingPage },
+  { path: '/app', component: Home },
   { path: '/privacy-policy', component: PrivacyPolicy },
   { path: '/terms-of-service', component: TermsOfService },
 ]
