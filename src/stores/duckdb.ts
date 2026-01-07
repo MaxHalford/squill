@@ -498,6 +498,82 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
+  // Export a table to various formats using DuckDB's native COPY command
+  type ExportFormat = 'csv' | 'json' | 'parquet' | 'xlsx'
+
+  const exportTable = async (
+    tableName: string,
+    format: ExportFormat,
+    _filename: string,
+    sortColumn?: string | null,
+    sortDirection?: 'asc' | 'desc'
+  ): Promise<Blob> => {
+    if (!isInitialized.value) {
+      await initialize()
+    }
+
+    // Build query with optional sorting
+    let selectQuery = `SELECT * FROM ${tableName}`
+    if (sortColumn) {
+      const direction = sortDirection === 'desc' ? 'DESC' : 'ASC'
+      selectQuery += ` ORDER BY "${sortColumn}" ${direction}`
+    }
+
+    // Generate temp filename for DuckDB's virtual filesystem
+    const tempFile = `_export_${Date.now()}.${format}`
+
+    try {
+      // Build COPY command based on format
+      let copyCommand: string
+      switch (format) {
+        case 'csv':
+          copyCommand = `COPY (${selectQuery}) TO '${tempFile}' (FORMAT CSV, HEADER true)`
+          break
+        case 'json':
+          copyCommand = `COPY (${selectQuery}) TO '${tempFile}' (FORMAT JSON, ARRAY true)`
+          break
+        case 'parquet':
+          copyCommand = `COPY (${selectQuery}) TO '${tempFile}' (FORMAT PARQUET, COMPRESSION zstd)`
+          break
+        case 'xlsx':
+          copyCommand = `COPY (${selectQuery}) TO '${tempFile}' (FORMAT XLSX, HEADER true)`
+          break
+        default:
+          throw new Error(`Unsupported export format: ${format}`)
+      }
+
+      // Execute COPY command
+      await conn.value!.query(copyCommand)
+
+      // Get the file buffer from DuckDB's virtual filesystem
+      const buffer = await db.value!.copyFileToBuffer(tempFile)
+
+      // Clean up temp file
+      await db.value!.dropFile(tempFile)
+
+      // Create blob with appropriate MIME type
+      const mimeTypes: Record<ExportFormat, string> = {
+        csv: 'text/csv;charset=utf-8',
+        json: 'application/json;charset=utf-8',
+        parquet: 'application/vnd.apache.parquet',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }
+
+      // Create a new Uint8Array copy to ensure ArrayBuffer compatibility
+      const arrayBuffer = new Uint8Array(buffer).buffer as ArrayBuffer
+      return new Blob([arrayBuffer], { type: mimeTypes[format] })
+    } catch (err: any) {
+      // Try to clean up temp file on error
+      try {
+        await db.value!.dropFile(tempFile)
+      } catch {
+        // Ignore cleanup errors
+      }
+      console.error(`Failed to export table as ${format}:`, err)
+      throw new Error(`Failed to export as ${format.toUpperCase()}: ${err.message}`)
+    }
+  }
+
   return {
     isInitialized,
     isInitializing,
@@ -520,6 +596,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     sanitizeTableName,
     loadTablesMetadata,
     renameTable,
-    loadCsvFile
+    loadCsvFile,
+    exportTable
   }
 })

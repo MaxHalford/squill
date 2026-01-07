@@ -163,38 +163,34 @@ const handleSort = (column: string) => {
   }
 }
 
-// Download all results as CSV (queries DuckDB for full data)
-const downloadCSV = async () => {
+// Export dropdown state
+const showExportMenu = ref(false)
+const isExporting = ref(false)
+
+type ExportFormat = 'csv' | 'json' | 'parquet' | 'xlsx'
+
+// Download results using DuckDB's native export
+const downloadAs = async (format: ExportFormat) => {
   if (!props.tableName) return
 
+  showExportMenu.value = false
+  isExporting.value = true
+
   try {
-    // Query all rows from DuckDB with current sort
-    let query = `SELECT * FROM ${props.tableName}`
-    if (sortColumn.value) {
-      const direction = sortDirection.value === 'desc' ? 'DESC' : 'ASC'
-      query += ` ORDER BY "${sortColumn.value}" ${direction}`
-    }
+    const filename = `${props.boxName || 'results'}.${format}`
 
-    const result = await duckdbStore.runQuery(query)
-    if (!result.rows.length) return
+    const blob = await duckdbStore.exportTable(
+      props.tableName,
+      format,
+      filename,
+      sortColumn.value,
+      sortDirection.value
+    )
 
-    const allColumns = Object.keys(result.rows[0])
-
-    const escape = (val: unknown): string => {
-      if (val === null || val === undefined) return ''
-      return `"${String(val).replace(/"/g, '""')}"`
-    }
-
-    const rows = [
-      allColumns.map(escape).join(','),
-      ...result.rows.map(row => allColumns.map(col => escape(row[col])).join(','))
-    ]
-
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = Object.assign(document.createElement('a'), {
       href: url,
-      download: `${props.boxName || 'results'}.csv`,
+      download: filename,
       style: 'display:none'
     })
     document.body.appendChild(link)
@@ -202,7 +198,17 @@ const downloadCSV = async () => {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
   } catch (err) {
-    console.error('Failed to download CSV:', err)
+    console.error(`Failed to export as ${format}:`, err)
+  } finally {
+    isExporting.value = false
+  }
+}
+
+// Close export menu when clicking outside
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (!target.closest('.export-dropdown')) {
+    showExportMenu.value = false
   }
 }
 
@@ -244,8 +250,14 @@ const handleCopy = (event: ClipboardEvent) => {
   }
 }
 
-onMounted(() => document.addEventListener('copy', handleCopy))
-onUnmounted(() => document.removeEventListener('copy', handleCopy))
+onMounted(() => {
+  document.addEventListener('copy', handleCopy)
+  document.addEventListener('click', handleClickOutside)
+})
+onUnmounted(() => {
+  document.removeEventListener('copy', handleCopy)
+  document.removeEventListener('click', handleClickOutside)
+})
 
 defineExpose({ resetPagination })
 </script>
@@ -380,16 +392,39 @@ defineExpose({ resetPagination })
           </button>
         </nav>
 
-        <button
-          class="download-btn"
-          @click.stop="downloadCSV"
-          :disabled="isLoading"
-          aria-label="Download as CSV"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-          </svg>
-        </button>
+        <div class="export-dropdown">
+          <button
+            class="download-btn"
+            @click.stop="showExportMenu = !showExportMenu"
+            :disabled="isLoading || isExporting"
+            aria-label="Export data"
+            aria-haspopup="true"
+            :aria-expanded="showExportMenu"
+          >
+            <svg v-if="!isExporting" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+            <span v-else class="export-spinner"></span>
+          </button>
+          <div v-if="showExportMenu" class="export-menu" role="menu">
+            <button class="export-option" role="menuitem" @click="downloadAs('csv')">
+              <span class="format-name">CSV</span>
+              <span class="format-desc">Comma-separated values</span>
+            </button>
+            <button class="export-option" role="menuitem" @click="downloadAs('json')">
+              <span class="format-name">JSON</span>
+              <span class="format-desc">JavaScript Object Notation</span>
+            </button>
+            <button class="export-option" role="menuitem" @click="downloadAs('parquet')">
+              <span class="format-name">Parquet</span>
+              <span class="format-desc">Columnar format (compressed)</span>
+            </button>
+            <button class="export-option" role="menuitem" @click="downloadAs('xlsx')">
+              <span class="format-name">Excel</span>
+              <span class="format-desc">Microsoft Excel spreadsheet</span>
+            </button>
+          </div>
+        </div>
       </div>
     </footer>
   </section>
@@ -745,6 +780,72 @@ defineExpose({ resetPagination })
 .download-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* Export Dropdown */
+.export-dropdown {
+  position: relative;
+}
+
+.export-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: var(--space-1);
+  background: var(--surface-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--border-radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 180px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.export-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.export-option:hover {
+  background: var(--surface-secondary);
+}
+
+.export-option:not(:last-child) {
+  border-bottom: 1px solid var(--border-tertiary);
+}
+
+.format-name {
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.format-desc {
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Export Spinner */
+.export-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-secondary);
+  border-top-color: var(--text-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Empty State */
