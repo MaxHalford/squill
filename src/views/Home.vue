@@ -724,13 +724,13 @@ onUnmounted(() => {
     />
 
     <!-- Footer with legal links -->
-    <footer class="page-footer">
+    <!-- <footer class="page-footer">
       <span class="footer-description">Browser-based SQL editor powered by DuckDB</span>
       <nav class="footer-links">
         <router-link to="/privacy-policy">Privacy Policy</router-link>
         <router-link to="/terms-of-service">Terms of Service</router-link>
       </nav>
-    </footer>
+    </footer> -->
   </div>
 </template>
 
