@@ -655,6 +655,12 @@ defineExpose({ resetPagination })
   border-block-end: 1px solid var(--border-tertiary);
 }
 
+/* Remove bottom border from last row to avoid double-border with footer */
+.results-table tbody tr:last-child td,
+.results-table tbody tr:last-child .row-number-col {
+  border-block-end: none;
+}
+
 /* Row backgrounds */
 .results-table tbody tr {
   background: var(--surface-primary);
@@ -684,8 +690,8 @@ defineExpose({ resetPagination })
 .results-table .row-number-col {
   position: sticky;
   inset-inline-start: 0;
-  width: 48px;
-  min-width: 48px;
+  width: 36px;
+  min-width: 36px;
   padding: var(--space-2);
   text-align: center;
   user-select: none;

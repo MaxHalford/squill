@@ -27,3 +27,4 @@ dist-ssr
 /*.ipynb
 .playwright-mcp/
 /*.png
+.vite-ssg-temp/
