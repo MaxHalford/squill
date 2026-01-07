@@ -13,7 +13,6 @@ const props = defineProps<{
   modelValue?: string
   height?: number
   isRunning?: boolean
-  isAuthenticated?: boolean
   dialect?: 'bigquery' | 'duckdb'
   schema?: SchemaTable
 }>()
@@ -138,8 +137,7 @@ defineExpose({
 
     <button
       class="run-btn"
-      :disabled="!isAuthenticated"
-      :title="isRunning ? 'Stop query' : (isAuthenticated ? 'Run query (Ctrl+Enter)' : 'Upload credentials first')"
+      :title="isRunning ? 'Stop query' : 'Run query (Ctrl+Enter)'"
       @click.stop="isRunning ? emit('stop') : emit('run')"
     >
       <template v-if="isRunning">
@@ -178,7 +176,7 @@ defineExpose({
 /* Run Button */
 .run-btn {
   position: absolute;
-  bottom: var(--space-2);
+  top: var(--space-2);
   right: var(--space-2);
   display: flex;
   align-items: center;

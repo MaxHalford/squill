@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { useSettingsStore } from './settings'
 import { useConnectionsStore } from './connections'
 import { applyAutoLimit } from '../utils/queryTransform'
@@ -104,6 +104,9 @@ export const useAuthStore = defineStore('auth', () => {
 
             // Add connection via connections store
             connectionsStore.addConnection('bigquery', userInfo, token)
+
+            // Wait for Vue reactivity to settle
+            await nextTick()
 
             // Try to get default project
             await fetchDefaultProject()

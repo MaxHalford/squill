@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useCanvasStore } from '../stores/canvas'
@@ -109,7 +109,19 @@ const handleAddDatabase = async (databaseType: string) => {
   if (databaseType === 'bigquery') {
     try {
       await authStore.signInWithGoogle()
+      // Wait for Vue reactivity to settle after connection is added
+      await nextTick()
+
+      console.log('After signIn - connections:', connectionsStore.connections)
+      console.log('After signIn - activeConnectionId:', connectionsStore.activeConnectionId)
+      console.log('After signIn - activeConnection:', connectionsStore.activeConnection)
+
+      // Re-open dropdown to show the new connection
+      isConnectionDropdownOpen.value = true
       await authStore.fetchProjects()
+
+      console.log('After fetchProjects - projects:', authStore.projects)
+
       // Auto-select first project if available
       if (authStore.projects.length > 0) {
         handleProjectSelect(authStore.projects[0].projectId)

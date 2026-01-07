@@ -104,7 +104,8 @@ export const useConnectionsStore = defineStore('connections', () => {
       tokenExpiry: Date.now() + (TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
       createdAt: Date.now()
     }
-    connections.value.push(connection)
+    // Use spread to ensure Vue reactivity triggers
+    connections.value = [...connections.value, connection]
     activeConnectionId.value = connectionId
     saveState()
     return connectionId
@@ -129,7 +130,8 @@ export const useConnectionsStore = defineStore('connections', () => {
       createdAt: Date.now()
     }
 
-    connections.value.push(connection)
+    // Use spread to ensure Vue reactivity triggers
+    connections.value = [...connections.value, connection]
     activeConnectionId.value = connectionId
     saveState()
     return connectionId
@@ -148,7 +150,8 @@ export const useConnectionsStore = defineStore('connections', () => {
   const removeConnection = (connectionId: string) => {
     const index = connections.value.findIndex(c => c.id === connectionId)
     if (index !== -1) {
-      connections.value.splice(index, 1)
+      // Use filter to ensure Vue reactivity triggers
+      connections.value = connections.value.filter(c => c.id !== connectionId)
 
       // If we deleted the active connection, switch to another or null
       if (activeConnectionId.value === connectionId) {
@@ -162,24 +165,32 @@ export const useConnectionsStore = defineStore('connections', () => {
 
   // Reconnect (update token for existing connection)
   const reconnectConnection = (connectionId: string, token: string, user: GoogleUserInfo) => {
-    const connection = connections.value.find(c => c.id === connectionId)
-    if (connection) {
-      connection.token = token
-      connection.tokenExpiry = Date.now() + (TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
-      // Update user info in case it changed
-      connection.name = user.name
-      connection.photo = user.photo
-      saveState()
-    }
+    // Use map to create new array and ensure Vue reactivity triggers
+    connections.value = connections.value.map(c => {
+      if (c.id === connectionId) {
+        return {
+          ...c,
+          token: token,
+          tokenExpiry: Date.now() + (TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000),
+          name: user.name,
+          photo: user.photo
+        }
+      }
+      return c
+    })
+    saveState()
   }
 
   // Update connection's project ID (for BigQuery and similar)
   const setConnectionProjectId = (connectionId: string, projectId: string | undefined) => {
-    const connection = connections.value.find(c => c.id === connectionId)
-    if (connection) {
-      connection.projectId = projectId
-      saveState()
-    }
+    // Use map to create new array and ensure Vue reactivity triggers
+    connections.value = connections.value.map(c => {
+      if (c.id === connectionId) {
+        return { ...c, projectId }
+      }
+      return c
+    })
+    saveState()
   }
 
   // Get the active connection's project ID

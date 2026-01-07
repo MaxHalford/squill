@@ -406,7 +406,6 @@ onUnmounted(() => {
       v-model="queryText"
       :height="editorHeight"
       :is-running="isRunning"
-      :is-authenticated="authStore.isAuthenticated"
       :dialect="currentDialect"
       :schema="editorSchema"
       @run="runQuery"

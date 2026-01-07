@@ -34,8 +34,40 @@ const sortDirection = ref<'asc' | 'desc'>('asc')
 // Data state - fetched from DuckDB
 const pageData = ref<Record<string, any>[]>([])
 const columns = ref<string[]>([])
+const columnTypes = ref<Record<string, string>>({})
 const totalRows = ref(0)
 const isLoading = ref(false)
+
+// Map Arrow/DuckDB type strings to icon categories
+const getTypeCategory = (typeStr: string): 'number' | 'text' | 'date' | 'boolean' | 'binary' | 'json' => {
+  const t = typeStr.toLowerCase()
+  // Numeric types
+  if (t.includes('int') || t.includes('float') || t.includes('double') ||
+      t.includes('decimal') || t.includes('numeric') || t === 'bigint' ||
+      t.includes('hugeint') || t.includes('tinyint') || t.includes('smallint')) {
+    return 'number'
+  }
+  // Date/time types
+  if (t.includes('date') || t.includes('time') || t.includes('timestamp') ||
+      t.includes('interval')) {
+    return 'date'
+  }
+  // Boolean
+  if (t.includes('bool')) {
+    return 'boolean'
+  }
+  // Binary/blob
+  if (t.includes('blob') || t.includes('binary') || t.includes('bytea')) {
+    return 'binary'
+  }
+  // JSON/struct/list/map types
+  if (t.includes('json') || t.includes('struct') || t.includes('list') ||
+      t.includes('map') || t.includes('array') || t.startsWith('{')) {
+    return 'json'
+  }
+  // Default to text (varchar, char, text, uuid, etc.)
+  return 'text'
+}
 
 const pageSize = computed(() => settingsStore.paginationSize)
 
@@ -52,6 +84,7 @@ const fetchPage = async () => {
   if (!props.tableName) {
     pageData.value = []
     columns.value = []
+    columnTypes.value = {}
     totalRows.value = 0
     return
   }
@@ -67,6 +100,7 @@ const fetchPage = async () => {
     )
     pageData.value = result.rows
     columns.value = result.columns
+    columnTypes.value = result.columnTypes
   } catch (err) {
     console.error('Failed to fetch page:', err)
     pageData.value = []
@@ -102,6 +136,7 @@ watch(() => props.tableName, async (newTableName) => {
   } else {
     pageData.value = []
     columns.value = []
+    columnTypes.value = {}
     totalRows.value = 0
   }
 }, { immediate: true })
@@ -281,11 +316,39 @@ defineExpose({ resetPagination })
               scope="col"
               :class="{
                 'sortable': true,
-                'sorted': sortColumn === column
+                'sorted': sortColumn === column,
+                'number-cell': getTypeCategory(columnTypes[column] || '') === 'number'
               }"
               @click="handleSort(column)"
             >
               <span class="column-header">
+                <!-- Type icon -->
+                <span class="type-icon" :title="columnTypes[column]">
+                  <!-- Number type -->
+                  <svg v-if="getTypeCategory(columnTypes[column] || '') === 'number'" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M5.5 1.5L3.5 14.5M12.5 1.5L10.5 14.5M2 5.5h12M2 10.5h12"/>
+                  </svg>
+                  <!-- Text type -->
+                  <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'text'" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M2.5 3a.5.5 0 0 0 0 1h11a.5.5 0 0 0 0-1h-11zM2.5 6a.5.5 0 0 0 0 1h9a.5.5 0 0 0 0-1h-9zM2.5 9a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7zM2.5 12a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5z"/>
+                  </svg>
+                  <!-- Date type -->
+                  <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'date'" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4 .5a.5.5 0 0 0-1 0V1H2a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-1V.5a.5.5 0 0 0-1 0V1H4V.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z"/>
+                  </svg>
+                  <!-- Boolean type -->
+                  <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'boolean'" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
+                  </svg>
+                  <!-- Binary type -->
+                  <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'binary'" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M5.526 13.09c.976 0 1.524-.79 1.524-2.205 0-1.412-.548-2.203-1.524-2.203-.978 0-1.526.79-1.526 2.203 0 1.415.548 2.206 1.526 2.206zm-.832-2.205c0-1.05.29-1.612.832-1.612.358 0 .607.247.733.721L4.7 11.137a6.749 6.749 0 0 1-.006-.252zm.832 1.614c-.36 0-.606-.246-.732-.718l1.556-1.145c.003.079.005.164.005.258 0 1.05-.29 1.605-.829 1.605zm5.329.501v-.595H9.73V8.772h-.69l-1.19.786v.688L8.986 9.5h.05v2.906h-1.18V13h3z"/>
+                  </svg>
+                  <!-- JSON/struct type -->
+                  <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'json'" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M6.95.435c-.58-.58-1.52-.58-2.1 0L.436 4.85c-.58.58-.58 1.519 0 2.098l4.414 4.414c.58.58 1.519.58 2.098 0l4.414-4.414c.58-.58.58-1.519 0-2.098L6.95.435zm1.4 1.4a.495.495 0 0 1 0 .7L6.05 4.835a.495.495 0 0 1-.7 0L3.05 2.535a.495.495 0 0 1 0-.7l2.3-2.3a.495.495 0 0 1 .7 0l2.3 2.3zm0 9.9l-2.3 2.3a.495.495 0 0 1-.7 0l-2.3-2.3a.495.495 0 0 1 0-.7l2.3-2.3a.495.495 0 0 1 .7 0l2.3 2.3a.495.495 0 0 1 0 .7z"/>
+                  </svg>
+                </span>
                 <span class="column-name">{{ column }}</span>
                 <span class="sort-indicator">
                   <svg
@@ -344,7 +407,8 @@ defineExpose({ resetPagination })
               v-for="column in columns"
               :key="column"
               :class="{
-                'null-value': row[column] === null
+                'null-value': row[column] === null,
+                'number-cell': getTypeCategory(columnTypes[column] || '') === 'number'
               }"
             >
               {{ row[column] === null ? 'null' : row[column] }}
@@ -534,6 +598,16 @@ defineExpose({ resetPagination })
   gap: var(--space-1);
 }
 
+.type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
 .column-name {
   flex: 1;
 }
@@ -583,6 +657,16 @@ defineExpose({ resetPagination })
 .null-value {
   color: var(--text-tertiary);
   font-style: italic;
+}
+
+/* Number cells - right aligned */
+.number-cell {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.results-table thead th.number-cell .column-header {
+  justify-content: flex-end;
 }
 
 /* Row Number Column - sticky on inline-start (left in LTR) */

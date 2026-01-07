@@ -295,7 +295,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     pageSize: number,
     sortColumn?: string | null,
     sortDirection?: 'asc' | 'desc'
-  ): Promise<{ rows: Record<string, any>[], columns: string[] }> => {
+  ): Promise<{ rows: Record<string, any>[], columns: string[], columnTypes: Record<string, string> }> => {
     if (!isInitialized.value) {
       await initialize()
     }
@@ -314,6 +314,11 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     try {
       const result = await conn.value!.query(query)
       const columns = result.schema.fields.map(f => f.name)
+      // Extract column types from Arrow schema
+      const columnTypes: Record<string, string> = {}
+      result.schema.fields.forEach(f => {
+        columnTypes[f.name] = f.type.toString()
+      })
       const rows = result.toArray().map(row => {
         const obj: Record<string, any> = {}
         columns.forEach(col => {
@@ -322,7 +327,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         return obj
       })
 
-      return { rows, columns }
+      return { rows, columns, columnTypes }
     } catch (err: any) {
       console.error('DuckDB page query failed:', err)
       throw new Error(`Failed to query table page: ${err.message}`)
