@@ -325,8 +325,10 @@ defineExpose({ resetPagination })
                 <!-- Type icon -->
                 <span class="type-icon" :title="columnTypes[column]">
                   <!-- Number type -->
-                  <svg v-if="getTypeCategory(columnTypes[column] || '') === 'number'" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M5.5 1.5L3.5 14.5M12.5 1.5L10.5 14.5M2 5.5h12M2 10.5h12"/>
+                  <svg v-if="getTypeCategory(columnTypes[column] || '') === 'number'" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="2" y="5" width="3" height="8" rx="0.5"/>
+                    <rect x="6.5" y="7" width="3" height="6" rx="0.5"/>
+                    <rect x="11" y="3" width="3" height="10" rx="0.5"/>
                   </svg>
                   <!-- Text type -->
                   <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'text'" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
