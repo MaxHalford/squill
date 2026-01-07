@@ -722,6 +722,15 @@ onUnmounted(() => {
       :files="uploadingFiles"
       :current-index="uploadCurrentIndex"
     />
+
+    <!-- Footer with legal links -->
+    <footer class="page-footer">
+      <span class="footer-description">Browser-based SQL editor powered by DuckDB</span>
+      <nav class="footer-links">
+        <router-link to="/privacy-policy">Privacy Policy</router-link>
+        <router-link to="/terms-of-service">Terms of Service</router-link>
+      </nav>
+    </footer>
   </div>
 </template>
 
@@ -732,5 +741,40 @@ onUnmounted(() => {
   height: 100vh;
   padding-top: 32px; /* Height of macOS-style menu bar */
   overflow: hidden;
+}
+
+.page-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border-top: 1px solid #e0e0e0;
+  font-size: 12px;
+  color: #666;
+  z-index: 100;
+}
+
+.footer-description {
+  color: #888;
+}
+
+.footer-links {
+  display: flex;
+  gap: 16px;
+}
+
+.footer-links a {
+  color: #666;
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: #333;
+  text-decoration: underline;
 }
 </style>

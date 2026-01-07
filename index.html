@@ -5,12 +5,37 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✍️</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="google-site-verification" content="7DfdWB8AILKs4joDJC7JWoPQt06z3RMXAb-OpQMt0_k" />
+    <meta name="description" content="Squill is a browser-based SQL editor and data exploration tool. Run SQL queries on CSV files and databases directly in your browser with DuckDB. No data leaves your device." />
+    <meta name="keywords" content="SQL editor, DuckDB, browser SQL, data exploration, CSV viewer, database tool" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Squill - Browser-Based SQL Editor" />
+    <meta property="og:description" content="Run SQL queries on CSV files and databases directly in your browser. No data leaves your device." />
+    <meta property="og:url" content="https://squill.dev" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Squill - Browser-Based SQL Editor" />
+    <meta name="twitter:description" content="Run SQL queries on CSV files and databases directly in your browser. No data leaves your device." />
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <title>Squill</title>
+    <title>Squill - Browser-Based SQL Editor</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- Static content for crawlers (replaced by Vue on hydration) -->
+      <noscript>
+        <h1>Squill - Browser-Based SQL Editor</h1>
+        <p>Squill is a powerful SQL editor that runs entirely in your browser. Query CSV files and databases using DuckDB - no data ever leaves your device.</p>
+        <nav>
+          <a href="/">Home</a> |
+          <a href="/privacy-policy">Privacy Policy</a> |
+          <a href="/terms-of-service">Terms of Service</a>
+        </nav>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
