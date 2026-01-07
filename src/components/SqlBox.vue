@@ -142,8 +142,17 @@ const updateDependenciesFromQuery = async (query: string) => {
       const dependencyBoxIds = tableRefs
         .map(ref => {
           const tableName = ref.split('.').pop()!.replace(/`/g, '').toLowerCase()
-          const boxId = duckdbStore.getTableBoxId(tableName)
-          console.log(`🔗 Box ${props.boxId}: Table "${tableName}" -> BoxId ${boxId}`)
+          let boxId = duckdbStore.getTableBoxId(tableName)
+
+          // Fallback: find box by matching table name to box name
+          // This handles page reload when DuckDB tables metadata is not persisted
+          if (boxId === null) {
+            const matchingBox = canvasStore.boxes.find(b =>
+              duckdbStore.sanitizeTableName(b.name) === tableName
+            )
+            boxId = matchingBox?.id ?? null
+          }
+
           return boxId
         })
         .filter((boxId): boxId is number => boxId !== null && boxId !== undefined && boxId !== props.boxId)
@@ -275,26 +284,8 @@ const runQuery = async () => {
       resultsRef.value?.resetPagination()
     }
 
-    // Update dependencies for local database queries (DuckDB)
-    // Dependencies track which boxes produce tables that this query references
-    if (isLocalConnectionType(engine)) {
-      try {
-        const tableRefs = extractTableReferences(query)
-        const dependencyBoxIds = tableRefs
-          .map(ref => {
-            const tableName = ref.split('.').pop()!.replace(/`/g, '').toLowerCase()
-            return duckdbStore.getTableBoxId(tableName)
-          })
-          .filter((boxId): boxId is number => boxId !== null && boxId !== undefined && boxId !== props.boxId)
-
-        canvasStore.updateBoxDependencies(props.boxId, [...new Set(dependencyBoxIds)])
-      } catch (depErr) {
-        console.warn('Failed to update dependencies:', depErr)
-      }
-    } else {
-      // Remote database queries don't have local dependencies
-      canvasStore.updateBoxDependencies(props.boxId, [])
-    }
+    // Update dependencies after query execution
+    updateDependenciesFromQuery(query)
   } catch (err: any) {
     if (err.name === 'AbortError') {
       error.value = 'Query cancelled'
