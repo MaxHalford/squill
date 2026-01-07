@@ -62,7 +62,9 @@ provide('executeBoxQuery', executeBoxQuery)
 
 // Computed: show onboarding when there are no connections and not dismissed
 const showOnboarding = computed(() => {
-  return isStoresReady.value && connectionsStore.connections.length === 0 && !onboardingDismissed.value
+  return false
+  // Disabling this because it is interpreted as as ad popup, which Google is not happy about
+  // return isStoresReady.value && connectionsStore.connections.length === 0 && !onboardingDismissed.value
 })
 
 // Handle BigQuery selection from onboarding
