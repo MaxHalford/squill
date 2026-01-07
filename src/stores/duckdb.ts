@@ -243,6 +243,65 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
+  // Execute DuckDB query and store results as a table using CTAS
+  // This is more efficient than runQuery + storeResults as it avoids
+  // converting Arrow to JS objects and back to SQL INSERT statements
+  const runQueryWithStorage = async (
+    query: string,
+    boxName: string,
+    boxId: number | null = null
+  ): Promise<QueryResult> => {
+    if (!isInitialized.value) {
+      await initialize()
+    }
+
+    await loadTablesMetadata()
+
+    const tableName = sanitizeTableName(boxName)
+    const startTime = performance.now()
+
+    try {
+      // Use CREATE OR REPLACE TABLE AS to store results directly
+      // This avoids the Arrow → JS → SQL INSERT roundtrip
+      await conn.value!.query(`CREATE OR REPLACE TABLE ${tableName} AS (${query})`)
+
+      // Now select from the created table to get results for display
+      const result = await conn.value!.query(`SELECT * FROM ${tableName}`)
+      const endTime = performance.now()
+
+      // Convert Arrow result to array of objects for display
+      const rows = result.toArray().map(row => {
+        const obj: Record<string, any> = {}
+        result.schema.fields.forEach((field) => {
+          obj[field.name] = row[field.name]
+        })
+        return obj
+      })
+
+      // Update metadata
+      const columns = result.schema.fields.map(f => f.name)
+      tables.value[tableName] = {
+        rowCount: rows.length,
+        columns,
+        lastUpdated: Date.now(),
+        originalBoxName: boxName,
+        boxId
+      }
+
+      return {
+        rows,
+        stats: {
+          executionTimeMs: Math.round(endTime - startTime),
+          rowCount: rows.length,
+          engine: 'duckdb'
+        }
+      }
+    } catch (err: any) {
+      console.error('DuckDB query with storage failed:', err)
+      throw new Error(`DuckDB query failed: ${err.message}`)
+    }
+  }
+
   // Check if table exists
   const tableExists = (tableName: string): boolean => {
     return tableName in tables.value
@@ -372,6 +431,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     initialize,
     storeResults,
     runQuery,
+    runQueryWithStorage,
     tableExists,
     sanitizeTableName,
     loadTablesMetadata,

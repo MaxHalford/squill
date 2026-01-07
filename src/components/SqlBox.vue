@@ -237,15 +237,13 @@ const runQuery = async () => {
 
     // Execute query based on effective engine
     if (isLocalConnectionType(engine)) {
-      // Execute in local DuckDB
-      result = await duckdbStore.runQuery(query)
-
-      // Store results so they can be queried by other boxes
-      try {
-        await duckdbStore.storeResults(baseBoxRef.value?.boxName || props.initialName, result.rows, props.boxId)
-      } catch (storageErr) {
-        console.warn('Failed to store DuckDB results:', storageErr)
-      }
+      // Execute in local DuckDB with CTAS for efficient storage
+      // This avoids the Arrow → JS → SQL INSERT roundtrip
+      result = await duckdbStore.runQueryWithStorage(
+        query,
+        baseBoxRef.value?.boxName || props.initialName,
+        props.boxId
+      )
     } else {
       // Execute in remote database based on connection type
       // Currently supports: BigQuery
