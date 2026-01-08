@@ -6,8 +6,16 @@ import openai
 import pandas as pd
 import pydantic
 from dotenv import load_dotenv
+from fastapi import FastAPI
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+app = FastAPI()
+
+
+@app.get("/")
+def root():
+    return {"message": "hello free world"}
 
 OPENAI_CLIENT = openai.OpenAI()
 OPENAI_MODEL = "gpt-4o-2024-08-06"
