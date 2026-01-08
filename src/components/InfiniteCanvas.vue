@@ -345,7 +345,7 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="viewport"
-      :style="{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }"
+      :style="{ transform: `translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, zoom: zoom }"
     >
       <slot />
 
