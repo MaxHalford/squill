@@ -345,7 +345,8 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="viewport"
-      :style="{ transform: `translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, zoom: zoom }"
+      :class="{ 'is-moving': isPanning || isRectangleSelecting }"
+      :style="{ transform: `translate3d(${pan.x / zoom}px, ${pan.y / zoom}px, 0)`, zoom: zoom }"
     >
       <slot />
 
@@ -375,6 +376,8 @@ onUnmounted(() => {
   background-image: radial-gradient(circle, var(--canvas-dot-color) var(--canvas-dot-size), transparent var(--canvas-dot-size));
   background-size: var(--canvas-dot-spacing) var(--canvas-dot-spacing);
   cursor: grab;
+  /* CSS containment for performance */
+  contain: layout size style;
 }
 
 .viewport {
@@ -382,6 +385,23 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   position: relative;
+  /* GPU acceleration hints */
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Optimize during active pan/drag - disable expensive effects */
+.viewport.is-moving {
+  pointer-events: none;
+}
+
+.viewport.is-moving :deep(.resizable-box) {
+  box-shadow: none !important;
+}
+
+.viewport.is-moving :deep(.resizable-box)::before {
+  display: none;
 }
 
 .selection-rectangle {

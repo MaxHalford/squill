@@ -205,6 +205,9 @@ const arrows = computed(() => {
   pointer-events: none;
   z-index: 0;
   overflow: visible;
+  /* GPU acceleration for SVG */
+  will-change: transform;
+  shape-rendering: geometricPrecision;
 }
 
 .arrow-group {

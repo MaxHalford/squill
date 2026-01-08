@@ -210,7 +210,9 @@ onUnmounted(() => {
   isolation: isolate;
   /* Improve rendering performance */
   contain: layout style;
-  will-change: transform;
+  will-change: transform, left, top, width, height;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .resizable-box.selected {
@@ -233,6 +235,13 @@ onUnmounted(() => {
 
 .resizable-box.dragging {
   z-index: 100;
+  /* Disable expensive effects during drag for smooth movement */
+  box-shadow: none !important;
+  transition: none !important;
+}
+
+.resizable-box.dragging::before {
+  display: none;
 }
 
 .box-header {
