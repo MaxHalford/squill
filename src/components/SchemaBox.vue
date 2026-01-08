@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue'
 import BaseBox from './BaseBox.vue'
-import { useAuthStore } from '../stores/auth'
+import { useBigQueryStore } from '../stores/bigquery'
 import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
-import { useSchemaStore } from '../stores/schema'
+import { useSchemaStore } from '../stores/bigquerySchema'
 
-const authStore = useAuthStore()
+const bigqueryStore = useBigQueryStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 const schemaStore = useSchemaStore()
@@ -68,7 +68,7 @@ const projects = computed(() => {
 
   // Show all BigQuery projects if there's an active BigQuery connection with valid token
   if (connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired) {
-    authStore.projects.forEach(project => {
+    bigqueryStore.projects.forEach(project => {
       items.push({
         id: project.projectId,
         name: project.name || project.projectId,
@@ -152,11 +152,11 @@ const selectTable = async (tableId: string) => {
 
 // Load BigQuery datasets
 const loadDatasets = async (projectId: string) => {
-  if (!authStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
+  if (!bigqueryStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
 
   loadingDatasets.value[projectId] = true
   try {
-    const fetchedDatasets = await authStore.fetchDatasets(projectId)
+    const fetchedDatasets = await bigqueryStore.fetchDatasets(projectId)
     datasets.value[projectId] = fetchedDatasets.map((ds: any) => ({
       id: ds.datasetReference.datasetId,
       name: ds.datasetReference.datasetId,
@@ -171,11 +171,11 @@ const loadDatasets = async (projectId: string) => {
 
 // Load BigQuery tables
 const loadTables = async (datasetId: string) => {
-  if (!authStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
+  if (!bigqueryStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
 
   loadingTables.value[datasetId] = true
   try {
-    const fetchedTables = await authStore.fetchTables(datasetId, selectedProject.value)
+    const fetchedTables = await bigqueryStore.fetchTables(datasetId, selectedProject.value)
     tables.value[datasetId] = fetchedTables.map((t: any) => ({
       id: t.tableReference.tableId,
       name: t.tableReference.tableId,
@@ -201,11 +201,11 @@ const loadSchema = async (tableId: string, key: string) => {
     }
   } else {
     // BigQuery schema
-    if (!authStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
+    if (!bigqueryStore.isAuthenticated || connectionsStore.isActiveTokenExpired) return
 
     loadingSchema.value[key] = true
     try {
-      const schema = await authStore.fetchTableSchema(selectedDataset.value!, tableId, selectedProject.value!)
+      const schema = await bigqueryStore.fetchTableSchema(selectedDataset.value!, tableId, selectedProject.value!)
       schemas.value[key] = schema
 
       // Also populate the schema store for autocompletion

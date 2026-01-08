@@ -3,15 +3,15 @@ import { ref, inject, watch, onMounted, onUnmounted, computed, nextTick } from '
 import BaseBox from './BaseBox.vue'
 import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
-import { useAuthStore } from '../stores/auth'
+import { useBigQueryStore } from '../stores/bigquery'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useCanvasStore } from '../stores/canvas'
-import { useSchemaStore } from '../stores/schema'
+import { useSchemaStore } from '../stores/bigquerySchema'
 import { useConnectionsStore } from '../stores/connections'
 import { getEffectiveEngine, extractTableReferences, isLocalConnectionType } from '../utils/queryAnalyzer'
 import { buildDuckDBSchema, buildBigQuerySchema, combineSchemas } from '../utils/schemaBuilder'
 
-const authStore = useAuthStore()
+const bigqueryStore = useBigQueryStore()
 const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()
 const schemaStore = useSchemaStore()
@@ -248,10 +248,10 @@ const runQuery = async () => {
       // Currently supports: BigQuery
       // Future: Postgres, Snowflake, etc.
       if (engine === 'bigquery') {
-        if (!authStore.isAuthenticated) {
+        if (!bigqueryStore.isAuthenticated) {
           throw new Error('Please connect to BigQuery first')
         }
-        result = await authStore.runQuery(query, abortController.signal)
+        result = await bigqueryStore.runQuery(query, abortController.signal)
       } else {
         // Placeholder for future database types
         throw new Error(`Database type "${engine}" is not yet supported`)

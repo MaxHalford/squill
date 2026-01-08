@@ -7,12 +7,14 @@ import LandingPage from './views/LandingPage.vue'
 import Home from './views/Home.vue'
 import PrivacyPolicy from './views/PrivacyPolicy.vue'
 import TermsOfService from './views/TermsOfService.vue'
+import Workbench from './views/Workbench.vue'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', component: LandingPage },
   { path: '/app', component: Home },
   { path: '/privacy-policy', component: PrivacyPolicy },
   { path: '/terms-of-service', component: TermsOfService },
+  { path: '/workbench', component: Workbench },
 ]
 
 export const createApp = ViteSSG(

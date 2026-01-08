@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
-import { useAuthStore } from '../stores/auth'
+import { useBigQueryStore } from '../stores/bigquery'
 import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
 import { useSettingsStore } from '../stores/settings'
@@ -10,7 +10,7 @@ import {
   connectionRequiresAuth
 } from '../utils/connectionHelpers'
 
-const authStore = useAuthStore()
+const bigqueryStore = useBigQueryStore()
 const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const settingsStore = useSettingsStore()
@@ -39,7 +39,7 @@ const toggleDropdown = (dropdown: string) => {
     isConnectionDropdownOpen.value = !isConnectionDropdownOpen.value
     // Load projects when opening connection dropdown (BigQuery only)
     if (isConnectionDropdownOpen.value && connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired) {
-      authStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
+      bigqueryStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
     }
     return
   }
@@ -67,13 +67,13 @@ const handleConnectionSelect = async (connectionId: string) => {
 
   // Only load projects for BigQuery connections
   if (connection.type === 'bigquery') {
-    await authStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
+    await bigqueryStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
     // Sync auth store with connection's project
     if (connection.projectId) {
-      authStore.setProjectId(connection.projectId)
+      bigqueryStore.setProjectId(connection.projectId)
     }
   } else {
-    authStore.setProjectId(null as any)
+    bigqueryStore.setProjectId(null as any)
   }
 
   closeDropdown()
@@ -85,12 +85,12 @@ const handleProjectSelect = async (projectId: string) => {
   if (activeConnectionId) {
     connectionsStore.setConnectionProjectId(activeConnectionId, projectId)
   }
-  authStore.setProjectId(projectId)
+  bigqueryStore.setProjectId(projectId)
   closeDropdown()
 
   // Fetch all schemas using INFORMATION_SCHEMA
   try {
-    await authStore.fetchAllSchemas()
+    await bigqueryStore.fetchAllSchemas()
   } catch (error) {
     console.error('Failed to fetch schemas:', error)
   }
@@ -103,7 +103,7 @@ const handleAddDatabase = async (databaseType: string) => {
 
   if (databaseType === 'bigquery') {
     try {
-      await authStore.signInWithGoogle()
+      await bigqueryStore.signInWithGoogle()
       // Wait for Vue reactivity to settle after connection is added
       await nextTick()
 
@@ -113,13 +113,13 @@ const handleAddDatabase = async (databaseType: string) => {
 
       // Re-open dropdown to show the new connection
       isConnectionDropdownOpen.value = true
-      await authStore.fetchProjects()
+      await bigqueryStore.fetchProjects()
 
-      console.log('After fetchProjects - projects:', authStore.projects)
+      console.log('After fetchProjects - projects:', bigqueryStore.projects)
 
       // Auto-select first project if available
-      if (authStore.projects.length > 0) {
-        handleProjectSelect(authStore.projects[0].projectId)
+      if (bigqueryStore.projects.length > 0) {
+        handleProjectSelect(bigqueryStore.projects[0].projectId)
       }
     } catch (error) {
       console.error('Failed to add database:', error)
@@ -137,8 +137,8 @@ const handleDeleteConnection = (connectionId: string, event: Event) => {
 const handleReconnect = async (connectionId: string, event: Event) => {
   event.stopPropagation()
   try {
-    await authStore.reconnectConnection(connectionId)
-    await authStore.fetchProjects()
+    await bigqueryStore.reconnectConnection(connectionId)
+    await bigqueryStore.fetchProjects()
   } catch (error) {
     console.error('Failed to reconnect:', error)
   }
@@ -157,7 +157,7 @@ const addBox = (boxType: BoxType) => {
 // Handle refresh schemas
 const handleRefreshSchemas = async () => {
   try {
-    await authStore.fetchAllSchemas()
+    await bigqueryStore.fetchAllSchemas()
     alert('Schemas refreshed successfully!')
   } catch (error) {
     console.error('Failed to refresh schemas:', error)
@@ -301,11 +301,11 @@ onUnmounted(() => {
           <!-- Projects Section (BigQuery only) -->
           <div v-if="connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired" class="dropdown-section">
             <div class="section-label">Projects</div>
-            <div v-if="authStore.projects.length === 0" class="dropdown-message">
+            <div v-if="bigqueryStore.projects.length === 0" class="dropdown-message">
               No projects found
             </div>
             <button
-              v-for="project in authStore.projects"
+              v-for="project in bigqueryStore.projects"
               :key="project.projectId"
               class="dropdown-item project-item"
               :class="{ selected: project.projectId === connectionsStore.activeConnection?.projectId }"
@@ -376,7 +376,7 @@ onUnmounted(() => {
             <div class="setting-description">
               Refresh schema information from BigQuery INFORMATION_SCHEMA
             </div>
-            <button @click="handleRefreshSchemas" class="action-button" :disabled="!authStore.isAuthenticated">
+            <button @click="handleRefreshSchemas" class="action-button" :disabled="!bigqueryStore.isAuthenticated">
               Refresh Schemas
             </button>
           </div>

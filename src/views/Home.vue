@@ -14,14 +14,14 @@ import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useConnectionsStore } from '../stores/connections'
-import { useAuthStore } from '../stores/auth'
+import { useBigQueryStore } from '../stores/bigquery'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
 
 const canvasStore = useCanvasStore()
 const settingsStore = useSettingsStore()
 const duckdbStore = useDuckDBStore()
 const connectionsStore = useConnectionsStore()
-const authStore = useAuthStore()
+const bigqueryStore = useBigQueryStore()
 const canvasRef = ref<any>(null)
 const copiedBoxId = ref<number | null>(null)
 const copiedBoxIds = ref<number[]>([])
@@ -76,7 +76,7 @@ const selectedSqlBox = computed(() => {
 // Handle BigQuery selection from onboarding
 const handleSelectBigquery = async () => {
   try {
-    await authStore.signInWithGoogle()
+    await bigqueryStore.signInWithGoogle()
     // Modal will auto-close when connection is added
   } catch (error) {
     console.error('BigQuery connection failed:', error)

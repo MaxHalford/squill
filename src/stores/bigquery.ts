@@ -32,7 +32,7 @@ interface QueryResult {
   }
 }
 
-export const useAuthStore = defineStore('auth', () => {
+export const useBigQueryStore = defineStore('bigquery', () => {
   // Delegate to connections store
   const connectionsStore = useConnectionsStore()
 
@@ -467,7 +467,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     // Import schema store
-    const { useSchemaStore } = await import('./schema')
+    const { useSchemaStore } = await import('./bigquerySchema')
     const schemaStore = useSchemaStore()
 
     try {
