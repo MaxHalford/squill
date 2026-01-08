@@ -7,6 +7,14 @@ import type { GoogleUserInfo, GoogleTokenResponse } from '../types/google-oauth'
 import type { BigQueryProject } from '../types/bigquery'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+const OAUTH_STATE_KEY = 'squill-oauth-state'
+
+// Generate cryptographically secure random state for CSRF protection
+const generateOAuthState = (): string => {
+  const array = new Uint8Array(32)
+  crypto.getRandomValues(array)
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
+}
 
 // Google OAuth configuration
 const SCOPES = [
@@ -86,11 +94,25 @@ export const useAuthStore = defineStore('auth', () => {
 
     await initGoogleAuth()
 
+    // Generate and store state for CSRF protection
+    const state = generateOAuthState()
+    sessionStorage.setItem(OAUTH_STATE_KEY, state)
+
     return new Promise((resolve, reject) => {
       tokenClient = window.google!.accounts!.oauth2!.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: SCOPES,
+        state: state,
         callback: async (response: GoogleTokenResponse) => {
+          // Validate state to prevent CSRF attacks
+          const storedState = sessionStorage.getItem(OAUTH_STATE_KEY)
+          sessionStorage.removeItem(OAUTH_STATE_KEY)
+
+          if (!storedState || response.state !== storedState) {
+            reject(new Error('OAuth state mismatch - possible CSRF attack'))
+            return
+          }
+
           if (response.error) {
             reject(new Error(response.error))
             return
@@ -210,11 +232,25 @@ export const useAuthStore = defineStore('auth', () => {
 
     await initGoogleAuth()
 
+    // Generate and store state for CSRF protection
+    const state = generateOAuthState()
+    sessionStorage.setItem(OAUTH_STATE_KEY, state)
+
     return new Promise((resolve, reject) => {
       tokenClient = window.google!.accounts!.oauth2!.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: SCOPES,
+        state: state,
         callback: async (response: GoogleTokenResponse) => {
+          // Validate state to prevent CSRF attacks
+          const storedState = sessionStorage.getItem(OAUTH_STATE_KEY)
+          sessionStorage.removeItem(OAUTH_STATE_KEY)
+
+          if (!storedState || response.state !== storedState) {
+            reject(new Error('OAuth state mismatch - possible CSRF attack'))
+            return
+          }
+
           if (response.error) {
             reject(new Error(response.error))
             return

@@ -2,6 +2,7 @@ export interface GoogleTokenResponse {
   access_token: string
   error?: string
   expires_in?: number
+  state?: string
 }
 
 export interface GoogleUserInfo {
@@ -24,6 +25,7 @@ declare global {
             client_id: string
             scope: string
             callback: (response: GoogleTokenResponse) => void
+            state?: string
           }) => GoogleTokenClient
           revoke: (token: string, callback: () => void) => void
         }
