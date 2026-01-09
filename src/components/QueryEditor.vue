@@ -92,11 +92,17 @@ watch([() => props.dialect, () => props.schema], ([newDialect, newSchema]) => {
 onMounted(() => {
   if (!editorRef.value) return
 
-  const runShortcut = EditorView.domEventHandlers({
-    keydown(event) {
+  const keyboardHandlers = EditorView.domEventHandlers({
+    keydown(event, view) {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault()
         emit('run')
+        return true
+      }
+      // Escape blurs editor so box can be deleted with Delete/Backspace
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        view.contentDOM.blur()
         return true
       }
       return false
@@ -108,7 +114,7 @@ onMounted(() => {
       basicSetup,
       languageCompartment.of(buildSQLExtension(props.dialect || 'bigquery', props.schema || {})),
       editorTheme,
-      runShortcut,
+      keyboardHandlers,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           emit('update:modelValue', update.state.doc.toString())
