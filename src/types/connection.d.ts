@@ -6,7 +6,8 @@ export type ConnectionType = 'bigquery' | 'duckdb' // Future: 'postgres' | 'snow
 
 /**
  * Database connection configuration
- * Encapsulates all connection-related data including auth and context
+ * Encapsulates connection-related data including session info
+ * Note: Access tokens are stored in memory only (not persisted)
  */
 export interface Connection {
   id: string
@@ -14,11 +15,9 @@ export interface Connection {
   name: string
   createdAt: number
 
-  // Authentication (for remote connections like BigQuery)
+  // Session info (for remote connections like BigQuery)
   email?: string
   photo?: string
-  token?: string
-  tokenExpiry?: number
 
   // Context within the connection
   // For BigQuery: the selected project

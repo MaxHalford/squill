@@ -555,6 +555,9 @@ onMounted(async () => {
   // Ensure connections store is loaded
   connectionsStore.loadState()
 
+  // Restore BigQuery session (refresh access token from backend)
+  await bigqueryStore.restoreSession()
+
   // Mark stores as ready (prevents flash)
   await nextTick()
   isStoresReady.value = true

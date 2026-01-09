@@ -183,7 +183,7 @@ defineExpose({
 /* Run Button */
 .run-btn {
   position: absolute;
-  top: var(--space-2);
+  bottom: var(--space-2);
   right: var(--space-2);
   display: flex;
   align-items: center;

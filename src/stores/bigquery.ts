@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia'
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed } from 'vue'
 import { useSettingsStore } from './settings'
 import { useConnectionsStore } from './connections'
 import { applyAutoLimit } from '../utils/queryTransform'
-import type { GoogleUserInfo, GoogleTokenResponse } from '../types/google-oauth'
 import type { BigQueryProject } from '../types/bigquery'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const OAUTH_STATE_KEY = 'squill-oauth-state'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 // Generate cryptographically secure random state for CSRF protection
 const generateOAuthState = (): string => {
@@ -16,13 +16,13 @@ const generateOAuthState = (): string => {
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-// Google OAuth configuration
+// Google OAuth scopes
 const SCOPES = [
   'https://www.googleapis.com/auth/bigquery',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
-  'https://www.googleapis.com/auth/cloud-platform.read-only' // To list projects
-].join(' ')
+  'https://www.googleapis.com/auth/cloud-platform.read-only'
+]
 
 interface QueryResult {
   rows: Record<string, any>[]
@@ -52,116 +52,81 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     console.error('Failed to load project:', err)
   }
 
-  // Computed properties for backward compatibility
-  const accessToken = computed(() => connectionsStore.activeConnection?.token || null)
+  // Computed: get current access token (from in-memory storage)
+  const accessToken = computed(() => {
+    if (!connectionsStore.activeConnectionId) return null
+    return connectionsStore.getAccessToken(connectionsStore.activeConnectionId)
+  })
+
+  // Computed properties for user info
   const userEmail = computed(() => connectionsStore.activeConnection?.email || null)
   const userName = computed(() => connectionsStore.activeConnection?.name || null)
   const userPhoto = computed(() => connectionsStore.activeConnection?.photo || null)
 
   const isAuthenticated = computed(() => {
     return connectionsStore.activeConnection !== null &&
+           connectionsStore.activeConnection.type === 'bigquery' &&
            !connectionsStore.isActiveTokenExpired
   })
 
   // For backward compatibility - projects list
   const projects = ref<BigQueryProject[]>([])
 
-  // Initialize Google Sign-In
-  let tokenClient: any = null
+  // Helper: Make API call with automatic token refresh
+  const apiCallWithRefresh = async <T>(
+    apiCall: (token: string) => Promise<Response>
+  ): Promise<T> => {
+    const connectionId = connectionsStore.activeConnectionId
+    if (!connectionId) {
+      throw new Error('No active connection')
+    }
 
-  const initGoogleAuth = (): Promise<void> => {
-    return new Promise((resolve) => {
-      // Load Google Identity Services library
-      if (window.google?.accounts?.oauth2) {
-        resolve()
-        return
-      }
+    // Get current token or refresh if needed
+    let token = connectionsStore.getAccessToken(connectionId)
+    if (!token) {
+      token = await connectionsStore.refreshAccessToken(connectionId)
+    }
 
-      const script = document.createElement('script')
-      script.src = 'https://accounts.google.com/gsi/client'
-      script.async = true
-      script.defer = true
-      script.onload = () => resolve()
-      document.head.appendChild(script)
-    })
+    // Make the API call
+    let response = await apiCall(token)
+
+    // If 401, refresh token and retry once
+    if (response.status === 401) {
+      token = await connectionsStore.refreshAccessToken(connectionId)
+      response = await apiCall(token)
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error?.message || 'API call failed')
+    }
+
+    return response.json()
   }
 
-  // Sign in with Google
+  // Sign in with Google (redirect to OAuth flow)
   const signInWithGoogle = async (): Promise<void> => {
     if (!GOOGLE_CLIENT_ID) {
       throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
     }
 
-    await initGoogleAuth()
-
     // Generate and store state for CSRF protection
     const state = generateOAuthState()
     sessionStorage.setItem(OAUTH_STATE_KEY, state)
 
-    return new Promise((resolve, reject) => {
-      tokenClient = window.google!.accounts!.oauth2!.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: SCOPES,
-        state: state,
-        callback: async (response: GoogleTokenResponse) => {
-          // Validate state to prevent CSRF attacks
-          const storedState = sessionStorage.getItem(OAUTH_STATE_KEY)
-          sessionStorage.removeItem(OAUTH_STATE_KEY)
-
-          if (!storedState || response.state !== storedState) {
-            reject(new Error('OAuth state mismatch - possible CSRF attack'))
-            return
-          }
-
-          if (response.error) {
-            reject(new Error(response.error))
-            return
-          }
-
-          try {
-            const token = response.access_token
-
-            // Get user info
-            const userInfo = await fetchUserInfo(token)
-
-            // Add connection via connections store
-            connectionsStore.addConnection('bigquery', userInfo, token)
-
-            // Wait for Vue reactivity to settle
-            await nextTick()
-
-            // Try to get default project
-            await fetchDefaultProject()
-
-            resolve()
-          } catch (err) {
-            reject(err)
-          }
-        },
-      })
-
-      tokenClient.requestAccessToken()
-    })
-  }
-
-  // Fetch user info from Google
-  const fetchUserInfo = async (token: string): Promise<GoogleUserInfo> => {
-    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+    // Build OAuth URL
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: `${window.location.origin}/auth/callback`,
+      response_type: 'code',
+      scope: SCOPES.join(' '),
+      access_type: 'offline',  // Request refresh token
+      prompt: 'consent',       // Force consent to ensure refresh token
+      state
     })
 
-    if (response.ok) {
-      const data = await response.json()
-      return {
-        email: data.email,
-        name: data.name,
-        photo: data.picture
-      }
-    }
-
-    throw new Error('Failed to fetch user info')
+    // Redirect to Google OAuth
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
   }
 
   // Fetch default project (first accessible project)
@@ -169,49 +134,39 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     if (!accessToken.value) return
 
     try {
-      const response = await fetch(
-        'https://cloudresourcemanager.googleapis.com/v1/projects?pageSize=1',
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken.value}`
-          }
-        }
+      const data = await apiCallWithRefresh<{ projects?: { projectId: string }[] }>(
+        (token) => fetch(
+          'https://cloudresourcemanager.googleapis.com/v1/projects?pageSize=1',
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        )
       )
 
-      if (response.ok) {
-        const data = await response.json()
-        if (data.projects && data.projects.length > 0) {
-          projectId.value = data.projects[0].projectId
-        }
+      if (data.projects && data.projects.length > 0) {
+        projectId.value = data.projects[0].projectId
       }
     } catch (err) {
       console.warn('Could not fetch default project:', err)
-      // Not critical - user can set project manually
     }
   }
 
   // Fetch list of available projects
   const fetchProjects = async (): Promise<BigQueryProject[]> => {
-    if (!accessToken.value) {
-      throw new Error('Not authenticated')
+    try {
+      const data = await apiCallWithRefresh<{ projects?: BigQueryProject[] }>(
+        (token) => fetch(
+          'https://cloudresourcemanager.googleapis.com/v1/projects',
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        )
+      )
+
+      projects.value = data.projects || []
+      return projects.value
+    } catch (err) {
+      // Cloud Resource Manager API may not be enabled - fail gracefully
+      console.warn('Could not fetch projects (API may need to be enabled):', err)
+      projects.value = []
+      return []
     }
-
-    const response = await fetch(
-      'https://cloudresourcemanager.googleapis.com/v1/projects',
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken.value}`
-        }
-      }
-    )
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch projects')
-    }
-
-    const data = await response.json()
-    projects.value = data.projects || []
-    return projects.value
   }
 
   // Set active project
@@ -224,61 +179,15 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     }
   }
 
-  // Reconnect an existing connection
-  const reconnectConnection = async (connectionId: string): Promise<void> => {
-    if (!GOOGLE_CLIENT_ID) {
-      throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
-    }
-
-    await initGoogleAuth()
-
-    // Generate and store state for CSRF protection
-    const state = generateOAuthState()
-    sessionStorage.setItem(OAUTH_STATE_KEY, state)
-
-    return new Promise((resolve, reject) => {
-      tokenClient = window.google!.accounts!.oauth2!.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: SCOPES,
-        state: state,
-        callback: async (response: GoogleTokenResponse) => {
-          // Validate state to prevent CSRF attacks
-          const storedState = sessionStorage.getItem(OAUTH_STATE_KEY)
-          sessionStorage.removeItem(OAUTH_STATE_KEY)
-
-          if (!storedState || response.state !== storedState) {
-            reject(new Error('OAuth state mismatch - possible CSRF attack'))
-            return
-          }
-
-          if (response.error) {
-            reject(new Error(response.error))
-            return
-          }
-
-          try {
-            const token = response.access_token
-
-            // Get user info
-            const userInfo = await fetchUserInfo(token)
-
-            // Update connection via connections store
-            connectionsStore.reconnectConnection(connectionId, token, userInfo)
-
-            resolve()
-          } catch (err) {
-            reject(err)
-          }
-        },
-      })
-
-      tokenClient.requestAccessToken()
-    })
+  // Reconnect an existing connection (re-authenticate)
+  const reconnectConnection = async (_connectionId: string): Promise<void> => {
+    // For the new flow, reconnecting means going through OAuth again
+    await signInWithGoogle()
   }
 
   // Sign out
-  const signOut = () => {
-    const currentToken = accessToken.value
+  const signOut = async () => {
+    const email = connectionsStore.activeConnection?.email
 
     // Remove connection via connections store
     if (connectionsStore.activeConnectionId) {
@@ -288,101 +197,74 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     projectId.value = null
     localStorage.removeItem('squill-project')
 
-    // Revoke Google token
-    if (currentToken && window.google?.accounts?.oauth2) {
-      window.google.accounts.oauth2.revoke(currentToken, () => {
-        console.log('Token revoked')
-      })
+    // Tell backend to revoke refresh token
+    if (email) {
+      try {
+        await fetch(`${BACKEND_URL}/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        })
+      } catch (err) {
+        console.warn('Failed to revoke refresh token:', err)
+      }
     }
   }
 
   // Fetch datasets for a project
   const fetchDatasets = async (targetProjectId: string | null = null) => {
-    if (!isAuthenticated.value) {
-      throw new Error('Not authenticated')
-    }
-
     const project = targetProjectId || projectId.value
     if (!project) {
       throw new Error('No project specified')
     }
 
-    const response = await fetch(
-      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken.value}`
-        }
-      }
+    const data = await apiCallWithRefresh<{ datasets?: any[] }>(
+      (token) => fetch(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      )
     )
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch datasets')
-    }
-
-    const data = await response.json()
     return data.datasets || []
   }
 
   // Fetch tables for a dataset
   const fetchTables = async (datasetId: string, targetProjectId: string | null = null) => {
-    if (!isAuthenticated.value) {
-      throw new Error('Not authenticated')
-    }
-
     const project = targetProjectId || projectId.value
     if (!project) {
       throw new Error('No project specified')
     }
 
-    const response = await fetch(
-      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken.value}`
-        }
-      }
+    const data = await apiCallWithRefresh<{ tables?: any[] }>(
+      (token) => fetch(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      )
     )
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch tables')
-    }
-
-    const data = await response.json()
     return data.tables || []
   }
 
   // Fetch table schema
   const fetchTableSchema = async (datasetId: string, tableId: string, targetProjectId: string | null = null) => {
-    if (!isAuthenticated.value) {
-      throw new Error('Not authenticated')
-    }
-
     const project = targetProjectId || projectId.value
     if (!project) {
       throw new Error('No project specified')
     }
 
-    const response = await fetch(
-      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables/${tableId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken.value}`
-        }
-      }
+    const data = await apiCallWithRefresh<{ schema?: { fields?: any[] } }>(
+      (token) => fetch(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables/${tableId}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      )
     )
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch table schema')
-    }
-
-    const data = await response.json()
     return data.schema?.fields || []
   }
 
   // Run BigQuery query
   const runQuery = async (query: string, signal: AbortSignal | null = null): Promise<QueryResult> => {
-    if (!isAuthenticated.value) {
+    if (!connectionsStore.activeConnectionId) {
       throw new Error('Please sign in with Google first')
     }
 
@@ -390,9 +272,12 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       throw new Error('No project selected. Please select a project in the sidebar.')
     }
 
-    // Check if token is expired
-    if (connectionsStore.isActiveTokenExpired) {
-      throw new Error('Session expired. Please reconnect your account.')
+    const connectionId = connectionsStore.activeConnectionId
+
+    // Get current token or refresh if needed
+    let token = connectionsStore.getAccessToken(connectionId)
+    if (!token) {
+      token = await connectionsStore.refreshAccessToken(connectionId)
     }
 
     // Apply auto-limit transformation
@@ -403,28 +288,37 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       settingsStore.autoLimitValue
     )
 
-    const fetchOptions: RequestInit = {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken.value}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query: transformedQuery,
-        useLegacySql: false,
-        useQueryCache: true,
-      }),
+    const makeRequest = async (accessToken: string): Promise<Response> => {
+      const fetchOptions: RequestInit = {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: transformedQuery,
+          useLegacySql: false,
+          useQueryCache: true,
+        }),
+      }
+
+      if (signal) {
+        fetchOptions.signal = signal
+      }
+
+      return fetch(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId.value}/queries`,
+        fetchOptions
+      )
     }
 
-    // Add signal if provided
-    if (signal) {
-      fetchOptions.signal = signal
-    }
+    let response = await makeRequest(token)
 
-    const response = await fetch(
-      `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId.value}/queries`,
-      fetchOptions
-    )
+    // If 401, refresh and retry
+    if (response.status === 401) {
+      token = await connectionsStore.refreshAccessToken(connectionId)
+      response = await makeRequest(token)
+    }
 
     if (!response.ok) {
       const errorData = await response.json()
@@ -457,10 +351,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
 
   // Fetch all schemas using INFORMATION_SCHEMA
   const fetchAllSchemas = async (targetProjectId: string | null = null): Promise<void> => {
-    if (!isAuthenticated.value) {
-      throw new Error('Not authenticated')
-    }
-
     const project = targetProjectId || projectId.value
     if (!project) {
       throw new Error('No project specified')
@@ -535,6 +425,29 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     }
   }
 
+  // Restore session on app load (refresh tokens for existing connections)
+  const restoreSession = async (): Promise<void> => {
+    if (!connectionsStore.activeConnectionId) return
+    if (connectionsStore.activeConnection?.type !== 'bigquery') return
+
+    // Check if we already have a valid token
+    if (connectionsStore.hasValidToken(connectionsStore.activeConnectionId)) return
+
+    try {
+      // Try to refresh the token
+      await connectionsStore.refreshAccessToken(connectionsStore.activeConnectionId)
+      console.log('Session restored successfully')
+
+      // Try to fetch default project if not set
+      if (!projectId.value) {
+        await fetchDefaultProject()
+      }
+    } catch (err) {
+      console.warn('Failed to restore session:', err)
+      // User will need to re-authenticate
+    }
+  }
+
   return {
     accessToken,
     userEmail,
@@ -553,5 +466,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     fetchTableSchema,
     runQuery,
     fetchAllSchemas,
+    restoreSession,
   }
 })

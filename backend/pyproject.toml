@@ -8,8 +8,17 @@ dependencies = [
     "fastapi>=0.115.0",
     "openai>=2.14.0",
     "pydantic>=2.12.5",
-    "python-dotenv>=1.2.1",
+    "pydantic-settings>=2.0.0",
     "uvicorn>=0.34.0",
+    # Database
+    "asyncpg>=0.30.0",
+    "aiosqlite>=0.20.0",
+    "sqlalchemy>=2.0.0",
+    # Google OAuth
+    "httpx>=0.27.0",
+    # Security
+    "cryptography>=43.0.0",
+    "greenlet>=3.3.0",
 ]
 
 [dependency-groups]
