@@ -42,8 +42,6 @@ class LogoutRequest(BaseModel):
 
 class UserResponse(BaseModel):
     email: str
-    name: str | None
-    photo: str | None
     has_valid_refresh_token: bool
 
 
@@ -89,15 +87,11 @@ async def google_callback(request: GoogleCallbackRequest, db: AsyncSession = Dep
     if user_token:
         user_token.refresh_token_encrypted = encrypted_token
         user_token.encryption_iv = iv
-        user_token.user_name = user_info.get("name")
-        user_token.user_photo = user_info.get("picture")
     else:
         user_token = UserToken(
             email=email,
             refresh_token_encrypted=encrypted_token,
             encryption_iv=iv,
-            user_name=user_info.get("name"),
-            user_photo=user_info.get("picture"),
         )
         db.add(user_token)
 
@@ -106,11 +100,7 @@ async def google_callback(request: GoogleCallbackRequest, db: AsyncSession = Dep
     return GoogleCallbackResponse(
         access_token=access_token,
         expires_in=expires_in,
-        user={
-            "email": email,
-            "name": user_info.get("name"),
-            "photo": user_info.get("picture"),
-        },
+        user={"email": email},
     )
 
 
@@ -164,8 +154,6 @@ async def get_user(email: str, db: AsyncSession = Depends(get_db)):
 
     return UserResponse(
         email=user_token.email,
-        name=user_token.user_name,
-        photo=user_token.user_photo,
         has_valid_refresh_token=True,
     )
 

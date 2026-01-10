@@ -71,8 +71,7 @@ export const useConnectionsStore = defineStore('connections', () => {
             id: `bigquery-${auth.user.email}-${Date.now()}`,
             type: 'bigquery',
             email: auth.user.email,
-            name: auth.user.name,
-            photo: auth.user.photo,
+            name: auth.user.email,
             createdAt: Date.now()
           }
           connections.value = [connection]
@@ -153,17 +152,16 @@ export const useConnectionsStore = defineStore('connections', () => {
 
   // Add BigQuery connection (called from AuthCallback after OAuth)
   const addBigQueryConnection = (
-    user: { email: string; name: string; photo?: string },
+    email: string,
     accessToken: string,
     expiresIn: number
   ): string => {
-    const connectionId = `bigquery-${user.email}-${Date.now()}`
+    const connectionId = `bigquery-${email}-${Date.now()}`
     const connection: Connection = {
       id: connectionId,
       type: 'bigquery',
-      email: user.email,
-      name: user.name,
-      photo: user.photo,
+      email: email,
+      name: email,
       createdAt: Date.now()
     }
 

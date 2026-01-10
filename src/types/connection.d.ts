@@ -17,7 +17,6 @@ export interface Connection {
 
   // Session info (for remote connections like BigQuery)
   email?: string
-  photo?: string
 
   // Context within the connection
   // For BigQuery: the selected project

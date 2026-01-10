@@ -271,7 +271,6 @@ onUnmounted(() => {
               }"
               @click="handleConnectionSelect(connection.id)"
             >
-              <img v-if="connection.photo" :src="connection.photo" class="connection-avatar" />
               <div class="connection-info">
                 <div class="connection-name">{{ getConnectionDisplayName(connection) }}</div>
                 <div v-if="connectionRequiresAuth(connection.type) && connectionsStore.isConnectionExpired(connection.id)" class="expired-badge">
@@ -910,13 +909,6 @@ onUnmounted(() => {
 
 .connection-item.expired {
   opacity: 0.6;
-}
-
-.connection-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  flex-shrink: 0;
 }
 
 .connection-info {

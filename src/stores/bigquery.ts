@@ -60,7 +60,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   // Computed properties for user info
   const userEmail = computed(() => connectionsStore.activeConnection?.email || null)
   const userName = computed(() => connectionsStore.activeConnection?.name || null)
-  const userPhoto = computed(() => connectionsStore.activeConnection?.photo || null)
 
   const isAuthenticated = computed(() => {
     return connectionsStore.activeConnection !== null &&
@@ -451,7 +450,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     accessToken,
     userEmail,
     userName,
-    userPhoto,
     projectId,
     projects,
     isAuthenticated,

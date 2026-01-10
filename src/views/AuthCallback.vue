@@ -61,11 +61,7 @@ onMounted(async () => {
 
     // Add connection with access token (stored in memory)
     connectionsStore.addBigQueryConnection(
-      {
-        email: data.user.email,
-        name: data.user.name,
-        photo: data.user.photo,
-      },
+      data.user.email,
       data.access_token,
       data.expires_in
     )
