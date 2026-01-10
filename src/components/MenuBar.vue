@@ -254,7 +254,11 @@ onUnmounted(() => {
           <span v-else class="menu-text placeholder-text">
             No connection
           </span>
-          <span class="menu-caret">▼</span>
+          <span class="menu-caret">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </span>
         </button>
 
         <div v-if="isConnectionDropdownOpen" class="dropdown connection-dropdown">
@@ -284,14 +288,21 @@ onUnmounted(() => {
                   @click="handleReconnect(connection.id, $event)"
                   title="Reconnect"
                 >
-                  ↻
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                    <path d="M21 3v5h-5"/>
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                    <path d="M3 21v-5h5"/>
+                  </svg>
                 </button>
                 <button
                   class="delete-btn"
                   @click="handleDeleteConnection(connection.id, $event)"
                   title="Delete"
                 >
-                  ✕
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
                 </button>
               </div>
             </button>
@@ -311,31 +322,45 @@ onUnmounted(() => {
               @click="handleProjectSelect(project.projectId)"
             >
               <span class="item-text">{{ project.name || project.projectId }}</span>
-              <span v-if="project.projectId === connectionsStore.activeConnection?.projectId" class="item-check">✓</span>
+              <span v-if="project.projectId === connectionsStore.activeConnection?.projectId" class="item-check">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"/>
+                </svg>
+              </span>
             </button>
           </div>
 
           <!-- Add Database Section -->
           <div class="dropdown-section add-section">
             <div class="section-divider"></div>
-            <button
-              class="dropdown-item add-item"
-              @click.stop="addDatabaseMenuOpen = !addDatabaseMenuOpen"
-            >
-              <span class="add-icon">+</span>
-              Add database
-              <span class="dropdown-arrow">{{ addDatabaseMenuOpen ? '▼' : '▶' }}</span>
-            </button>
-
-            <!-- Nested database type menu -->
-            <div v-if="addDatabaseMenuOpen" class="nested-menu" @click.stop>
+            <div class="submenu-trigger">
               <button
-                class="dropdown-item nested-item"
-                @click="handleAddDatabase('bigquery')"
+                class="dropdown-item add-item"
+                @click.stop="addDatabaseMenuOpen = !addDatabaseMenuOpen"
               >
-                <img src="../assets/bigquery.svg" class="db-icon" />
-                BigQuery
+                <span class="add-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                </span>
+                Add database
+                <span class="dropdown-arrow">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 6l6 6-6 6"/>
+                  </svg>
+                </span>
               </button>
+
+              <!-- Flyout submenu -->
+              <div v-if="addDatabaseMenuOpen" class="flyout-menu" @click.stop>
+                <button
+                  class="dropdown-item flyout-item"
+                  @click="handleAddDatabase('bigquery')"
+                >
+                  <img src="../assets/bigquery.svg" class="db-icon" />
+                  BigQuery
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -345,7 +370,11 @@ onUnmounted(() => {
       <div class="menu-item" :class="{ active: activeDropdown === 'box' }">
         <button class="menu-button" @click.stop="toggleDropdown('box')">
           <span class="menu-text">Add</span>
-          <span class="menu-caret">▼</span>
+          <span class="menu-caret">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </span>
         </button>
 
         <div v-if="activeDropdown === 'box'" class="dropdown">
@@ -366,7 +395,11 @@ onUnmounted(() => {
       <div class="menu-item" :class="{ active: activeDropdown === 'settings' }">
         <button class="menu-button" @click.stop="toggleDropdown('settings')">
           <span class="menu-text">Settings</span>
-          <span class="menu-caret">▼</span>
+          <span class="menu-caret">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </span>
         </button>
 
         <div v-if="activeDropdown === 'settings'" class="dropdown settings-dropdown">
@@ -567,8 +600,14 @@ onUnmounted(() => {
 }
 
 .menu-caret {
-  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0.6;
+}
+
+.menu-caret svg {
+  display: block;
 }
 
 /* Dropdown */
@@ -633,8 +672,14 @@ onUnmounted(() => {
 }
 
 .item-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--color-accent);
-  font-weight: bold;
+}
+
+.item-check svg {
+  display: block;
 }
 
 .dropdown-message {
@@ -884,6 +929,7 @@ onUnmounted(() => {
 .connection-dropdown {
   min-width: 300px;
   max-width: 400px;
+  overflow: visible; /* Allow flyout submenu to extend outside */
 }
 
 .dropdown-section {
@@ -950,10 +996,14 @@ onUnmounted(() => {
   border: none;
   color: inherit;
   cursor: pointer;
-  font-size: 12px;
   padding: 0;
   border-radius: 2px;
   transition: all 0.2s;
+}
+
+.reconnect-btn svg,
+.delete-btn svg {
+  display: block;
 }
 
 .reconnect-btn:hover {
@@ -987,25 +1037,64 @@ onUnmounted(() => {
 }
 
 .add-icon {
-  font-size: 18px;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.add-icon svg {
+  display: block;
 }
 
 .dropdown-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
   margin-left: auto;
-  font-size: 10px;
   opacity: 0.6;
 }
 
-.nested-menu {
-  padding-left: var(--space-3);
-  background: var(--surface-tertiary);
+.dropdown-arrow svg {
+  display: block;
 }
 
-.nested-item {
+/* Flyout submenu trigger container */
+.submenu-trigger {
+  position: relative;
+}
+
+/* Highlight parent item when flyout is open */
+.submenu-trigger:has(.flyout-menu) .add-item {
+  background: var(--surface-secondary);
+}
+
+/* Flyout menu - appears to the right like classic OS menus */
+.flyout-menu {
+  position: absolute;
+  left: calc(100% - 2px); /* Slight overlap for visual connection */
+  top: -1px; /* Align with parent border */
+  min-width: 160px;
+  background: var(--surface-primary);
+  border: var(--border-width-thin) solid var(--border-primary);
+  box-shadow: 4px 4px 0 0 rgba(0, 0, 0, 0.15); /* Retro hard shadow */
+  z-index: 2001;
+}
+
+.flyout-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  border-bottom: none; /* Clean look for single item */
+}
+
+.flyout-item:hover {
+  background: var(--surface-secondary);
 }
 
 .db-icon {
