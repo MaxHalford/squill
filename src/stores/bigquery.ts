@@ -16,11 +16,10 @@ const generateOAuthState = (): string => {
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-// Google OAuth scopes
+// Google OAuth scopes - minimal read-only access
 const SCOPES = [
-  'https://www.googleapis.com/auth/bigquery',
+  'https://www.googleapis.com/auth/bigquery.readonly',
   'https://www.googleapis.com/auth/userinfo.email',
-  'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/cloud-platform.read-only'
 ]
 
