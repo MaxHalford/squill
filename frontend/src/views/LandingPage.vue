@@ -2,26 +2,26 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@unhead/vue'
+import { DATABASE_ENGINES, DATABASE_INFO, type DatabaseEngine, type DatabaseInfo } from '../types/database'
 
 const router = useRouter()
 
-// FAQ data
+// Database modal state
+const selectedDatabase = ref<DatabaseInfo | null>(null)
+
+const openDatabaseModal = (engine: DatabaseEngine) => {
+  selectedDatabase.value = DATABASE_INFO[engine]
+}
+
+const closeDatabaseModal = () => {
+  selectedDatabase.value = null
+}
+
+// FAQ data (database-specific entries removed - now shown in database modal)
 const faqs = [
   {
     question: 'Is my data safe?',
-    answer: 'Yes, it is. The database client lives in your browser, your queries run in your database, and the results are stored only in your browser. With Squill Pro, your queries do a server round-trip to get fixed, but your results are never stored anywhere.'
-  },
-  {
-    question: 'Can I use it with BigQuery?',
-    answer: 'Yes, you can. This works via OAuth: just login with your Google account and start querying. Under the hood, Squill is provided with a refresh token, which it uses to get short-lived access tokens. These access tokens are used to run your queries, but they are never stored.',
-  },
-  {
-    question: 'Can I use it with PostgreSQL?',
-    answer: 'Yes, you can. The Squill backend runs the query, and streams the results to the frontend, without storing them. This could change once and be entirely client-based once there is better WASM support for PostgreSQL.',
-  },
-  {
-    question: "Why can't I use it with X yet?",
-    answer: 'Squill will eventually support all major databases. I started with BigQuery because it\'s what I use daily. If you have a specific database in mind, let me know via email or GitHub.'
+    answer: 'Yes. For client-side databases (DuckDB, BigQuery), your data never leaves your browser. For server-side databases (PostgreSQL, Snowflake), queries are proxied but results are streamed directly to you and never stored. Click on a database logo above to learn more.'
   },
   {
     question: 'Do I need to create an account?',
@@ -341,6 +341,66 @@ const toggleFaq = (index: number) => {
         </div>
       </div>
     </section>
+
+    <!-- Databases Section -->
+    <section class="section databases">
+      <h2 class="section-title">SUPPORTED DATABASES</h2>
+      <p class="databases-subtitle">Click on a logo to learn how each database is supported</p>
+      <div class="databases-grid">
+        <button
+          v-for="engine in DATABASE_ENGINES"
+          :key="engine"
+          class="database-card"
+          @click="openDatabaseModal(engine)"
+        >
+          <img
+            :src="DATABASE_INFO[engine].logo"
+            :alt="DATABASE_INFO[engine].name"
+            class="database-logo"
+          />
+          <span class="database-name">{{ DATABASE_INFO[engine].name }}</span>
+          <span class="database-badge" :class="DATABASE_INFO[engine].connectionType">
+            {{ DATABASE_INFO[engine].connectionType === 'client' ? 'Client-side' : 'Server-side' }}
+          </span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Database Detail Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="selectedDatabase" class="modal-overlay" @click.self="closeDatabaseModal">
+          <div class="database-modal">
+            <button class="modal-close" @click="closeDatabaseModal" aria-label="Close">×</button>
+            <div class="modal-header">
+              <img :src="selectedDatabase.logo" :alt="selectedDatabase.name" class="modal-logo" />
+              <div class="modal-title-group">
+                <h3>{{ selectedDatabase.name }}</h3>
+                <span class="modal-badge" :class="selectedDatabase.connectionType">
+                  {{ selectedDatabase.connectionType === 'client' ? 'Client-side' : 'Server-side' }}
+                </span>
+              </div>
+            </div>
+            <div class="modal-body">
+              <p class="modal-description">{{ selectedDatabase.longDescription }}</p>
+              <div class="modal-details">
+                <div class="detail-row">
+                  <span class="detail-label">Authentication</span>
+                  <span class="detail-value">{{ selectedDatabase.authMethod }}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Data Privacy</span>
+                  <span class="detail-value">{{ selectedDatabase.dataPrivacy }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-primary" @click="closeDatabaseModal">Got it</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Pro Section -->
     <section class="section section-inverted pro">
@@ -989,6 +1049,225 @@ const toggleFaq = (index: number) => {
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--font-size-body);
+}
+
+/* ===== DATABASES SECTION ===== */
+.databases {
+  background: var(--surface-primary);
+}
+
+.databases-subtitle {
+  text-align: center;
+  color: var(--text-secondary);
+  margin: -32px 0 48px 0;
+  font-size: var(--font-size-body);
+}
+
+.databases-grid {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.database-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--surface-primary);
+  border: var(--border-width-thick) solid var(--border-primary);
+  border-radius: var(--border-radius-none);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  min-width: 160px;
+}
+
+.database-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.database-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.database-name {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body);
+  font-weight: 600;
+}
+
+.database-badge {
+  font-size: var(--font-size-caption);
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-weight: 500;
+}
+
+.database-badge.client {
+  background: var(--color-success-light, #d4edda);
+  color: var(--color-success-dark, #155724);
+}
+
+.database-badge.server {
+  background: var(--color-info-light, #cce5ff);
+  color: var(--color-info-dark, #004085);
+}
+
+/* ===== DATABASE MODAL ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-4);
+}
+
+.database-modal {
+  background: var(--surface-primary);
+  border: var(--border-width-thick) solid var(--border-primary);
+  box-shadow: var(--shadow-lg);
+  max-width: 500px;
+  width: 100%;
+  position: relative;
+}
+
+.modal-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  line-height: 1;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+}
+
+.modal-close:hover {
+  color: var(--text-primary);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: var(--border-width-thin) solid var(--border-primary);
+}
+
+.modal-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.modal-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.modal-title-group h3 {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-heading);
+}
+
+.modal-badge {
+  font-size: var(--font-size-caption);
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-weight: 500;
+  width: fit-content;
+}
+
+.modal-badge.client {
+  background: var(--color-success-light, #d4edda);
+  color: var(--color-success-dark, #155724);
+}
+
+.modal-badge.server {
+  background: var(--color-info-light, #cce5ff);
+  color: var(--color-info-dark, #004085);
+}
+
+.modal-body {
+  padding: var(--space-5);
+}
+
+.modal-description {
+  margin: 0 0 var(--space-5) 0;
+  line-height: var(--line-height-relaxed);
+  color: var(--text-primary);
+}
+
+.modal-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.detail-label {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-value {
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-relaxed);
+}
+
+.modal-footer {
+  padding: var(--space-4) var(--space-5);
+  border-top: var(--border-width-thin) solid var(--border-primary);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Modal transitions */
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.modal-enter-active .database-modal,
+.modal-leave-active .database-modal {
+  transition: transform 0.2s ease;
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+
+.modal-enter-from .database-modal,
+.modal-leave-to .database-modal {
+  transform: scale(0.95);
 }
 
 /* ===== PRO SECTION ===== */

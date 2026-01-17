@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { watch, onMounted, onUnmounted } from 'vue'
+import { DATABASE_INFO } from '../types/database'
 
 const props = defineProps<{
   show: boolean
@@ -66,13 +67,13 @@ onUnmounted(() => {
               @click="emit('selectBigquery')"
             >
               <img
-                src="https://cdn.worldvectorlogo.com/logos/google-bigquery-logo-1.svg"
-                alt="BigQuery"
+                :src="DATABASE_INFO.bigquery.logo"
+                :alt="DATABASE_INFO.bigquery.name"
                 class="option-icon"
               />
-              <h2>BigQuery</h2>
-              <p>Connect to Google BigQuery for cloud data warehouse queries</p>
-              <span class="option-badge">Requires OAuth</span>
+              <h2>{{ DATABASE_INFO.bigquery.name }}</h2>
+              <p>{{ DATABASE_INFO.bigquery.shortDescription }}</p>
+              <span class="option-badge">{{ DATABASE_INFO.bigquery.badge }}</span>
             </button>
 
             <!-- DuckDB Card -->
@@ -82,13 +83,13 @@ onUnmounted(() => {
               @click="emit('selectDuckdb')"
             >
               <img
-                src="https://images.seeklogo.com/logo-png/55/1/duckdb-icon-logo-png_seeklogo-554697.png"
-                alt="DuckDB"
+                :src="DATABASE_INFO.duckdb.logo"
+                :alt="DATABASE_INFO.duckdb.name"
                 class="option-icon"
               />
-              <h2>DuckDB</h2>
-              <p>Local database that runs in your browser with CSV support</p>
-              <span class="option-badge">No setup needed</span>
+              <h2>{{ DATABASE_INFO.duckdb.name }}</h2>
+              <p>{{ DATABASE_INFO.duckdb.shortDescription }}</p>
+              <span class="option-badge">{{ DATABASE_INFO.duckdb.badge }}</span>
             </button>
 
             <!-- CSV Card -->
@@ -107,22 +108,21 @@ onUnmounted(() => {
               <span class="option-badge">Quick start</span>
             </button>
 
-            <!-- Snowflake Card (coming soon) -->
-            <div
-              class="option-card option-card-disabled"
-              aria-label="Snowflake - Coming soon"
+            <!-- Snowflake Card -->
+            <button
+              class="option-card"
+              aria-label="Connect to Snowflake"
+              @click="emit('close')"
             >
               <img
-                src="https://avatars.githubusercontent.com/u/6453780?s=280&v=4"
-                alt="Snowflake"
-                class="option-icon option-icon-disabled"
+                :src="DATABASE_INFO.snowflake.logo"
+                :alt="DATABASE_INFO.snowflake.name"
+                class="option-icon"
               />
-
-
-              <h2>Snowflake</h2>
-              <p>Cloud data platform for analytics and data warehousing</p>
-              <span class="option-badge option-badge-soon">coming soon</span>
-            </div>
+              <h2>{{ DATABASE_INFO.snowflake.name }}</h2>
+              <p>{{ DATABASE_INFO.snowflake.shortDescription }}</p>
+              <span class="option-badge">{{ DATABASE_INFO.snowflake.badge }}</span>
+            </button>
 
             <!-- PostgreSQL Card -->
             <button
@@ -131,13 +131,13 @@ onUnmounted(() => {
               @click="emit('selectPostgres')"
             >
               <img
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Postgresql_elephant.svg/993px-Postgresql_elephant.svg.png"
-                alt="PostgreSQL"
+                :src="DATABASE_INFO.postgres.logo"
+                :alt="DATABASE_INFO.postgres.name"
                 class="option-icon"
               />
-              <h2>PostgreSQL</h2>
-              <p>Connect to PostgreSQL databases for powerful relational queries</p>
-              <span class="option-badge">Requires credentials</span>
+              <h2>{{ DATABASE_INFO.postgres.name }}</h2>
+              <p>{{ DATABASE_INFO.postgres.shortDescription }}</p>
+              <span class="option-badge">{{ DATABASE_INFO.postgres.badge }}</span>
             </button>
           </div>
 
