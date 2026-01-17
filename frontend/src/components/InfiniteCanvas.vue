@@ -48,59 +48,11 @@ const isSpaceHeld = ref(false)
 const isDraggingFile = ref(false)
 const dragCounter = ref(0)
 
-// Hybrid rendering: use scale() during transforms for performance, zoom when idle for crisp text
-const isTransforming = ref(false)
-let idleTimeoutId: ReturnType<typeof setTimeout> | null = null
-let pendingRAF: number | null = null
-
-const setIdle = () => {
-  // Cancel any pending transition
-  if (pendingRAF) {
-    cancelAnimationFrame(pendingRAF)
-    pendingRAF = null
-  }
-  // Use double-RAF to ensure we switch after the browser has
-  // finished all pending paints, avoiding flicker
-  pendingRAF = requestAnimationFrame(() => {
-    pendingRAF = requestAnimationFrame(() => {
-      isTransforming.value = false
-      pendingRAF = null
-    })
-  })
-}
-
-const startTransform = () => {
-  // Cancel any pending idle transition
-  if (idleTimeoutId) {
-    clearTimeout(idleTimeoutId)
-    idleTimeoutId = null
-  }
-  if (pendingRAF) {
-    cancelAnimationFrame(pendingRAF)
-    pendingRAF = null
-  }
-
-  isTransforming.value = true
-
-  // Schedule return to crisp mode after interaction stops
-  idleTimeoutId = setTimeout(setIdle, 100)
-}
-
-// Computed style for viewport - switches between scale (fast) and zoom (crisp)
-const viewportStyle = computed(() => {
-  if (isTransforming.value) {
-    // During active transform: use scale() for smooth 60fps
-    return {
-      transform: `translate3d(${pan.value.x}px, ${pan.value.y}px, 0) scale(${zoom.value})`
-    }
-  } else {
-    // Idle: use zoom for crisp text rendering
-    return {
-      zoom: zoom.value,
-      transform: `translate3d(${pan.value.x / zoom.value}px, ${pan.value.y / zoom.value}px, 0)`
-    }
-  }
-})
+// Computed style for viewport - uses CSS zoom for crisp text rendering
+const viewportStyle = computed(() => ({
+  zoom: zoom.value,
+  transform: `translate3d(${pan.value.x / zoom.value}px, ${pan.value.y / zoom.value}px, 0)`
+}))
 
 provide('canvasZoom', zoom)
 
@@ -153,7 +105,6 @@ const fitToView = () => {
   const duration = 400
 
   const animate = (currentTime: number) => {
-    startTransform()
     const progress = Math.min((currentTime - startTime) / duration, 1)
     const eased = 1 - Math.pow(1 - progress, 3)
 
@@ -202,7 +153,6 @@ const panToBox = (boxId: number) => {
   const duration = 400
 
   const animate = (currentTime: number) => {
-    startTransform()
     const progress = Math.min((currentTime - startTime) / duration, 1)
     const eased = 1 - Math.pow(1 - progress, 3)
 
@@ -266,8 +216,6 @@ const handleWheel = (e: WheelEvent) => {
 
   e.preventDefault()
   if (!canvasRef.value) return
-
-  startTransform()
 
   const rect = canvasRef.value.getBoundingClientRect()
   const mouseX = e.clientX - rect.left
@@ -340,7 +288,6 @@ const handleMouseMove = (e: MouseEvent) => {
 
   if (isPanning.value) {
     isActuallyPanning.value = true
-    startTransform()
     pan.value = {
       x: e.clientX - panStart.value.x,
       y: e.clientY - panStart.value.y
@@ -466,15 +413,7 @@ onUnmounted(() => {
   window.removeEventListener('keyup', handleKeyUp)
   window.removeEventListener('blur', handleWindowBlur)
 
-  // Clean up timers and animation frames
-  if (idleTimeoutId) {
-    clearTimeout(idleTimeoutId)
-    idleTimeoutId = null
-  }
-  if (pendingRAF) {
-    cancelAnimationFrame(pendingRAF)
-    pendingRAF = null
-  }
+  // Clean up animation frames
   if (animationFrameId !== null) {
     cancelAnimationFrame(animationFrameId)
     animationFrameId = null
@@ -537,9 +476,12 @@ onUnmounted(() => {
   height: 100%;
   position: relative;
   /* GPU acceleration for smooth transforms */
-  will-change: transform, zoom;
+  will-change: transform;
   /* Contain layout recalcs to this element */
   contain: layout style;
+  /* Fix blurry text at scaled sizes */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 /* Disable pointer events during pan to prevent accidental interactions */
