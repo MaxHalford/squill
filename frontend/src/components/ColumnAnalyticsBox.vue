@@ -733,7 +733,7 @@ onUnmounted(() => {
               class="add-column-btn"
               @click.stop="showColumnDropdown = !showColumnDropdown"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
@@ -870,7 +870,7 @@ onUnmounted(() => {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 /* Engine badge uses global .engine-badge from style.css */
@@ -879,15 +879,18 @@ onUnmounted(() => {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   flex-wrap: wrap;
   flex: 1;
 }
 
 .group-by-label {
   /* Matches .engine-badge sizing from style.css */
+  box-sizing: border-box;
+  height: 17px;
   font-size: 9px;
   font-weight: 600;
+  line-height: 13px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -902,12 +905,13 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 22px;
-  padding: 0 4px 0 8px;
+  height: 17px;
+  padding: 0 4px 0 6px;
   background: var(--surface-secondary);
   border: var(--border-width-thin) solid var(--border-secondary);
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-caption);
+  border-radius: 3px;
+  font-size: 9px;
+  line-height: 1;
   font-family: var(--font-family-mono);
   color: var(--text-primary);
 }
@@ -916,15 +920,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   padding: 0;
   background: none;
   border: none;
   border-radius: 2px;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1;
   transition: background 0.1s, color 0.1s;
 }
@@ -942,12 +946,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 17px;
+  height: 17px;
   padding: 0;
-  background: transparent;
+  background: var(--surface-secondary);
   border: none;
-  border-radius: var(--border-radius-sm);
+  border-radius: 3px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
