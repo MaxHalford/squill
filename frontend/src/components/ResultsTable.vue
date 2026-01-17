@@ -4,9 +4,10 @@ import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useQueryResultsStore } from '../stores/queryResults'
 import { getTypeCategory } from '../utils/typeUtils'
+import type { DatabaseEngine } from '../types/database'
 
 interface QueryStats {
-  engine?: 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
+  engine?: DatabaseEngine
   executionTimeMs?: number
   totalBytesProcessed?: string
   cacheHit?: boolean

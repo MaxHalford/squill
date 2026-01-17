@@ -7,7 +7,8 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { QueryFetchState, SourceEngine } from '../types/pagination'
+import type { QueryFetchState } from '../types/pagination'
+import type { DatabaseEngine } from '../types/database'
 
 export const useQueryResultsStore = defineStore('queryResults', () => {
   // Fetch state per box ID
@@ -18,7 +19,7 @@ export const useQueryResultsStore = defineStore('queryResults', () => {
    */
   const initQueryResult = (
     boxId: number,
-    engine: SourceEngine,
+    engine: DatabaseEngine,
     options: {
       totalRows?: number | null
       fetchedRows?: number

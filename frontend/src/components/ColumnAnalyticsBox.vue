@@ -9,7 +9,8 @@ import { useSnowflakeStore } from '../stores/snowflake'
 import { useConnectionsStore } from '../stores/connections'
 import { useQueryResultsStore } from '../stores/queryResults'
 import { useSettingsStore } from '../stores/settings'
-import { buildAnalyticsQuery, type DatabaseDialect, type TypeCategory } from '../utils/analyticsQueryBuilder'
+import { buildAnalyticsQuery, type TypeCategory } from '../utils/analyticsQueryBuilder'
+import type { DatabaseEngine } from '../types/database'
 
 interface AnalyticsData {
   tableName: string
@@ -18,7 +19,7 @@ interface AnalyticsData {
   typeCategory: 'number' | 'text' | 'date' | 'boolean'
   autoRun?: boolean  // True when newly created, false after first run
   // Source-based analytics fields
-  sourceEngine?: 'bigquery' | 'postgres' | 'duckdb' | 'snowflake'
+  sourceEngine?: DatabaseEngine
   originalQuery?: string
   connectionId?: string
   // Available columns for GROUP BY (passed from parent ResultsTable)
@@ -260,7 +261,7 @@ const runAnalyticsQuery = async () => {
   const { typeCategory, sourceEngine, originalQuery, connectionId, tableName, columnName } = analyticsData.value
 
   // Determine the dialect for query building
-  const dialect: DatabaseDialect =
+  const dialect: DatabaseEngine =
     sourceEngine === 'bigquery' ? 'bigquery' :
     sourceEngine === 'postgres' ? 'postgres' :
     sourceEngine === 'snowflake' ? 'snowflake' :

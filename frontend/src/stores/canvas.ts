@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, watch, computed, onScopeDispose } from 'vue'
 import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex } from '../types/canvas'
-import { getDefaultQuery, type QueryEngine } from '../constants/defaultQueries'
+import type { DatabaseEngine } from '../types/database'
+import { getDefaultQuery } from '../constants/defaultQueries'
 import { CanvasDataSchema, MultiCanvasIndexSchema } from '../utils/storageSchemas'
 
 // Debounce utility for auto-save
@@ -521,7 +522,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   const addBox = (
     type: BoxType = 'sql',
     position: Position | null = null,
-    engine?: QueryEngine,
+    engine?: DatabaseEngine,
     connectionId?: string
   ): number => {
     saveToUndoStack()

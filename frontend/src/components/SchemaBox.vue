@@ -8,6 +8,7 @@ import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useSchemaStore } from '../stores/bigquerySchema'
 import { getTypeCategory } from '../utils/typeUtils'
+import type { DatabaseEngine } from '../types/database'
 
 const bigqueryStore = useBigQueryStore()
 const connectionsStore = useConnectionsStore()
@@ -529,7 +530,7 @@ const insertTableName = (item: any) => {
 // Query table - creates a new query box with SELECT * query
 const queryTable = (item: any) => {
   // Determine engine and build full table name
-  let engine: 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
+  let engine: DatabaseEngine
   let fullTableName = ''
   let connectionId: string | undefined
 
@@ -648,7 +649,7 @@ const getCurrentTableColumns = (): string[] => {
 const buildTableConnectionInfo = () => {
   if (!selectedTable.value) return null
 
-  let engine: 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
+  let engine: DatabaseEngine
   let tableName: string
   let quotedTableName: string
   let connectionId: string | undefined

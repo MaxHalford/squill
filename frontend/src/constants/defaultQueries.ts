@@ -1,6 +1,6 @@
-export type QueryEngine = 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
+import type { DatabaseEngine } from '../types/database'
 
-export const DEFAULT_QUERIES: Record<QueryEngine, string> = {
+export const DEFAULT_QUERIES: Record<DatabaseEngine, string> = {
   duckdb: `SELECT * FROM (
     VALUES
         ('Eleven', 'Millie Bobby Brown', 'Main', 1),
@@ -56,7 +56,7 @@ ORDER BY p.year_published`,
     CURRENT_ROLE() AS role`
 }
 
-export const getDefaultQuery = (engine?: QueryEngine | null): string => {
+export const getDefaultQuery = (engine?: DatabaseEngine | null): string => {
   return DEFAULT_QUERIES[engine || 'bigquery']
 }
 

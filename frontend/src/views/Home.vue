@@ -24,7 +24,8 @@ import { useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
 import { usePostgresStore } from '../stores/postgres'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
-import { DEFAULT_NOTE_CONTENT, type QueryEngine } from '../constants/defaultQueries'
+import { DEFAULT_NOTE_CONTENT } from '../constants/defaultQueries'
+import type { DatabaseEngine } from '../types/database'
 
 const canvasStore = useCanvasStore()
 const settingsStore = useSettingsStore()
@@ -145,7 +146,7 @@ const handlePostgresConnected = (connectionId: string) => {
 }
 
 // Create default boxes when a connection is added on an empty canvas
-const createDefaultBoxes = (engine: QueryEngine, connectionId: string) => {
+const createDefaultBoxes = (engine: DatabaseEngine, connectionId: string) => {
   const center = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
 
   // Note box is 400px wide, SQL box is 600px wide

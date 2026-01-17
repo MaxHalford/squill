@@ -2,17 +2,18 @@
  * Analytics Query Builder
  *
  * Generates dialect-specific SQL queries for column analytics.
- * Supports BigQuery, PostgreSQL, and DuckDB.
+ * Supports BigQuery, PostgreSQL, DuckDB, and Snowflake.
  */
 
-export type DatabaseDialect = 'bigquery' | 'postgres' | 'duckdb' | 'snowflake'
+import type { DatabaseEngine } from '../types/database'
+
 export type TypeCategory = 'number' | 'text' | 'date' | 'boolean'
 
 interface AnalyticsQueryOptions {
   tableName: string
   columnName: string
   typeCategory: TypeCategory
-  dialect: DatabaseDialect
+  dialect: DatabaseEngine
   originalQuery?: string  // Original query for subquery-based analytics
   groupByColumns?: string[]
 }
@@ -20,7 +21,7 @@ interface AnalyticsQueryOptions {
 /**
  * Quote a column name for the given dialect
  */
-const quoteColumn = (name: string, dialect: DatabaseDialect): string => {
+const quoteColumn = (name: string, dialect: DatabaseEngine): string => {
   switch (dialect) {
     case 'bigquery':
       return `\`${name}\``
@@ -34,7 +35,7 @@ const quoteColumn = (name: string, dialect: DatabaseDialect): string => {
 /**
  * Quote a table name for the given dialect
  */
-const quoteTable = (name: string, dialect: DatabaseDialect): string => {
+const quoteTable = (name: string, dialect: DatabaseEngine): string => {
   switch (dialect) {
     case 'bigquery':
       return `\`${name}\``
@@ -49,7 +50,7 @@ const quoteTable = (name: string, dialect: DatabaseDialect): string => {
  * Quote an alias for the given dialect
  * Snowflake returns unquoted aliases in UPPERCASE, so we must quote them
  */
-const quoteAlias = (alias: string, dialect: DatabaseDialect): string => {
+const quoteAlias = (alias: string, dialect: DatabaseEngine): string => {
   if (dialect === 'snowflake') {
     return `"${alias}"`
   }
@@ -62,7 +63,7 @@ const quoteAlias = (alias: string, dialect: DatabaseDialect): string => {
 const buildNumericStatsQuery = (
   col: string,
   fromClause: string,
-  dialect: DatabaseDialect
+  dialect: DatabaseEngine
 ): string => {
   const q = (alias: string) => quoteAlias(alias, dialect)
   // All dialects support these standard aggregate functions
@@ -82,7 +83,7 @@ FROM ${fromClause}`
 const buildDateStatsQuery = (
   col: string,
   fromClause: string,
-  dialect: DatabaseDialect
+  dialect: DatabaseEngine
 ): string => {
   const q = (alias: string) => quoteAlias(alias, dialect)
   return `SELECT
@@ -102,7 +103,7 @@ FROM ${fromClause}`
 const buildTextStatsQuery = (
   col: string,
   fromClause: string,
-  dialect: DatabaseDialect
+  dialect: DatabaseEngine
 ): string => {
   const q = (alias: string) => quoteAlias(alias, dialect)
   return `SELECT
@@ -119,7 +120,7 @@ ORDER BY ${q('count')} DESC`
 const buildBooleanStatsQuery = (
   col: string,
   fromClause: string,
-  dialect: DatabaseDialect
+  dialect: DatabaseEngine
 ): string => {
   const q = (alias: string) => quoteAlias(alias, dialect)
   const nullsLast = dialect === 'postgres' ? 'NULLS LAST' : ''
@@ -138,7 +139,7 @@ const buildGroupedNumericQuery = (
   col: string,
   fromClause: string,
   groupByColumns: string[],
-  dialect: DatabaseDialect
+  dialect: DatabaseEngine
 ): string => {
   const groupCols = groupByColumns.map(c => quoteColumn(c, dialect)).join(', ')
   const q = (alias: string) => quoteAlias(alias, dialect)
@@ -161,7 +162,7 @@ const buildGroupedTextQuery = (
   col: string,
   fromClause: string,
   groupByColumns: string[],
-  dialect: DatabaseDialect
+  dialect: DatabaseEngine
 ): string => {
   const groupCols = groupByColumns.map(c => quoteColumn(c, dialect)).join(', ')
   const q = (alias: string) => quoteAlias(alias, dialect)
@@ -181,7 +182,7 @@ ORDER BY ${groupCols}, ${q('count')} DESC`
 const buildFromClause = (
   tableName: string,
   originalQuery: string | undefined,
-  dialect: DatabaseDialect
+  dialect: DatabaseEngine
 ): string => {
   if (originalQuery) {
     // Wrap original query as subquery
@@ -227,7 +228,7 @@ export const buildAnalyticsQuery = (options: AnalyticsQueryOptions): string => {
  */
 export const buildColumnsQuery = (
   originalQuery: string,
-  _dialect: DatabaseDialect
+  _dialect: DatabaseEngine
 ): string => {
   // Get a single row to extract column names
   return `SELECT * FROM (${originalQuery}) AS source_data LIMIT 1`

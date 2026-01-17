@@ -4,7 +4,7 @@
  * - Display pagination: 100 rows per page in the UI
  */
 
-export type SourceEngine = 'bigquery' | 'postgres' | 'duckdb' | 'snowflake'
+import type { DatabaseEngine } from './database'
 
 /**
  * Tracks fetch state for a query result.
@@ -22,7 +22,7 @@ export interface QueryFetchState {
   /** Background loading in progress */
   isBackgroundLoading: boolean
   /** Source database engine */
-  sourceEngine: SourceEngine
+  sourceEngine: DatabaseEngine
 
   /** BigQuery: page token for continuation */
   pageToken?: string
