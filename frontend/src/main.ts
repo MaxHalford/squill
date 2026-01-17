@@ -32,7 +32,27 @@ const routes: RouteRecordRaw[] = [
 
 export const createApp = ViteSSG(
   App,
-  { routes, base: import.meta.env.BASE_URL },
+  {
+    routes,
+    base: import.meta.env.BASE_URL,
+    scrollBehavior(to, _from, savedPosition) {
+      // Restore scroll position when using browser back/forward
+      if (savedPosition) {
+        return savedPosition
+      }
+      // Scroll to hash anchor if present
+      if (to.hash) {
+        return { el: to.hash }
+      }
+      // Only scroll to top for policy pages, not the homepage
+      const policyPages = ['/privacy-policy', '/terms-of-service', '/refund-policy']
+      if (policyPages.includes(to.path)) {
+        return { top: 0 }
+      }
+      // Don't change scroll for other navigations
+      return false
+    }
+  },
   ({ app }) => {
     const pinia = createPinia()
     app.use(pinia)
