@@ -1,10 +1,21 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,wasm}'],
+        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024
+      },
+      manifest: false
+    })
+  ],
   ssgOptions: {
     script: 'async' as const,
     formatting: 'minify' as const,
