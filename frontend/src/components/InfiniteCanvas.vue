@@ -48,11 +48,32 @@ const isSpaceHeld = ref(false)
 const isDraggingFile = ref(false)
 const dragCounter = ref(0)
 
-// Computed style for viewport - uses CSS zoom for crisp text rendering
-const viewportStyle = computed(() => ({
-  zoom: zoom.value,
-  transform: `translate3d(${pan.value.x / zoom.value}px, ${pan.value.y / zoom.value}px, 0)`
-}))
+// Hybrid zoom: use pure transform during active zooming (fast), CSS zoom when idle (crisp)
+const isActivelyZooming = ref(false)
+let zoomIdleTimer: ReturnType<typeof setTimeout> | null = null
+const ZOOM_IDLE_DELAY = 150 // ms to wait before switching to crisp mode
+
+// Computed style for viewport - hybrid zoom/scale approach
+// Fast mode: pure transform (GPU-accelerated, no layout recalc)
+// Crisp mode: CSS zoom (triggers layout but gives sharp text)
+const viewportStyle = computed(() => {
+  if (isActivelyZooming.value) {
+    // Fast mode: use only transform, no CSS zoom
+    // transform: translate(pan) scale(zoom) - applied right-to-left
+    // Result: point at (cx, cy) appears at (cx * zoom + pan.x, cy * zoom + pan.y)
+    return {
+      transform: `translate3d(${pan.value.x}px, ${pan.value.y}px, 0) scale(${zoom.value})`
+    }
+  } else {
+    // Crisp mode: use CSS zoom for sharp text
+    // CSS zoom scales everything including the transform
+    // So we divide pan by zoom to compensate
+    return {
+      zoom: zoom.value,
+      transform: `translate3d(${pan.value.x / zoom.value}px, ${pan.value.y / zoom.value}px, 0)`
+    }
+  }
+})
 
 provide('canvasZoom', zoom)
 
@@ -99,6 +120,15 @@ const fitToView = () => {
   // Cancel any existing animation
   if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
 
+  // Clear any pending crisp commit
+  if (zoomIdleTimer) {
+    clearTimeout(zoomIdleTimer)
+    zoomIdleTimer = null
+  }
+
+  // Use pure transform during animation for smooth performance
+  isActivelyZooming.value = true
+
   const startPan = { ...pan.value }
   const startZoom = zoom.value
   const startTime = performance.now()
@@ -118,6 +148,8 @@ const fitToView = () => {
       animationFrameId = requestAnimationFrame(animate)
     } else {
       animationFrameId = null
+      // Animation complete - switch to crisp mode
+      isActivelyZooming.value = false
     }
   }
 
@@ -225,6 +257,19 @@ const handleWheel = (e: WheelEvent) => {
   const mouseYInCanvas = (mouseY - pan.value.y) / zoom.value
 
   const newZoom = Math.min(Math.max(zoom.value * (1 - e.deltaY * 0.001), 0.1), 5)
+
+  // Enter fast zoom mode (pure transform, no CSS zoom)
+  isActivelyZooming.value = true
+
+  // Clear any pending crisp commit
+  if (zoomIdleTimer) {
+    clearTimeout(zoomIdleTimer)
+  }
+
+  // Schedule switch to crisp mode after zooming stops
+  zoomIdleTimer = setTimeout(() => {
+    isActivelyZooming.value = false
+  }, ZOOM_IDLE_DELAY)
 
   pan.value = {
     x: mouseX - mouseXInCanvas * newZoom,
@@ -417,6 +462,12 @@ onUnmounted(() => {
   if (animationFrameId !== null) {
     cancelAnimationFrame(animationFrameId)
     animationFrameId = null
+  }
+
+  // Clean up zoom idle timer
+  if (zoomIdleTimer) {
+    clearTimeout(zoomIdleTimer)
+    zoomIdleTimer = null
   }
 })
 </script>
