@@ -6,9 +6,10 @@
 import { useSchemaStore } from '../stores/bigquerySchema'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
+import { useSnowflakeStore } from '../stores/snowflake'
 import type { SchemaItem, ScoredSchemaItem } from './textSimilarity'
 
-export type ConnectionType = 'bigquery' | 'duckdb' | 'postgres'
+export type ConnectionType = 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
 
 /**
  * Collect schema items from the appropriate store based on connection type
@@ -24,6 +25,8 @@ export function collectSchemaForConnection(
       return collectDuckDBSchema()
     case 'postgres':
       return collectPostgresSchema(connectionId)
+    case 'snowflake':
+      return collectSnowflakeSchema(connectionId)
     default:
       return []
   }
@@ -91,6 +94,31 @@ function collectPostgresSchema(connectionId?: string): SchemaItem[] {
 }
 
 /**
+ * Collect Snowflake schema from the snowflake store
+ * Uses cached tables and columns
+ */
+function collectSnowflakeSchema(connectionId?: string): SchemaItem[] {
+  if (!connectionId) return []
+
+  const snowflakeStore = useSnowflakeStore()
+  const items: SchemaItem[] = []
+
+  const tables = snowflakeStore.tablesCache.get(connectionId) || []
+
+  for (const table of tables) {
+    const cacheKey = `${connectionId}:${table.databaseName}.${table.schemaName}.${table.name}`
+    const columns = snowflakeStore.columnsCache.get(cacheKey) || []
+
+    items.push({
+      tableName: `${table.databaseName}.${table.schemaName}.${table.name}`,
+      columns: columns.map((col) => ({ name: col.name, type: col.type })),
+    })
+  }
+
+  return items
+}
+
+/**
  * Format filtered schema for LLM consumption
  * Uses concise format grouped by dataset/schema
  */
@@ -106,6 +134,8 @@ export function formatSchemaForLLM(
       return formatBigQuerySchema(schema, projectId)
     case 'postgres':
       return formatPostgresSchema(schema)
+    case 'snowflake':
+      return formatSnowflakeSchema(schema)
     case 'duckdb':
       return formatDuckDBSchema(schema)
     default:
@@ -201,6 +231,47 @@ function formatDuckDBSchema(schema: ScoredSchemaItem[]): string {
   })
 
   return `Tables: ${tables.join(', ')}`
+}
+
+/**
+ * Format Snowflake schema grouped by database and schema
+ * Output: Tables in `database`:
+ *         schema1: table1(col1, col2), table2(col1)
+ */
+function formatSnowflakeSchema(schema: ScoredSchemaItem[]): string {
+  // Group tables by database.schema
+  const grouped = new Map<string, Map<string, string[]>>()
+
+  for (const item of schema) {
+    // Parse "database.schema.table" format
+    const parts = item.tableName.split('.')
+    if (parts.length !== 3) continue
+
+    const [database, schemaName, table] = parts
+    const colNames = item.columns.map((c) => c.name).join(', ')
+
+    if (!grouped.has(database)) {
+      grouped.set(database, new Map())
+    }
+    const schemas = grouped.get(database)!
+    if (!schemas.has(schemaName)) {
+      schemas.set(schemaName, [])
+    }
+    schemas.get(schemaName)!.push(`${table}(${colNames})`)
+  }
+
+  // Format output
+  const lines: string[] = []
+
+  for (const [database, schemas] of grouped) {
+    lines.push(`Tables in \`${database}\`:`)
+
+    for (const [schemaName, tables] of schemas) {
+      lines.push(`${schemaName}: ${tables.join(', ')}`)
+    }
+  }
+
+  return lines.join('\n')
 }
 
 /**

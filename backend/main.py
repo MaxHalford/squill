@@ -11,6 +11,7 @@ from routers.bigquery import router as bigquery_router
 from routers.billing import router as billing_router
 from routers.connections import router as connections_router
 from routers.postgres import router as postgres_router
+from routers.snowflake import router as snowflake_router
 from routers.user import router as user_router
 
 
@@ -51,6 +52,7 @@ app.include_router(bigquery_router)
 app.include_router(billing_router)
 app.include_router(connections_router)
 app.include_router(postgres_router)
+app.include_router(snowflake_router)
 app.include_router(user_router)
 
 

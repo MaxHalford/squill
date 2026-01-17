@@ -35,7 +35,7 @@ const props = defineProps<{
   dialect?: 'bigquery' | 'duckdb' | 'postgres'
   schema?: SchemaTable
   suggestion?: LineSuggestion | null
-  connectionType?: 'bigquery' | 'duckdb' | 'postgres'
+  connectionType?: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
   connectionId?: string
 }>()
 

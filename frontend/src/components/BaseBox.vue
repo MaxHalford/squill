@@ -180,9 +180,7 @@ defineExpose({ boxName })
 }
 
 .box-name:hover {
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
+  cursor: text;
 }
 
 .name-input {

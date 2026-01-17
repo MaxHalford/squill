@@ -270,6 +270,25 @@ export const useConnectionsStore = defineStore('connections', () => {
     saveState()
   }
 
+  // Add Snowflake connection (after backend creates it)
+  const addSnowflakeConnection = (
+    connectionId: string,
+    name: string,
+    database: string | null
+  ): void => {
+    const connection: Connection = {
+      id: connectionId,
+      type: 'snowflake',
+      name: name,
+      database: database || undefined,
+      createdAt: Date.now()
+    }
+
+    connections.value = [...connections.value, connection]
+    activeConnectionId.value = connectionId
+    saveState()
+  }
+
   // Set active connection
   const setActiveConnection = (connectionId: string) => {
     const connection = connections.value.find(c => c.id === connectionId)
@@ -332,6 +351,9 @@ export const useConnectionsStore = defineStore('connections', () => {
     // PostgreSQL uses backend proxy - always "valid" from token perspective
     if (connection.type === 'postgres') return true
 
+    // Snowflake uses backend proxy - always "valid" from token perspective
+    if (connection.type === 'snowflake') return true
+
     const tokenEntry = accessTokens.value.get(connectionId)
     if (!tokenEntry) return false
 
@@ -348,6 +370,9 @@ export const useConnectionsStore = defineStore('connections', () => {
 
     // PostgreSQL uses backend proxy - never "expired" from token perspective
     if (connection.type === 'postgres') return false
+
+    // Snowflake uses backend proxy - never "expired" from token perspective
+    if (connection.type === 'snowflake') return false
 
     return !hasValidToken(connectionId)
   }
@@ -413,6 +438,7 @@ export const useConnectionsStore = defineStore('connections', () => {
     addBigQueryConnection,
     addDuckDBConnection,
     addPostgresConnection,
+    addSnowflakeConnection,
     setActiveConnection,
     removeConnection,
     setConnectionProjectId,

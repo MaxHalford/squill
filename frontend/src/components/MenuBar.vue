@@ -6,6 +6,7 @@ import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
+import { useSnowflakeStore } from '../stores/snowflake'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import type { BoxType } from '../types/canvas'
@@ -14,6 +15,7 @@ import {
   connectionRequiresAuth
 } from '../utils/connectionHelpers'
 import PostgresConnectionModal from './PostgresConnectionModal.vue'
+import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
 import CanvasDropdown from './CanvasDropdown.vue'
 
 const router = useRouter()
@@ -22,18 +24,22 @@ const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
+const snowflakeStore = useSnowflakeStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 
 // Emits for parent component to handle
 const emit = defineEmits<{
   'box-created': [boxId: number]
-  'connection-added': [type: 'bigquery' | 'postgres', connectionId: string]
+  'connection-added': [type: 'bigquery' | 'postgres' | 'snowflake', connectionId: string]
   'show-shortcuts': []
 }>()
 
 // PostgreSQL modal state
 const showPostgresModal = ref(false)
+
+// Snowflake modal state
+const showSnowflakeModal = ref(false)
 
 // Delayed expired state - prevents flash when tokens are being refreshed
 // Only show "(Expired)" after the token has been expired for 2 seconds
@@ -178,6 +184,10 @@ const handleConnectionSelect = async (connectionId: string) => {
     // Prefetch PostgreSQL schema for autocompletion
     bigqueryStore.setProjectId(null as any)
     await postgresStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load PostgreSQL schema:', err))
+  } else if (connection.type === 'snowflake') {
+    // Prefetch Snowflake schema for autocompletion
+    bigqueryStore.setProjectId(null as any)
+    await snowflakeStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load Snowflake schema:', err))
   } else {
     // DuckDB or other local connections
     bigqueryStore.setProjectId(null as any)
@@ -232,6 +242,8 @@ const handleAddDatabase = async (databaseType: string) => {
     }
   } else if (databaseType === 'postgres') {
     showPostgresModal.value = true
+  } else if (databaseType === 'snowflake') {
+    showSnowflakeModal.value = true
   }
 }
 
@@ -239,6 +251,14 @@ const handleAddDatabase = async (databaseType: string) => {
 const handlePostgresConnected = (connectionId: string) => {
   console.log('PostgreSQL connected:', connectionId)
   emit('connection-added', 'postgres', connectionId)
+  // Re-open dropdown to show the new connection
+  activeDropdown.value = 'connection'
+}
+
+// Handle successful Snowflake connection
+const handleSnowflakeConnected = (connectionId: string) => {
+  console.log('Snowflake connected:', connectionId)
+  emit('connection-added', 'snowflake', connectionId)
   // Re-open dropdown to show the new connection
   activeDropdown.value = 'connection'
 }
@@ -291,6 +311,12 @@ const handleRefreshSchemas = async () => {
     // Refresh all PostgreSQL connections
     for (const conn of connections.filter(c => c.type === 'postgres')) {
       await postgresStore.refreshSchemas(conn.id)
+      refreshedCount++
+    }
+
+    // Refresh all Snowflake connections
+    for (const conn of connections.filter(c => c.type === 'snowflake')) {
+      await snowflakeStore.refreshSchemas(conn.id)
       refreshedCount++
     }
 
@@ -508,6 +534,13 @@ onUnmounted(() => {
                 >
                   <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Postgresql_elephant.svg/40px-Postgresql_elephant.svg.png" class="db-icon" />
                   PostgreSQL
+                </button>
+                <button
+                  class="dropdown-item flyout-item"
+                  @click="handleAddDatabase('snowflake')"
+                >
+                  <img src="https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/snowflake-color.png" class="db-icon" />
+                  Snowflake
                 </button>
               </div>
             </div>
@@ -761,6 +794,14 @@ onUnmounted(() => {
     :user-email="userStore.user?.email || connectionsStore.activeConnection?.email || 'anonymous'"
     @close="showPostgresModal = false"
     @connected="handlePostgresConnected"
+  />
+
+  <!-- Snowflake Connection Modal -->
+  <SnowflakeConnectionModal
+    :show="showSnowflakeModal"
+    :user-email="userStore.user?.email || connectionsStore.activeConnection?.email || 'anonymous'"
+    @close="showSnowflakeModal = false"
+    @connected="handleSnowflakeConnected"
   />
 </template>
 

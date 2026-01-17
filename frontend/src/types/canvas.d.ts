@@ -32,7 +32,7 @@ export interface CanvasState {
 export interface QueryStats {
   executionTimeMs: number
   rowCount?: number
-  engine: 'bigquery' | 'duckdb' | 'postgres'
+  engine: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
   totalBytesProcessed?: string
   cacheHit?: boolean
 }

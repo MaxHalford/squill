@@ -173,7 +173,7 @@ const handleBoxCreated = (boxId: number) => {
 }
 
 // Handle connection added from MenuBar
-const handleConnectionAdded = (type: 'bigquery' | 'postgres', connectionId: string) => {
+const handleConnectionAdded = (type: 'bigquery' | 'postgres' | 'snowflake', connectionId: string) => {
   // Create default boxes if canvas is empty
   if (canvasStore.boxes.length === 0) {
     createDefaultBoxes(type, connectionId)
@@ -406,7 +406,8 @@ const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
 
 const handleQueryTableFromSchema = async (data: {
   tableName: string,
-  engine: 'bigquery' | 'duckdb' | 'postgres',
+  boxName?: string,
+  engine: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake',
   connectionId?: string
 }) => {
   try {
@@ -425,9 +426,9 @@ const handleQueryTableFromSchema = async (data: {
       position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
     }
 
-    // Generate query and box name
+    // Generate query and box name (use provided boxName if available, e.g., for Snowflake without quotes)
     const query = generateSelectQuery(data.tableName, data.engine)
-    const boxName = generateQueryBoxName(data.tableName)
+    const boxName = generateQueryBoxName(data.boxName || data.tableName)
 
     // Get connection ID based on engine
     let connectionId: string | undefined

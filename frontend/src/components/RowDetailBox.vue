@@ -50,7 +50,7 @@ const fields = computed(() => {
 
 // Format value for display (handle null, undefined, etc.)
 const formatValue = (value: any): string => {
-  if (value === null) return 'NULL'
+  if (value === null) return 'null'
   if (value === undefined) return 'undefined'
   if (typeof value === 'object') return JSON.stringify(value, null, 2)
   return String(value)
@@ -84,7 +84,7 @@ const formatValue = (value: any): string => {
           <span class="field-label">{{ field }}</span>
           <span v-if="columnTypes[field]" class="field-type">{{ columnTypes[field] }}</span>
         </div>
-        <div class="field-value">{{ formatValue(value) }}</div>
+        <div class="field-value" :class="{ 'null-value': value === null }">{{ formatValue(value) }}</div>
       </div>
       <div v-if="fields.length === 0" class="empty-state">
         No data available
@@ -167,5 +167,9 @@ const formatValue = (value: any): string => {
   height: 100%;
   color: var(--text-secondary);
   font-size: var(--font-size-body);
+}
+
+.null-value {
+  color: var(--text-tertiary);
 }
 </style>

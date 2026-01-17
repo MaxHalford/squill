@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import BigQueryConnection, PostgresConnection, User
+from models import BigQueryConnection, PostgresConnection, SnowflakeConnection, User
 from services.auth import get_current_user
 
 router = APIRouter(prefix="/connections", tags=["connections"])
@@ -79,6 +79,18 @@ async def list_connections(
             flavor="postgres",
             name=pg_conn.name,
             database=pg_conn.database,
+        ))
+
+    # Fetch Snowflake connections
+    sf_result = await db.execute(
+        select(SnowflakeConnection).where(SnowflakeConnection.user_id == user.id)
+    )
+    for sf_conn in sf_result.scalars().all():
+        connections.append(ConnectionResponse(
+            id=sf_conn.id,
+            flavor="snowflake",
+            name=sf_conn.name,
+            database=sf_conn.database,
         ))
 
     return ConnectionListResponse(connections=connections)

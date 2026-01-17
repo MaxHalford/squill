@@ -2,7 +2,7 @@
  * Supported database connection types
  * Add new database types here as they are implemented
  */
-export type ConnectionType = 'bigquery' | 'duckdb' | 'postgres' // Future: 'snowflake' | 'mysql'
+export type ConnectionType = 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
 
 /**
  * Database connection configuration
@@ -34,5 +34,6 @@ export function isLocalConnectionType(type: ConnectionType | undefined): boolean
 
 /**
  * Get the SQL dialect for CodeMirror based on connection type
+ * Note: Snowflake uses PostgreSQL dialect as they are largely compatible
  */
 export function getDialectForConnection(type: ConnectionType | undefined): 'bigquery' | 'duckdb' | 'postgres'

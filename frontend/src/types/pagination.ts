@@ -4,7 +4,7 @@
  * - Display pagination: 100 rows per page in the UI
  */
 
-export type SourceEngine = 'bigquery' | 'postgres' | 'duckdb'
+export type SourceEngine = 'bigquery' | 'postgres' | 'duckdb' | 'snowflake'
 
 /**
  * Tracks fetch state for a query result.

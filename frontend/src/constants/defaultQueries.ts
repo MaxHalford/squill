@@ -1,4 +1,4 @@
-export type QueryEngine = 'duckdb' | 'bigquery' | 'postgres'
+export type QueryEngine = 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
 
 export const DEFAULT_QUERIES: Record<QueryEngine, string> = {
   duckdb: `SELECT * FROM (
@@ -46,7 +46,14 @@ SELECT
     p.year_published
 FROM poems p
 JOIN authors a ON p.author_id = a.id
-ORDER BY p.year_published`
+ORDER BY p.year_published`,
+
+  snowflake: `SELECT
+    CURRENT_WAREHOUSE() AS warehouse,
+    CURRENT_DATABASE() AS database,
+    CURRENT_SCHEMA() AS schema,
+    CURRENT_USER() AS user,
+    CURRENT_ROLE() AS role`
 }
 
 export const getDefaultQuery = (engine?: QueryEngine | null): string => {

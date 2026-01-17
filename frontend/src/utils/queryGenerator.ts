@@ -1,6 +1,6 @@
 export function generateSelectQuery(
   tableName: string,
-  _engine: 'bigquery' | 'duckdb' | 'postgres'
+  _engine: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
 ): string {
   return `SELECT *\nFROM ${tableName}`
 }

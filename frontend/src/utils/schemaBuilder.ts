@@ -1,4 +1,5 @@
 import type { PostgresTableInfo, PostgresColumnInfo } from '../stores/postgres'
+import type { SnowflakeTableInfo, SnowflakeColumnInfo } from '../stores/snowflake'
 
 export interface TableMetadata {
   rowCount: number
@@ -99,11 +100,49 @@ export function buildPostgresSchema(
   return schema
 }
 
+// Build schema from Snowflake data for CodeMirror autocompletion
+export function buildSnowflakeSchema(
+  tablesCache: Map<string, SnowflakeTableInfo[]>,
+  columnsCache: Map<string, SnowflakeColumnInfo[]>,
+  connectionId: string
+): Record<string, any> {
+  const schema: Record<string, any> = {}
+
+  const tables = tablesCache.get(connectionId)
+  if (!tables) return schema
+
+  for (const table of tables) {
+    const cacheKey = `${connectionId}:${table.databaseName}.${table.schemaName}.${table.name}`
+    const columns = columnsCache.get(cacheKey)
+    const columnNames = columns?.map(col => col.name) || []
+
+    // Add fully-qualified name: database.schema.table
+    const fullyQualifiedName = `${table.databaseName}.${table.schemaName}.${table.name}`
+    schema[fullyQualifiedName] = columnNames
+
+    // Add schema-qualified name: schema.table
+    const schemaQualifiedName = `${table.schemaName}.${table.name}`
+    if (!schema[schemaQualifiedName]) {
+      schema[schemaQualifiedName] = columnNames
+    }
+
+    // For 'PUBLIC' schema, also add unqualified table name for convenience
+    if (table.schemaName.toUpperCase() === 'PUBLIC') {
+      if (!schema[table.name]) {
+        schema[table.name] = columnNames
+      }
+    }
+  }
+
+  return schema
+}
+
 // Combine schemas for autocompletion
 export function combineSchemas(
   duckdb: Record<string, any>,
   bigquery: Record<string, any>,
-  postgres: Record<string, any> = {}
+  postgres: Record<string, any> = {},
+  snowflake: Record<string, any> = {}
 ): Record<string, any> {
-  return { ...duckdb, ...bigquery, ...postgres }
+  return { ...duckdb, ...bigquery, ...postgres, ...snowflake }
 }

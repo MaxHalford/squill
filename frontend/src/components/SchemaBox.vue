@@ -5,12 +5,14 @@ import { useBigQueryStore } from '../stores/bigquery'
 import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
+import { useSnowflakeStore } from '../stores/snowflake'
 import { useSchemaStore } from '../stores/bigquerySchema'
 
 const bigqueryStore = useBigQueryStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
+const snowflakeStore = useSnowflakeStore()
 const schemaStore = useSchemaStore()
 
 // Load BigQuery projects on mount if we have BQ connections but no projects loaded
@@ -53,11 +55,18 @@ const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 
 const selectedProject = ref<string | null>(null)
 const selectedDataset = ref<string | null>(null)
 const selectedTable = ref<string | null>(null)
+// Snowflake-specific: database and schema selection
+const selectedSnowflakeDatabase = ref<string | null>(null)
+const selectedSnowflakeSchema = ref<string | null>(null)
 
 // Data cache
 const datasets = ref<Record<string, any[]>>({}) // { projectId: [datasets] }
 const tables = ref<Record<string, any[]>>({}) // { datasetId: [tables] }
 const schemas = ref<Record<string, any[]>>({}) // { tableId: schema }
+// Snowflake-specific caches
+const snowflakeDatabases = ref<Record<string, any[]>>({}) // { connectionId: [databases] }
+const snowflakeSchemas = ref<Record<string, any[]>>({}) // { connectionId:database: [schemas] }
+const snowflakeTables = ref<Record<string, any[]>>({}) // { connectionId:database.schema: [tables] }
 
 // Loading states
 const loadingDatasets = ref<Record<string, boolean>>({})
@@ -70,9 +79,10 @@ const MAX_COLUMN_WIDTH = 500
 const col1Width = ref(200)
 const col2Width = ref(200)
 const col3Width = ref(200)
+const col4Width = ref(200)
 
 // Resize handle state
-const isDraggingHandle = ref<number | null>(null) // null or handle index (1, 2, 3)
+const isDraggingHandle = ref<number | null>(null) // null or handle index (1, 2, 3, 4)
 const dragStartX = ref(0)
 const dragStartWidth = ref(0)
 
@@ -102,6 +112,17 @@ const projects = computed(() => {
       id: conn.id,
       name: conn.name || conn.database || 'PostgreSQL',
       type: 'postgres',
+      connectionId: conn.id
+    })
+  })
+
+  // Show all Snowflake connections
+  const snowflakeConnections = connectionsStore.getConnectionsByType('snowflake')
+  snowflakeConnections.forEach(conn => {
+    items.push({
+      id: conn.id,
+      name: conn.name || conn.database || 'Snowflake',
+      type: 'snowflake',
       connectionId: conn.id
     })
   })
@@ -140,20 +161,58 @@ const column2Items = computed(() => {
       type: t.type || 'table',
       schemaName: t.schemaName
     }))
+  } else if (selectedProjectType.value === 'snowflake') {
+    // Show Snowflake databases (like BigQuery datasets)
+    const databases = snowflakeDatabases.value[selectedProject.value] || []
+    return databases.map((db: any) => ({
+      id: db.name,
+      name: db.name,
+      type: 'database'
+    }))
   } else {
     // Show BigQuery datasets
     return datasets.value[selectedProject.value] || []
   }
 })
 
-// Column 3: Tables (for BigQuery datasets only)
+// Column 3: Tables (for BigQuery) or Schemas (for Snowflake)
 const column3Items = computed(() => {
-  if (!selectedDataset.value || selectedProject.value === 'duckdb') return []
+  if (selectedProject.value === 'duckdb') return []
+
+  if (selectedProjectType.value === 'snowflake') {
+    // Show Snowflake schemas when database is selected
+    if (!selectedSnowflakeDatabase.value) return []
+    const cacheKey = `${selectedProject.value}:${selectedSnowflakeDatabase.value}`
+    const schemaList = snowflakeSchemas.value[cacheKey] || []
+    return schemaList.map((s: any) => ({
+      id: s.name,
+      name: s.name,
+      type: 'schema'
+    }))
+  }
+
+  // BigQuery: show tables when dataset is selected
+  if (!selectedDataset.value) return []
   return tables.value[selectedDataset.value] || []
 })
 
-// Column 4: Schema (for selected table)
+// Column 4: Tables (for Snowflake when schema is selected) or Columns
 const column4Items = computed(() => {
+  if (selectedProjectType.value === 'snowflake') {
+    // Show Snowflake tables when schema is selected
+    if (!selectedSnowflakeSchema.value || !selectedSnowflakeDatabase.value) return []
+    const cacheKey = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}`
+    const tableList = snowflakeTables.value[cacheKey] || []
+    return tableList.map((t: any) => ({
+      id: t.name,
+      name: t.name,
+      type: t.type || 'table',
+      databaseName: t.databaseName,
+      schemaName: t.schemaName
+    }))
+  }
+
+  // For other types, show columns
   if (!selectedTable.value) return []
   let key: string
   if (selectedProject.value === 'duckdb') {
@@ -166,11 +225,23 @@ const column4Items = computed(() => {
   return schemas.value[key] || []
 })
 
+// Column 5: Columns (for Snowflake only)
+const column5Items = computed(() => {
+  if (selectedProjectType.value !== 'snowflake') return []
+  if (!selectedTable.value) return []
+  const key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
+  return schemas.value[key] || []
+})
+
+
 // Select project
 const selectProject = async (projectId: string) => {
   selectedProject.value = projectId
   selectedDataset.value = null
   selectedTable.value = null
+  // Reset Snowflake-specific selections
+  selectedSnowflakeDatabase.value = null
+  selectedSnowflakeSchema.value = null
 
   const project = projects.value.find(p => p.id === projectId)
 
@@ -183,6 +254,11 @@ const selectProject = async (projectId: string) => {
     // Load PostgreSQL tables
     if (!tables.value[projectId]) {
       await loadPostgresTables(projectId)
+    }
+  } else if (project?.type === 'snowflake') {
+    // Load Snowflake databases (hierarchical navigation)
+    if (!snowflakeDatabases.value[projectId]) {
+      await loadSnowflakeDatabases(projectId)
     }
   } else {
     // Load BigQuery datasets
@@ -203,6 +279,31 @@ const selectDataset = async (datasetId: string) => {
   }
 }
 
+// Select Snowflake database
+const selectSnowflakeDatabase = async (databaseName: string) => {
+  selectedSnowflakeDatabase.value = databaseName
+  selectedSnowflakeSchema.value = null
+  selectedTable.value = null
+
+  // Load schemas for this database
+  const cacheKey = `${selectedProject.value}:${databaseName}`
+  if (!snowflakeSchemas.value[cacheKey]) {
+    await loadSnowflakeSchemas(selectedProject.value!, databaseName)
+  }
+}
+
+// Select Snowflake schema
+const selectSnowflakeSchema = async (schemaName: string) => {
+  selectedSnowflakeSchema.value = schemaName
+  selectedTable.value = null
+
+  // Load tables for this schema
+  const cacheKey = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${schemaName}`
+  if (!snowflakeTables.value[cacheKey]) {
+    await loadSnowflakeTablesForSchema(selectedProject.value!, selectedSnowflakeDatabase.value!, schemaName)
+  }
+}
+
 // Select table
 const selectTable = async (tableId: string) => {
   selectedTable.value = tableId
@@ -214,6 +315,9 @@ const selectTable = async (tableId: string) => {
   } else if (selectedProjectType.value === 'postgres') {
     // For postgres, tableId is already schema.table format
     key = `${selectedProject.value}:${tableId}`
+  } else if (selectedProjectType.value === 'snowflake') {
+    // For snowflake, use selected database and schema from hierarchical navigation
+    key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${tableId}`
   } else {
     key = `${selectedDataset.value}.${tableId}`
   }
@@ -279,6 +383,53 @@ const loadPostgresTables = async (connectionId: string) => {
   }
 }
 
+// Load Snowflake databases
+const loadSnowflakeDatabases = async (connectionId: string) => {
+  loadingDatasets.value[connectionId] = true
+  try {
+    const fetchedDatabases = await snowflakeStore.fetchDatabases(connectionId)
+    snowflakeDatabases.value[connectionId] = fetchedDatabases
+  } catch (err) {
+    console.error('Failed to load Snowflake databases:', err)
+  } finally {
+    loadingDatasets.value[connectionId] = false
+  }
+}
+
+// Load Snowflake schemas for a database
+const loadSnowflakeSchemas = async (connectionId: string, databaseName: string) => {
+  const cacheKey = `${connectionId}:${databaseName}`
+  loadingTables.value[cacheKey] = true
+  try {
+    const fetchedSchemas = await snowflakeStore.fetchSchemas(connectionId, databaseName)
+    snowflakeSchemas.value[cacheKey] = fetchedSchemas
+  } catch (err) {
+    console.error('Failed to load Snowflake schemas:', err)
+  } finally {
+    loadingTables.value[cacheKey] = false
+  }
+}
+
+// Load Snowflake tables for a specific schema
+const loadSnowflakeTablesForSchema = async (connectionId: string, databaseName: string, schemaName: string) => {
+  const cacheKey = `${connectionId}:${databaseName}.${schemaName}`
+  loadingTables.value[cacheKey] = true
+  try {
+    const fetchedTables = await snowflakeStore.fetchTablesForSchema(connectionId, databaseName, schemaName)
+    snowflakeTables.value[cacheKey] = fetchedTables.map((t: any) => ({
+      id: `${t.databaseName}.${t.schemaName}.${t.name}`,
+      name: t.name,
+      databaseName: t.databaseName,
+      schemaName: t.schemaName,
+      type: t.type
+    }))
+  } catch (err) {
+    console.error('Failed to load Snowflake tables:', err)
+  } finally {
+    loadingTables.value[cacheKey] = false
+  }
+}
+
 // Load table schema
 const loadSchema = async (tableId: string, key: string) => {
   if (selectedProject.value === 'duckdb') {
@@ -303,6 +454,26 @@ const loadSchema = async (tableId: string, key: string) => {
       }))
     } catch (err) {
       console.error('Failed to load PostgreSQL schema:', err)
+    } finally {
+      loadingSchema.value[key] = false
+    }
+  } else if (selectedProjectType.value === 'snowflake') {
+    // Snowflake schema - use selected database and schema from hierarchical navigation
+    if (!selectedSnowflakeDatabase.value || !selectedSnowflakeSchema.value) return
+    loadingSchema.value[key] = true
+    try {
+      const columns = await snowflakeStore.fetchColumns(
+        selectedProject.value!,
+        selectedSnowflakeDatabase.value,
+        selectedSnowflakeSchema.value,
+        tableId
+      )
+      schemas.value[key] = columns.map(col => ({
+        name: col.name,
+        type: col.type
+      }))
+    } catch (err) {
+      console.error('Failed to load Snowflake schema:', err)
     } finally {
       loadingSchema.value[key] = false
     }
@@ -341,6 +512,11 @@ const insertTableName = (item: any) => {
   } else if (selectedProjectType.value === 'postgres') {
     // PostgreSQL: use schema.table or just table if public schema
     tableName = item.schemaName === 'public' ? item.name : `${item.schemaName}.${item.name}`
+  } else if (selectedProjectType.value === 'snowflake') {
+    // Snowflake: construct full path from hierarchical navigation and wrap each part in double quotes
+    const dbName = selectedSnowflakeDatabase.value || item.databaseName
+    const schemaName = selectedSnowflakeSchema.value || item.schemaName
+    tableName = `"${dbName}"."${schemaName}"."${item.name}"`
   } else if (item.type === 'table') {
     tableName = `\`${selectedProject.value}.${selectedDataset.value}.${item.name}\``
   }
@@ -354,7 +530,7 @@ const insertTableName = (item: any) => {
 // Query table - creates a new query box with SELECT * query
 const queryTable = (item: any) => {
   // Determine engine and build full table name
-  let engine: 'duckdb' | 'bigquery' | 'postgres'
+  let engine: 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
   let fullTableName = ''
   let connectionId: string | undefined
 
@@ -366,6 +542,22 @@ const queryTable = (item: any) => {
     // For postgres, use schema.table format (item.id is already schema.table)
     fullTableName = item.id || `${item.schemaName}.${item.name}`
     connectionId = selectedProject.value!
+  } else if (selectedProjectType.value === 'snowflake') {
+    engine = 'snowflake'
+    // For snowflake, construct full path from hierarchical navigation and wrap each part in double quotes
+    const dbName = selectedSnowflakeDatabase.value || item.databaseName
+    const schemaName = selectedSnowflakeSchema.value || item.schemaName
+    const rawName = `${dbName}.${schemaName}.${item.name}`
+    fullTableName = `"${dbName}"."${schemaName}"."${item.name}"`
+    connectionId = selectedProject.value!
+    // Emit with separate boxName (unquoted) for Snowflake
+    emit('query-table', {
+      tableName: fullTableName,
+      boxName: rawName,
+      engine: engine,
+      connectionId: connectionId
+    })
+    return
   } else {
     engine = 'bigquery'
     // BigQuery: project.dataset.table
@@ -395,6 +587,8 @@ const handleResizeStart = (e: MouseEvent, handleIndex: number) => {
     dragStartWidth.value = col2Width.value
   } else if (handleIndex === 3) {
     dragStartWidth.value = col3Width.value
+  } else if (handleIndex === 4) {
+    dragStartWidth.value = col4Width.value
   }
 
   // Add global listeners
@@ -414,6 +608,8 @@ const handleResizeMove = (e: MouseEvent) => {
     col2Width.value = newWidth
   } else if (isDraggingHandle.value === 3) {
     col3Width.value = newWidth
+  } else if (isDraggingHandle.value === 4) {
+    col4Width.value = newWidth
   }
 }
 
@@ -454,7 +650,7 @@ const handleResizeEnd = () => {
             @click="selectProject(project.id)"
           >
             <span class="db-type-badge" :data-type="project.type">
-              {{ project.type === 'bigquery' ? 'BQ' : project.type === 'postgres' ? 'PG' : 'DK' }}
+              {{ project.type === 'bigquery' ? 'BQ' : project.type === 'postgres' ? 'PG' : project.type === 'snowflake' ? 'SF' : 'DK' }}
             </span>
             <span class="item-name">{{ project.name }}</span>
           </div>
@@ -464,10 +660,10 @@ const handleResizeEnd = () => {
       <!-- Resize handle 1 -->
       <div class="resize-handle" @mousedown="handleResizeStart($event, 1)"></div>
 
-      <!-- Column 2: Datasets (BigQuery) or Tables (DuckDB/PostgreSQL) -->
+      <!-- Column 2: Datasets (BigQuery), Databases (Snowflake), or Tables (DuckDB/PostgreSQL) -->
       <div v-if="selectedProject" class="column" :style="{ width: `${col2Width}px` }">
         <div class="column-header">
-          {{ selectedProjectType === 'bigquery' ? 'Datasets' : 'Tables' }}
+          {{ selectedProjectType === 'bigquery' ? 'Datasets' : selectedProjectType === 'snowflake' ? 'Databases' : 'Tables' }}
         </div>
         <div class="column-content">
           <div v-if="loadingDatasets[selectedProject] || loadingTables[selectedProject]" class="loading">Retrieving...</div>
@@ -475,14 +671,18 @@ const handleResizeEnd = () => {
             v-for="item in column2Items"
             :key="item.id"
             :class="['item', {
-              selected: selectedProjectType === 'bigquery' ? selectedDataset === item.id : selectedTable === item.id
+              selected: selectedProjectType === 'bigquery' ? selectedDataset === item.id :
+                        selectedProjectType === 'snowflake' ? selectedSnowflakeDatabase === item.id :
+                        selectedTable === item.id
             }]"
-            @click="selectedProjectType === 'bigquery' ? selectDataset(item.id) : selectTable(item.id)"
-            @dblclick="selectedProjectType !== 'bigquery' ? insertTableName(item) : null"
+            @click="selectedProjectType === 'bigquery' ? selectDataset(item.id) :
+                    selectedProjectType === 'snowflake' ? selectSnowflakeDatabase(item.id) :
+                    selectTable(item.id)"
+            @dblclick="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' ? insertTableName(item) : null"
           >
             <span class="item-name">{{ item.name }}</span>
             <button
-              v-if="selectedProjectType !== 'bigquery' && selectedTable === item.id"
+              v-if="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' && selectedTable === item.id"
               class="query-button"
               @click.stop="queryTable(item)"
               v-tooltip="'Query this table'"
@@ -497,13 +697,44 @@ const handleResizeEnd = () => {
       <!-- Resize handle 2 -->
       <div v-if="selectedProject" class="resize-handle" @mousedown="handleResizeStart($event, 2)"></div>
 
-      <!-- Column 3: BigQuery Tables (only for BigQuery, since DuckDB and Postgres show tables directly in column 2) -->
-      <div v-if="selectedDataset && selectedProjectType === 'bigquery'" class="column" :style="{ width: `${col3Width}px` }">
+      <!-- Column 3: BigQuery Tables or Snowflake Schemas -->
+      <div v-if="(selectedDataset && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')" class="column" :style="{ width: `${col3Width}px` }">
+        <div class="column-header">{{ selectedProjectType === 'snowflake' ? 'Schemas' : 'Tables' }}</div>
+        <div class="column-content">
+          <div v-if="selectedProjectType === 'bigquery' && selectedDataset && loadingTables[selectedDataset]" class="loading">Retrieving...</div>
+          <div v-if="selectedProjectType === 'snowflake' && loadingTables[`${selectedProject}:${selectedSnowflakeDatabase}`]" class="loading">Retrieving...</div>
+          <div
+            v-for="item in column3Items"
+            :key="item.id"
+            :class="['item', {
+              selected: selectedProjectType === 'snowflake' ? selectedSnowflakeSchema === item.id : selectedTable === item.id
+            }]"
+            @click="selectedProjectType === 'snowflake' ? selectSnowflakeSchema(item.id) : selectTable(item.id)"
+            @dblclick="selectedProjectType !== 'snowflake' ? insertTableName(item) : null"
+          >
+            <span class="item-name">{{ item.name }}</span>
+            <button
+              v-if="selectedProjectType !== 'snowflake' && selectedTable === item.id"
+              class="query-button"
+              @click.stop="queryTable(item)"
+              v-tooltip="'Query this table'"
+            >
+              ▶
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resize handle 3 -->
+      <div v-if="(selectedDataset && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')" class="resize-handle" @mousedown="handleResizeStart($event, 3)"></div>
+
+      <!-- Column 4: Snowflake Tables (when schema is selected) -->
+      <div v-if="selectedSnowflakeSchema && selectedProjectType === 'snowflake'" class="column" :style="{ width: `${col4Width}px` }">
         <div class="column-header">Tables</div>
         <div class="column-content">
-          <div v-if="loadingTables[selectedDataset]" class="loading">Retrieving...</div>
+          <div v-if="loadingTables[`${selectedProject}:${selectedSnowflakeDatabase}.${selectedSnowflakeSchema}`]" class="loading">Retrieving...</div>
           <div
-            v-for="table in column3Items"
+            v-for="table in column4Items"
             :key="table.id"
             :class="['item', { selected: selectedTable === table.id }]"
             @click="selectTable(table.id)"
@@ -522,15 +753,15 @@ const handleResizeEnd = () => {
         </div>
       </div>
 
-      <!-- Resize handle 3 -->
-      <div v-if="selectedDataset && selectedProjectType === 'bigquery'" class="resize-handle" @mousedown="handleResizeStart($event, 3)"></div>
+      <!-- Resize handle 4 (between Snowflake Tables and Columns) -->
+      <div v-if="selectedSnowflakeSchema && selectedProjectType === 'snowflake'" class="resize-handle" @mousedown="handleResizeStart($event, 4)"></div>
 
-      <!-- Column 4: Schema -->
+      <!-- Column 4 (non-Snowflake) / Column 5 (Snowflake): Columns -->
       <div v-if="selectedTable" class="column column-schema">
-        <div class="column-header">Schema</div>
+        <div class="column-header">Columns</div>
         <div class="column-content">
           <div v-if="loadingSchema[selectedTable]" class="loading">Retrieving...</div>
-          <div v-for="field in column4Items" :key="field.name" class="schema-field">
+          <div v-for="field in (selectedProjectType === 'snowflake' ? column5Items : column4Items)" :key="field.name" class="schema-field">
             <span class="field-name">{{ field.name }}</span>
             <span class="field-type">{{ field.type }}</span>
           </div>
@@ -629,6 +860,11 @@ const handleResizeEnd = () => {
 
 .db-type-badge[data-type="postgres"] {
   background: var(--color-postgres);
+  color: white;
+}
+
+.db-type-badge[data-type="snowflake"] {
+  background: var(--color-snowflake);
   color: white;
 }
 

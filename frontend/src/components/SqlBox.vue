@@ -6,6 +6,7 @@ import ResultsTable from './ResultsTable.vue'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
+import { useSnowflakeStore } from '../stores/snowflake'
 import { useCanvasStore } from '../stores/canvas'
 import { useSchemaStore } from '../stores/bigquerySchema'
 import { useConnectionsStore } from '../stores/connections'
@@ -13,7 +14,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import { useQueryResultsStore } from '../stores/queryResults'
 import { getEffectiveEngine, extractTableReferences, isLocalConnectionType } from '../utils/queryAnalyzer'
-import { buildDuckDBSchema, buildBigQuerySchema, buildPostgresSchema, combineSchemas } from '../utils/schemaBuilder'
+import { buildDuckDBSchema, buildBigQuerySchema, buildPostgresSchema, buildSnowflakeSchema, combineSchemas } from '../utils/schemaBuilder'
 import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai'
 import { useQueryHistoryStore } from '../stores/queryHistory'
 import { isFixableError } from '../utils/errorClassifier'
@@ -22,6 +23,7 @@ import { getConnectionDisplayName } from '../utils/connectionHelpers'
 const bigqueryStore = useBigQueryStore()
 const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
+const snowflakeStore = useSnowflakeStore()
 const canvasStore = useCanvasStore()
 const schemaStore = useSchemaStore()
 const connectionsStore = useConnectionsStore()
@@ -116,15 +118,24 @@ const missingConnectionType = computed((): string | undefined => {
   // connectionId format is typically "type-identifier-timestamp" e.g. "postgres-abc123" or "bigquery-email-123"
   if (props.connectionId.startsWith('postgres')) return 'PostgreSQL'
   if (props.connectionId.startsWith('bigquery')) return 'BigQuery'
+  if (props.connectionId.startsWith('snowflake')) return 'Snowflake'
   return 'database'
 })
 
 // Get the effective engine based on connection and query content
 // Connection type is the default, but DuckDB table references override to DuckDB
-const currentDialect = computed(() => {
+const currentEngine = computed(() => {
   const tables = duckdbStore.tables
   const connectionType = boxConnection.value?.type
   return getEffectiveEngine(connectionType, queryText.value, Object.keys(tables))
+})
+
+// Get the SQL dialect for CodeMirror syntax highlighting
+// Snowflake uses PostgreSQL dialect since they're largely compatible
+const currentDialect = computed((): 'bigquery' | 'duckdb' | 'postgres' => {
+  const engine = currentEngine.value
+  if (engine === 'snowflake') return 'postgres'
+  return engine
 })
 
 // Disable query execution while DuckDB is initializing or connection is missing
@@ -159,16 +170,31 @@ const editorSchema = computed(() => {
     )
   }
 
-  return combineSchemas(duckdbSchema, bigquerySchema, postgresSchema)
+  // Build Snowflake schema if this is a snowflake connection
+  let snowflakeSchema = {}
+  if (boxConnection.value?.type === 'snowflake' && boxConnection.value?.id) {
+    // Access schemaVersion to trigger reactivity when schema updates
+    void snowflakeStore.schemaVersion
+    snowflakeSchema = buildSnowflakeSchema(
+      snowflakeStore.tablesCache,
+      snowflakeStore.columnsCache,
+      boxConnection.value.id
+    )
+  }
+
+  return combineSchemas(duckdbSchema, bigquerySchema, postgresSchema, snowflakeSchema)
 })
 
-// Fetch PostgreSQL schema when a postgres connection is used
+// Fetch PostgreSQL or Snowflake schema when connection is used
 watch(
   () => boxConnection.value,
   async (conn) => {
     if (conn?.type === 'postgres' && conn?.id) {
       // Fetch all columns for autocomplete (tables are fetched as part of this)
       await postgresStore.fetchAllColumns(conn.id)
+    } else if (conn?.type === 'snowflake' && conn?.id) {
+      // Fetch all columns for autocomplete (tables are fetched as part of this)
+      await snowflakeStore.fetchAllColumns(conn.id)
     }
   },
   { immediate: true }
@@ -337,6 +363,31 @@ const fetchNextBatch = async (
       const offset = pageTokenOrOffset as number
 
       const result = await postgresStore.runQueryPaginated(
+        boxConnection.value?.id || '',
+        query,
+        batchSize,
+        offset,
+        false, // Don't need count again
+        backgroundLoadController.signal
+      )
+
+      await duckdbStore.appendResults(tableName, result.rows as Record<string, unknown>[], schema)
+
+      const fetchState = queryResultsStore.getFetchState(props.boxId)
+      if (fetchState) {
+        const newFetchedRows = fetchState.fetchedRows + result.rows.length
+        queryResultsStore.updateFetchProgress(
+          props.boxId,
+          newFetchedRows,
+          result.hasMore,
+          undefined,
+          result.nextOffset
+        )
+      }
+    } else if (engine === 'snowflake') {
+      const offset = pageTokenOrOffset as number
+
+      const result = await snowflakeStore.runQueryPaginated(
         boxConnection.value?.id || '',
         query,
         batchSize,
@@ -547,6 +598,55 @@ const runQuery = async () => {
             hasMoreRows: false
           })
         }
+      } else if (engine === 'snowflake') {
+        const connectionId = boxConnection.value?.id
+        if (!connectionId) {
+          throw new Error('No Snowflake connection selected')
+        }
+
+        if (usePagination) {
+          // Use paginated query for Snowflake
+          const paginatedResult = await snowflakeStore.runQueryPaginated(
+            connectionId,
+            query,
+            batchSize,
+            0, // Start at offset 0
+            true, // Include count on first request
+            abortController.signal
+          )
+
+          result = {
+            rows: paginatedResult.rows,
+            schema: paginatedResult.schema,
+            stats: paginatedResult.stats
+          }
+
+          // Store first batch in DuckDB
+          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.schema)
+
+          // Initialize fetch state
+          // Note: Background loading is disabled - we use lazy loading only
+          // (fetch more data when user navigates to pages beyond what's loaded)
+          const sourceEngine = 'snowflake' as const
+          queryResultsStore.initQueryResult(props.boxId, sourceEngine, {
+            totalRows: paginatedResult.totalRows,
+            fetchedRows: paginatedResult.rows.length,
+            hasMoreRows: paginatedResult.hasMore,
+            nextOffset: paginatedResult.nextOffset,
+            originalQuery: query,
+            connectionId,
+            schema: paginatedResult.schema
+          })
+        } else {
+          // Non-paginated flow (original behavior)
+          result = await snowflakeStore.runQuery(connectionId, query, abortController.signal)
+          await duckdbStore.storeResults(boxName, result.rows as Record<string, unknown>[], props.boxId, result.schema)
+          queryResultsStore.initQueryResult(props.boxId, 'snowflake', {
+            totalRows: result.rows.length,
+            fetchedRows: result.rows.length,
+            hasMoreRows: false
+          })
+        }
       } else {
         // Placeholder for future database types
         throw new Error(`Database type "${engine}" is not yet supported`)
@@ -593,8 +693,10 @@ const runQuery = async () => {
 
       // Request AI fix suggestion (only for Pro users with autofix enabled, and only for fixable errors)
       suggestion.value = null
-      const connectionType = currentDialect.value as 'bigquery' | 'postgres' | 'duckdb'
-      if (settingsStore.autofixEnabled && userStore.isPro && userStore.sessionToken && isFixableError(errorMessage, connectionType)) {
+      // Map snowflake to postgres for AI autofix since syntax is similar
+      const engine = currentEngine.value
+      const databaseFlavor: 'bigquery' | 'postgres' | 'duckdb' = engine === 'snowflake' ? 'postgres' : engine
+      if (settingsStore.autofixEnabled && userStore.isPro && userStore.sessionToken && isFixableError(errorMessage, databaseFlavor)) {
         isFetchingFix.value = true
         try {
           const query = editorRef.value?.getQuery() || queryText.value
@@ -602,14 +704,14 @@ const runQuery = async () => {
           // Build context for schema and sample queries
           const fixContext: FixContext = {
             connectionId: props.connectionId,
-            connectionType,
+            connectionType: engine,
             projectId: boxConnection.value?.projectId,
           }
 
           const fix = await suggestFix({
             query,
             error_message: errorMessage,
-            database_flavor: connectionType,
+            database_flavor: databaseFlavor,
           }, userStore.sessionToken, fixContext)
           suggestion.value = fix
         } catch (fixErr) {

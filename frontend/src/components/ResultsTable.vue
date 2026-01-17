@@ -5,7 +5,7 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { useQueryResultsStore } from '../stores/queryResults'
 
 interface QueryStats {
-  engine?: 'duckdb' | 'bigquery' | 'postgres'
+  engine?: 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
   executionTimeMs?: number
   totalBytesProcessed?: string
   cacheHit?: boolean
@@ -634,7 +634,7 @@ defineExpose({ resetPagination })
           :data-engine="stats.engine"
           v-tooltip="connectionName"
         >
-          {{ stats.engine === 'bigquery' ? 'BQ' : stats.engine === 'postgres' ? 'PG' : 'DK' }}
+          {{ stats.engine === 'bigquery' ? 'BQ' : stats.engine === 'postgres' ? 'PG' : stats.engine === 'snowflake' ? 'SF' : 'DK' }}
         </span>
         <span class="stat">
           {{ sourceTotalRows.toLocaleString() }} {{ sourceTotalRows === 1 ? 'row' : 'rows' }}
@@ -1084,6 +1084,11 @@ defineExpose({ resetPagination })
 
 .engine-badge[data-engine="postgres"] {
   background: var(--color-postgres);
+  color: white;
+}
+
+.engine-badge[data-engine="snowflake"] {
+  background: var(--color-snowflake);
   color: white;
 }
 

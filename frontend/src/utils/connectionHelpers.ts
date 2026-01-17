@@ -27,8 +27,12 @@ export const CONNECTION_METADATA: Record<ConnectionType, {
     displayName: 'PostgreSQL',
     requiresAuth: true,
     hasProjects: false
+  },
+  snowflake: {
+    displayName: 'Snowflake',
+    requiresAuth: true,
+    hasProjects: false
   }
-  // Future: snowflake, mysql, etc.
 }
 
 /**
@@ -49,12 +53,14 @@ export function isLocalConnection(connection: Connection | null | undefined): bo
 /**
  * Get the SQL dialect for CodeMirror based on connection type
  * Maps connection types to CodeMirror SQL dialects
+ * Note: Snowflake uses PostgreSQL dialect as they are largely compatible
  */
 export function getDialectForConnection(type: ConnectionType | undefined): 'bigquery' | 'duckdb' | 'postgres' {
   switch (type) {
     case 'bigquery':
       return 'bigquery'
     case 'postgres':
+    case 'snowflake':
       return 'postgres'
     case 'duckdb':
     default:
@@ -99,6 +105,10 @@ export function getConnectionDisplayName(connection: Connection | null | undefin
   }
 
   if (connection.type === 'postgres') {
+    return `${typeName} · ${connection.name || connection.database || 'unknown'}`
+  }
+
+  if (connection.type === 'snowflake') {
     return `${typeName} · ${connection.name || connection.database || 'unknown'}`
   }
 
