@@ -86,7 +86,7 @@ const isDraggingHandle = ref<number | null>(null) // null or handle index (1, 2,
 const dragStartX = ref(0)
 const dragStartWidth = ref(0)
 
-// Column 1: Projects (including DuckDB, BigQuery, and PostgreSQL connections)
+// Column 1: Connections (DuckDB, BigQuery, PostgreSQL, Snowflake)
 const projects = computed(() => {
   const items: { id: string; name: string; type: string; connectionId?: string }[] = [
     { id: 'duckdb', name: 'DuckDB', type: 'duckdb' }
@@ -138,7 +138,7 @@ const selectedProjectType = computed(() => {
   return project?.type || 'bigquery'
 })
 
-// Column 2: Datasets or Tables (depending on selected project)
+// Column 2: Datasets (BigQuery), Databases (Snowflake), or Tables (DuckDB/PostgreSQL)
 const column2Items = computed(() => {
   if (!selectedProject.value) return []
 
@@ -203,12 +203,11 @@ const column4Items = computed(() => {
     if (!selectedSnowflakeSchema.value || !selectedSnowflakeDatabase.value) return []
     const cacheKey = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}`
     const tableList = snowflakeTables.value[cacheKey] || []
+    // Use table name as id for selection tracking
     return tableList.map((t: any) => ({
       id: t.name,
       name: t.name,
-      type: t.type || 'table',
-      databaseName: t.databaseName,
-      schemaName: t.schemaName
+      type: t.type || 'table'
     }))
   }
 
@@ -417,7 +416,6 @@ const loadSnowflakeTablesForSchema = async (connectionId: string, databaseName: 
   try {
     const fetchedTables = await snowflakeStore.fetchTablesForSchema(connectionId, databaseName, schemaName)
     snowflakeTables.value[cacheKey] = fetchedTables.map((t: any) => ({
-      id: `${t.databaseName}.${t.schemaName}.${t.name}`,
       name: t.name,
       databaseName: t.databaseName,
       schemaName: t.schemaName,
@@ -639,7 +637,7 @@ const handleResizeEnd = () => {
     @update:name="emit('update:name', $event)"
   >
     <div class="schema-browser">
-      <!-- Column 1: Projects -->
+      <!-- Column 1: Connections -->
       <div class="column" :style="{ width: `${col1Width}px` }">
         <div class="column-header">Connections</div>
         <div class="column-content">
