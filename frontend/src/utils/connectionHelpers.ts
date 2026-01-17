@@ -4,9 +4,11 @@
  */
 
 import type { Connection, ConnectionType } from '../types/connection'
+import { DATABASE_INFO } from '../types/database'
 
 /**
- * Connection metadata - single source of truth for connection display information
+ * Connection metadata derived from DATABASE_INFO
+ * Adds connection-specific properties like hasProjects
  */
 export const CONNECTION_METADATA: Record<ConnectionType, {
   displayName: string
@@ -14,22 +16,22 @@ export const CONNECTION_METADATA: Record<ConnectionType, {
   hasProjects: boolean
 }> = {
   bigquery: {
-    displayName: 'BigQuery',
+    displayName: DATABASE_INFO.bigquery.name,
     requiresAuth: true,
     hasProjects: true
   },
   duckdb: {
-    displayName: 'DuckDB',
+    displayName: DATABASE_INFO.duckdb.name,
     requiresAuth: false,
     hasProjects: false
   },
   postgres: {
-    displayName: 'PostgreSQL',
+    displayName: DATABASE_INFO.postgres.name,
     requiresAuth: true,
     hasProjects: false
   },
   snowflake: {
-    displayName: 'Snowflake',
+    displayName: DATABASE_INFO.snowflake.name,
     requiresAuth: true,
     hasProjects: false
   }

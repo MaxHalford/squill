@@ -10,6 +10,7 @@ import { useSnowflakeStore } from '../stores/snowflake'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import type { BoxType } from '../types/canvas'
+import { DATABASE_INFO } from '../types/database'
 import {
   getConnectionDisplayName,
   connectionRequiresAuth
@@ -525,22 +526,22 @@ onUnmounted(() => {
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('bigquery')"
                 >
-                  <img src="../assets/bigquery.svg" class="db-icon" />
-                  BigQuery
+                  <img :src="DATABASE_INFO.bigquery.logo" :alt="DATABASE_INFO.bigquery.name" class="db-icon" />
+                  {{ DATABASE_INFO.bigquery.name }}
                 </button>
                 <button
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('postgres')"
                 >
-                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Postgresql_elephant.svg/40px-Postgresql_elephant.svg.png" class="db-icon" />
-                  PostgreSQL
+                  <img :src="DATABASE_INFO.postgres.logo" :alt="DATABASE_INFO.postgres.name" class="db-icon" />
+                  {{ DATABASE_INFO.postgres.name }}
                 </button>
                 <button
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('snowflake')"
                 >
-                  <img src="https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/snowflake-color.png" class="db-icon" />
-                  Snowflake
+                  <img :src="DATABASE_INFO.snowflake.logo" :alt="DATABASE_INFO.snowflake.name" class="db-icon" />
+                  {{ DATABASE_INFO.snowflake.name }}
                 </button>
               </div>
             </div>

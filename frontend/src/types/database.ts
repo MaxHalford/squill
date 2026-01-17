@@ -30,6 +30,7 @@ export interface DatabaseInfo {
   shortName: string
   logo: string
   color: string
+  textColor: string  // Text color for badges (contrast with color)
   connectionType: ConnectionType
   badge: string
   shortDescription: string
@@ -48,6 +49,7 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     shortName: 'DK',
     logo: 'https://images.seeklogo.com/logo-png/55/1/duckdb-icon-logo-png_seeklogo-554697.png',
     color: '#FFF000',
+    textColor: '#000000',
     connectionType: 'client',
     badge: 'No setup needed',
     shortDescription: 'Local database that runs in your browser with CSV support',
@@ -61,6 +63,7 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     shortName: 'BQ',
     logo: 'https://cdn.worldvectorlogo.com/logos/google-bigquery-logo-1.svg',
     color: '#4285F4',
+    textColor: '#FFFFFF',
     connectionType: 'client',
     badge: 'Requires OAuth',
     shortDescription: 'Connect to Google BigQuery for cloud data warehouse queries',
@@ -74,6 +77,7 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     shortName: 'PG',
     logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Postgresql_elephant.svg/993px-Postgresql_elephant.svg.png',
     color: '#336791',
+    textColor: '#FFFFFF',
     connectionType: 'server',
     badge: 'Requires credentials',
     shortDescription: 'Connect to PostgreSQL databases for powerful relational queries',
@@ -87,6 +91,7 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     shortName: 'SF',
     logo: 'https://avatars.githubusercontent.com/u/6453780?s=280&v=4',
     color: '#29B5E8',
+    textColor: '#FFFFFF',
     connectionType: 'server',
     badge: 'Requires credentials',
     shortDescription: 'Cloud data platform for analytics and data warehousing',

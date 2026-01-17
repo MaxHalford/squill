@@ -8,7 +8,7 @@ import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useSchemaStore } from '../stores/bigquerySchema'
 import { getTypeCategory } from '../utils/typeUtils'
-import type { DatabaseEngine } from '../types/database'
+import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 
 const bigqueryStore = useBigQueryStore()
 const connectionsStore = useConnectionsStore()
@@ -91,7 +91,7 @@ const dragStartWidth = ref(0)
 // Column 1: Connections (DuckDB, BigQuery, PostgreSQL, Snowflake)
 const projects = computed(() => {
   const items: { id: string; name: string; type: string; connectionId?: string }[] = [
-    { id: 'duckdb', name: 'DuckDB', type: 'duckdb' }
+    { id: 'duckdb', name: DATABASE_INFO.duckdb.name, type: 'duckdb' }
   ]
 
   // Show all BigQuery projects if we have any BigQuery connections and projects loaded
@@ -112,7 +112,7 @@ const projects = computed(() => {
   postgresConnections.forEach(conn => {
     items.push({
       id: conn.id,
-      name: conn.name || conn.database || 'PostgreSQL',
+      name: conn.name || conn.database || DATABASE_INFO.postgres.name,
       type: 'postgres',
       connectionId: conn.id
     })
@@ -123,7 +123,7 @@ const projects = computed(() => {
   snowflakeConnections.forEach(conn => {
     items.push({
       id: conn.id,
-      name: conn.name || conn.database || 'Snowflake',
+      name: conn.name || conn.database || DATABASE_INFO.snowflake.name,
       type: 'snowflake',
       connectionId: conn.id
     })
@@ -746,8 +746,14 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
             :class="['item', { selected: selectedProject === project.id }]"
             @click="selectProject(project.id)"
           >
-            <span class="db-type-badge" :data-type="project.type">
-              {{ project.type === 'bigquery' ? 'BQ' : project.type === 'postgres' ? 'PG' : project.type === 'snowflake' ? 'SF' : 'DK' }}
+            <span
+              class="engine-badge"
+              :style="{
+                background: DATABASE_INFO[project.type as DatabaseEngine].color,
+                color: DATABASE_INFO[project.type as DatabaseEngine].textColor
+              }"
+            >
+              {{ DATABASE_INFO[project.type as DatabaseEngine].shortName }}
             </span>
             <span class="item-name">{{ project.name }}</span>
           </div>
@@ -954,36 +960,7 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
   user-select: none;
 }
 
-/* Database type badge */
-.db-type-badge {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 600;
-  padding: 2px 4px;
-  border-radius: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.db-type-badge[data-type="duckdb"] {
-  background: var(--color-duckdb);
-  color: black;
-}
-
-.db-type-badge[data-type="bigquery"] {
-  background: var(--color-bigquery);
-  color: white;
-}
-
-.db-type-badge[data-type="postgres"] {
-  background: var(--color-postgres);
-  color: white;
-}
-
-.db-type-badge[data-type="snowflake"] {
-  background: var(--color-snowflake);
-  color: white;
-}
+/* Engine badge uses global .engine-badge from style.css */
 
 .item:hover {
   background: var(--table-row-stripe-bg);

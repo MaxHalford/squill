@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { usePostgresStore } from '../stores/postgres'
+import { DATABASE_INFO } from '../types/database'
 
 const props = defineProps<{
   show: boolean
@@ -175,11 +176,11 @@ onUnmounted(() => {
           <div class="modal-header">
             <div class="header-content">
               <img
-                src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Postgresql_elephant.svg/993px-Postgresql_elephant.svg.png"
-                alt="PostgreSQL"
+                :src="DATABASE_INFO.postgres.logo"
+                :alt="DATABASE_INFO.postgres.name"
                 class="postgres-icon"
               />
-              <h2 id="postgres-modal-title">Connect to PostgreSQL</h2>
+              <h2 id="postgres-modal-title">Connect to {{ DATABASE_INFO.postgres.name }}</h2>
             </div>
             <button class="close-btn" @click="emit('close')" aria-label="Close">&times;</button>
           </div>

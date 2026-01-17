@@ -4,7 +4,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useQueryResultsStore } from '../stores/queryResults'
 import { getTypeCategory } from '../utils/typeUtils'
-import type { DatabaseEngine } from '../types/database'
+import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 
 interface QueryStats {
   engine?: DatabaseEngine
@@ -602,10 +602,13 @@ defineExpose({ resetPagination })
         <span
           v-if="stats?.engine"
           class="engine-badge"
-          :data-engine="stats.engine"
+          :style="{
+            background: DATABASE_INFO[stats.engine].color,
+            color: DATABASE_INFO[stats.engine].textColor
+          }"
           v-tooltip="connectionName"
         >
-          {{ stats.engine === 'bigquery' ? 'BQ' : stats.engine === 'postgres' ? 'PG' : stats.engine === 'snowflake' ? 'SF' : 'DK' }}
+          {{ DATABASE_INFO[stats.engine].shortName }}
         </span>
         <span class="stat">
           {{ sourceTotalRows.toLocaleString() }} {{ sourceTotalRows === 1 ? 'row' : 'rows' }}
@@ -1032,36 +1035,7 @@ defineExpose({ resetPagination })
   color: var(--text-tertiary);
 }
 
-/* Engine Badge - compact */
-.engine-badge {
-  font-weight: 500;
-  padding: 1px 4px;
-  border-radius: 2px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  user-select: none;
-}
-
-.engine-badge[data-engine="bigquery"] {
-  background: var(--color-bigquery);
-  color: white;
-}
-
-.engine-badge[data-engine="duckdb"] {
-  background: var(--color-duckdb);
-  color: black;
-}
-
-.engine-badge[data-engine="postgres"] {
-  background: var(--color-postgres);
-  color: white;
-}
-
-.engine-badge[data-engine="snowflake"] {
-  background: var(--color-snowflake);
-  color: white;
-}
+/* Engine Badge uses global .engine-badge from style.css */
 
 /* Actions */
 .results-actions {

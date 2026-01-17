@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useSnowflakeStore } from '../stores/snowflake'
+import { DATABASE_INFO } from '../types/database'
 
 const props = defineProps<{
   show: boolean
@@ -176,10 +177,12 @@ onUnmounted(() => {
         <div class="modal-content">
           <div class="modal-header">
             <div class="header-content">
-              <svg class="snowflake-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/>
-              </svg>
-              <h2 id="snowflake-modal-title">Connect to Snowflake</h2>
+              <img
+                :src="DATABASE_INFO.snowflake.logo"
+                :alt="DATABASE_INFO.snowflake.name"
+                class="snowflake-icon"
+              />
+              <h2 id="snowflake-modal-title">Connect to {{ DATABASE_INFO.snowflake.name }}</h2>
             </div>
             <button class="close-btn" @click="emit('close')" aria-label="Close">&times;</button>
           </div>

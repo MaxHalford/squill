@@ -19,6 +19,7 @@ import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai
 import { useQueryHistoryStore } from '../stores/queryHistory'
 import { isFixableError } from '../utils/errorClassifier'
 import { getConnectionDisplayName } from '../utils/connectionHelpers'
+import { DATABASE_INFO } from '../types/database'
 
 const bigqueryStore = useBigQueryStore()
 const duckdbStore = useDuckDBStore()
@@ -116,9 +117,9 @@ const isConnectionMissing = computed(() => {
 const missingConnectionType = computed((): string | undefined => {
   if (!props.connectionId) return undefined
   // connectionId format is typically "type-identifier-timestamp" e.g. "postgres-abc123" or "bigquery-email-123"
-  if (props.connectionId.startsWith('postgres')) return 'PostgreSQL'
-  if (props.connectionId.startsWith('bigquery')) return 'BigQuery'
-  if (props.connectionId.startsWith('snowflake')) return 'Snowflake'
+  if (props.connectionId.startsWith('postgres')) return DATABASE_INFO.postgres.name
+  if (props.connectionId.startsWith('bigquery')) return DATABASE_INFO.bigquery.name
+  if (props.connectionId.startsWith('snowflake')) return DATABASE_INFO.snowflake.name
   return 'database'
 })
 

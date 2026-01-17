@@ -10,7 +10,7 @@ import { useConnectionsStore } from '../stores/connections'
 import { useQueryResultsStore } from '../stores/queryResults'
 import { useSettingsStore } from '../stores/settings'
 import { buildAnalyticsQuery, type TypeCategory } from '../utils/analyticsQueryBuilder'
-import type { DatabaseEngine } from '../types/database'
+import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 
 interface AnalyticsData {
   tableName: string
@@ -695,8 +695,21 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Footer with group by controls -->
+      <!-- Footer with engine badge and group by controls -->
       <footer class="analytics-footer">
+        <!-- Engine badge -->
+        <span
+          v-if="analyticsData?.sourceEngine"
+          class="engine-badge"
+          :style="{
+            background: DATABASE_INFO[analyticsData.sourceEngine].color,
+            color: DATABASE_INFO[analyticsData.sourceEngine].textColor
+          }"
+          :title="`Analytics run on ${DATABASE_INFO[analyticsData.sourceEngine].name}`"
+        >
+          {{ DATABASE_INFO[analyticsData.sourceEngine].shortName }}
+        </span>
+
         <div class="group-by-section" ref="dropdownRef">
           <span class="group-by-label">GROUP BY</span>
 
@@ -855,7 +868,12 @@ onUnmounted(() => {
   background: var(--surface-primary);
   border-top: var(--border-width-thin) solid var(--border-secondary);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
+
+/* Engine badge uses global .engine-badge from style.css */
 
 .group-by-section {
   position: relative;
@@ -863,17 +881,19 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--space-1);
   flex-wrap: wrap;
+  flex: 1;
 }
 
 .group-by-label {
+  /* Matches .engine-badge sizing from style.css */
   font-size: 9px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   background: var(--surface-secondary);
-  padding: 4px 6px;
-  border-radius: var(--border-radius-sm);
+  padding: 2px 5px;
+  border-radius: 3px;
   flex-shrink: 0;
 }
 

@@ -409,3 +409,21 @@ body.resizing-column * {
   z-index: var(--modal-z-index);
   padding: var(--space-4);
 }
+
+/* ===== BADGE UTILITIES ===== */
+
+/**
+ * Unified engine/database badge style
+ * Colors should be set via inline styles using DATABASE_INFO
+ * Usage: :style="{ background: DATABASE_INFO[engine].color, color: DATABASE_INFO[engine].textColor }"
+ */
+.engine-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
