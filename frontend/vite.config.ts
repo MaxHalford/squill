@@ -10,8 +10,39 @@ export default defineConfig(() => ({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,wasm}'],
-        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024
+        // Don't precache any files
+        globPatterns: [],
+        // Only cache DuckDB WASM and worker files at runtime
+        runtimeCaching: [
+          {
+            urlPattern: /duckdb.*\.wasm$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'duckdb-wasm',
+              expiration: {
+                maxEntries: 5,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            urlPattern: /duckdb.*worker.*\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'duckdb-worker',
+              expiration: {
+                maxEntries: 5,
+                maxAgeSeconds: 60 * 60 * 24 * 365
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          }
+        ]
       },
       manifest: false
     })

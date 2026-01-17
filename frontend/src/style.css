@@ -378,6 +378,7 @@ body.resizing-column * {
   font-size: var(--font-size-caption);
   font-weight: 500;
   white-space: pre-line;
+  text-align: center;
   pointer-events: none;
   border: var(--border-width-thin) solid var(--border-primary);
   box-shadow: 2px 2px 0 0 rgba(0, 0, 0, 0.3);
