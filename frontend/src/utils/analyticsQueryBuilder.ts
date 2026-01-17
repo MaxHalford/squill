@@ -5,7 +5,7 @@
  * Supports BigQuery, PostgreSQL, and DuckDB.
  */
 
-export type DatabaseDialect = 'bigquery' | 'postgres' | 'duckdb'
+export type DatabaseDialect = 'bigquery' | 'postgres' | 'duckdb' | 'snowflake'
 export type TypeCategory = 'number' | 'text' | 'date' | 'boolean'
 
 interface AnalyticsQueryOptions {
@@ -26,6 +26,7 @@ const quoteColumn = (name: string, dialect: DatabaseDialect): string => {
       return `\`${name}\``
     case 'postgres':
     case 'duckdb':
+    case 'snowflake':
       return `"${name}"`
   }
 }
@@ -39,8 +40,20 @@ const quoteTable = (name: string, dialect: DatabaseDialect): string => {
       return `\`${name}\``
     case 'postgres':
     case 'duckdb':
+    case 'snowflake':
       return `"${name}"`
   }
+}
+
+/**
+ * Quote an alias for the given dialect
+ * Snowflake returns unquoted aliases in UPPERCASE, so we must quote them
+ */
+const quoteAlias = (alias: string, dialect: DatabaseDialect): string => {
+  if (dialect === 'snowflake') {
+    return `"${alias}"`
+  }
+  return alias
 }
 
 /**
@@ -49,16 +62,17 @@ const quoteTable = (name: string, dialect: DatabaseDialect): string => {
 const buildNumericStatsQuery = (
   col: string,
   fromClause: string,
-  _dialect: DatabaseDialect
+  dialect: DatabaseDialect
 ): string => {
-  // All three dialects support these standard aggregate functions
+  const q = (alias: string) => quoteAlias(alias, dialect)
+  // All dialects support these standard aggregate functions
   return `SELECT
-  MIN(${col}) as min_val,
-  MAX(${col}) as max_val,
-  AVG(${col}) as avg_val,
-  STDDEV(${col}) as stddev_val,
-  COUNT(*) as total_count,
-  COUNT(${col}) as non_null_count
+  MIN(${col}) as ${q('min_val')},
+  MAX(${col}) as ${q('max_val')},
+  AVG(${col}) as ${q('avg_val')},
+  STDDEV(${col}) as ${q('stddev_val')},
+  COUNT(*) as ${q('total_count')},
+  COUNT(${col}) as ${q('non_null_count')}
 FROM ${fromClause}`
 }
 
@@ -68,14 +82,15 @@ FROM ${fromClause}`
 const buildDateStatsQuery = (
   col: string,
   fromClause: string,
-  _dialect: DatabaseDialect
+  dialect: DatabaseDialect
 ): string => {
+  const q = (alias: string) => quoteAlias(alias, dialect)
   return `SELECT
-  MIN(${col}) as min_val,
-  MAX(${col}) as max_val,
-  COUNT(DISTINCT ${col}) as distinct_count,
-  COUNT(*) as total_count,
-  COUNT(${col}) as non_null_count
+  MIN(${col}) as ${q('min_val')},
+  MAX(${col}) as ${q('max_val')},
+  COUNT(DISTINCT ${col}) as ${q('distinct_count')},
+  COUNT(*) as ${q('total_count')},
+  COUNT(${col}) as ${q('non_null_count')}
 FROM ${fromClause}`
 }
 
@@ -87,14 +102,15 @@ FROM ${fromClause}`
 const buildTextStatsQuery = (
   col: string,
   fromClause: string,
-  _dialect: DatabaseDialect
+  dialect: DatabaseDialect
 ): string => {
+  const q = (alias: string) => quoteAlias(alias, dialect)
   return `SELECT
   ${col},
-  COUNT(*) as count
+  COUNT(*) as ${q('count')}
 FROM ${fromClause}
 GROUP BY ${col}
-ORDER BY count DESC`
+ORDER BY ${q('count')} DESC`
 }
 
 /**
@@ -105,10 +121,11 @@ const buildBooleanStatsQuery = (
   fromClause: string,
   dialect: DatabaseDialect
 ): string => {
+  const q = (alias: string) => quoteAlias(alias, dialect)
   const nullsLast = dialect === 'postgres' ? 'NULLS LAST' : ''
   return `SELECT
   ${col},
-  COUNT(*) as count
+  COUNT(*) as ${q('count')}
 FROM ${fromClause}
 GROUP BY ${col}
 ORDER BY ${col} DESC ${nullsLast}`
@@ -124,13 +141,14 @@ const buildGroupedNumericQuery = (
   dialect: DatabaseDialect
 ): string => {
   const groupCols = groupByColumns.map(c => quoteColumn(c, dialect)).join(', ')
+  const q = (alias: string) => quoteAlias(alias, dialect)
 
   return `SELECT
   ${groupCols},
-  MIN(${col}) as min_val,
-  MAX(${col}) as max_val,
-  AVG(${col}) as avg_val,
-  COUNT(*) as count
+  MIN(${col}) as ${q('min_val')},
+  MAX(${col}) as ${q('max_val')},
+  AVG(${col}) as ${q('avg_val')},
+  COUNT(*) as ${q('count')}
 FROM ${fromClause}
 GROUP BY ${groupCols}
 ORDER BY ${groupCols}`
@@ -146,14 +164,15 @@ const buildGroupedTextQuery = (
   dialect: DatabaseDialect
 ): string => {
   const groupCols = groupByColumns.map(c => quoteColumn(c, dialect)).join(', ')
+  const q = (alias: string) => quoteAlias(alias, dialect)
 
   return `SELECT
   ${groupCols},
   ${col},
-  COUNT(*) as count
+  COUNT(*) as ${q('count')}
 FROM ${fromClause}
 GROUP BY ${groupCols}, ${col}
-ORDER BY ${groupCols}, count DESC`
+ORDER BY ${groupCols}, ${q('count')} DESC`
 }
 
 /**

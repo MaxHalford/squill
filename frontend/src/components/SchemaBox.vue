@@ -7,6 +7,7 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useSchemaStore } from '../stores/bigquerySchema'
+import { getTypeCategory } from '../utils/typeUtils'
 
 const bigqueryStore = useBigQueryStore()
 const connectionsStore = useConnectionsStore()
@@ -49,7 +50,7 @@ defineProps({
   initialName: { type: String, default: 'Schema Browser' }
 })
 
-const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'query-table'])
+const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'query-table', 'show-column-analytics'])
 
 // Column navigation state
 const selectedProject = ref<string | null>(null)
@@ -616,6 +617,103 @@ const handleResizeEnd = () => {
   window.removeEventListener('mousemove', handleResizeMove)
   window.removeEventListener('mouseup', handleResizeEnd)
 }
+
+// Column analytics state
+const hoveredField = ref<string | null>(null)
+
+// Check if type is unsupported for analytics (binary/json)
+const isUnsupportedType = (typeStr: string): boolean => {
+  const category = getTypeCategory(typeStr)
+  return category === 'binary' || category === 'json'
+}
+
+// Get columns for current table
+const getCurrentTableColumns = (): string[] => {
+  if (!selectedTable.value) return []
+  let key: string
+  if (selectedProject.value === 'duckdb') {
+    key = selectedTable.value
+  } else if (selectedProjectType.value === 'postgres') {
+    key = `${selectedProject.value}:${selectedTable.value}`
+  } else if (selectedProjectType.value === 'snowflake') {
+    key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
+  } else {
+    key = `${selectedDataset.value}.${selectedTable.value}`
+  }
+  const schemaFields = schemas.value[key] || []
+  return schemaFields.map((f: { name: string }) => f.name)
+}
+
+// Build table connection info for current selection (reuses queryTable logic pattern)
+const buildTableConnectionInfo = () => {
+  if (!selectedTable.value) return null
+
+  let engine: 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
+  let tableName: string
+  let quotedTableName: string
+  let connectionId: string | undefined
+
+  if (selectedProject.value === 'duckdb') {
+    engine = 'duckdb'
+    tableName = selectedTable.value
+    quotedTableName = `"${tableName}"`
+  } else if (selectedProjectType.value === 'postgres') {
+    engine = 'postgres'
+    // selectedTable.value is already schema.table format
+    const [schemaName, tblName] = selectedTable.value.split('.')
+    tableName = selectedTable.value
+    quotedTableName = `${schemaName}."${tblName}"`
+    connectionId = selectedProject.value!
+  } else if (selectedProjectType.value === 'snowflake') {
+    engine = 'snowflake'
+    const dbName = selectedSnowflakeDatabase.value
+    const schemaName = selectedSnowflakeSchema.value
+    tableName = `${dbName}.${schemaName}.${selectedTable.value}`
+    quotedTableName = `"${dbName}"."${schemaName}"."${selectedTable.value}"`
+    connectionId = selectedProject.value!
+  } else {
+    engine = 'bigquery'
+    tableName = `${selectedProject.value}.${selectedDataset.value}.${selectedTable.value}`
+    quotedTableName = `\`${tableName}\``
+    // Find a BigQuery connection to use
+    const bigqueryConnections = connectionsStore.getConnectionsByType('bigquery')
+    if (bigqueryConnections.length > 0) {
+      connectionId = bigqueryConnections[0].id
+    }
+  }
+
+  return {
+    engine,
+    tableName,
+    quotedTableName,
+    connectionId,
+    originalQuery: `SELECT * FROM ${quotedTableName}`
+  }
+}
+
+// Handle show analytics button click
+const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: string }) => {
+  event.stopPropagation()
+
+  const typeCategory = getTypeCategory(field.type)
+  if (typeCategory === 'binary' || typeCategory === 'json') return
+
+  const tableInfo = buildTableConnectionInfo()
+  if (!tableInfo) return
+
+  emit('show-column-analytics', {
+    columnName: field.name,
+    columnType: field.type,
+    typeCategory,
+    tableName: tableInfo.tableName,
+    clickX: event.clientX,
+    clickY: event.clientY,
+    sourceEngine: tableInfo.engine,
+    originalQuery: tableInfo.originalQuery,
+    connectionId: tableInfo.connectionId,
+    availableColumns: getCurrentTableColumns()
+  })
+}
 </script>
 
 <template>
@@ -759,8 +857,27 @@ const handleResizeEnd = () => {
         <div class="column-header">Columns</div>
         <div class="column-content">
           <div v-if="loadingSchema[selectedTable]" class="loading">Retrieving...</div>
-          <div v-for="field in (selectedProjectType === 'snowflake' ? column5Items : column4Items)" :key="field.name" class="schema-field">
-            <span class="field-name">{{ field.name }}</span>
+          <div
+            v-for="field in (selectedProjectType === 'snowflake' ? column5Items : column4Items)"
+            :key="field.name"
+            class="schema-field"
+            @mouseenter="hoveredField = field.name"
+            @mouseleave="hoveredField = null"
+          >
+            <span class="field-info">
+              <span class="field-name">{{ field.name }}</span>
+              <button
+                v-if="!isUnsupportedType(field.type)"
+                class="analytics-btn"
+                :class="{ visible: hoveredField === field.name }"
+                @click.stop="handleShowAnalytics($event, field)"
+                v-tooltip="'View column analytics'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 20V10M12 20V4M6 20v-6"/>
+                </svg>
+              </button>
+            </span>
             <span class="field-type">{{ field.type }}</span>
           </div>
         </div>
@@ -775,7 +892,8 @@ const handleResizeEnd = () => {
   display: flex;
   height: 100%;
   background: var(--surface-primary);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .column {
@@ -893,9 +1011,17 @@ const handleResizeEnd = () => {
 .schema-field {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   padding: var(--space-2) var(--space-3);
   gap: var(--space-2);
+}
+
+.field-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
 
 .field-name {
@@ -936,5 +1062,36 @@ const handleResizeEnd = () => {
 .query-button:hover {
   opacity: 1;
   background: var(--surface-tertiary);
+}
+
+/* Analytics button in schema fields */
+.field-info .analytics-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.field-info .analytics-btn svg {
+  width: 10px;
+  height: 10px;
+}
+
+.field-info .analytics-btn.visible {
+  opacity: 1;
+}
+
+.field-info .analytics-btn:hover {
+  color: var(--text-primary);
 }
 </style>

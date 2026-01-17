@@ -943,6 +943,7 @@ onUnmounted(() => {
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
           @query-table="handleQueryTableFromSchema"
+          @show-column-analytics="handleShowColumnAnalytics"
         />
 
         <!-- Sticky Note Box -->

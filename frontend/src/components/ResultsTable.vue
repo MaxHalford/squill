@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useQueryResultsStore } from '../stores/queryResults'
+import { getTypeCategory } from '../utils/typeUtils'
 
 interface QueryStats {
   engine?: 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
@@ -57,37 +58,6 @@ const columnWidths = ref<Record<string, number>>({})
 const resizingColumn = ref<string | null>(null)
 const resizeStartX = ref(0)
 const resizeStartWidth = ref(0)
-
-// Map Arrow/DuckDB type strings to icon categories
-const getTypeCategory = (typeStr: string): 'number' | 'text' | 'date' | 'boolean' | 'binary' | 'json' => {
-  const t = typeStr.toLowerCase()
-  // Numeric types
-  if (t.includes('int') || t.includes('float') || t.includes('double') ||
-      t.includes('decimal') || t.includes('numeric') || t === 'bigint' ||
-      t.includes('hugeint') || t.includes('tinyint') || t.includes('smallint')) {
-    return 'number'
-  }
-  // Date/time types
-  if (t.includes('date') || t.includes('time') || t.includes('timestamp') ||
-      t.includes('interval')) {
-    return 'date'
-  }
-  // Boolean
-  if (t.includes('bool')) {
-    return 'boolean'
-  }
-  // Binary/blob
-  if (t.includes('blob') || t.includes('binary') || t.includes('bytea')) {
-    return 'binary'
-  }
-  // JSON/struct/list/map types
-  if (t.includes('json') || t.includes('struct') || t.includes('list') ||
-      t.includes('map') || t.includes('array') || t.startsWith('{')) {
-    return 'json'
-  }
-  // Default to text (varchar, char, text, uuid, etc.)
-  return 'text'
-}
 
 const pageSize = computed(() => settingsStore.paginationSize)
 
