@@ -45,7 +45,7 @@ export interface QueryFetchState {
  */
 export interface PaginatedQueryResponse {
   rows: Record<string, unknown>[]
-  schema: { name: string; type: string }[]
+  columns: { name: string; type: string }[]
   /** Total rows in source (from COUNT) - only on first request */
   totalRows: number | null
   /** More rows available */
@@ -73,7 +73,7 @@ export interface BigQueryPaginatedMeta {
  */
 export interface PostgresPaginatedResponse {
   rows: Record<string, unknown>[]
-  schema: { name: string; type: string }[]
+  columns: { name: string; type: string }[]
   totalRows: number | null
   hasMore: boolean
   nextOffset: number

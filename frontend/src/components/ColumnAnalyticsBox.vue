@@ -339,7 +339,7 @@ const runAnalyticsQuery = async () => {
           storageTableName,
           paginatedResult.rows as Record<string, unknown>[],
           props.boxId,
-          paginatedResult.schema
+          paginatedResult.columns
         )
 
         // Initialize fetch state for pagination
@@ -350,7 +350,7 @@ const runAnalyticsQuery = async () => {
           pageToken: paginatedResult.pageToken,
           originalQuery: query,
           connectionId,
-          schema: paginatedResult.schema
+          schema: paginatedResult.columns
         })
       } else if (sourceEngine === 'postgres') {
         const paginatedResult = await postgresStore.runQueryPaginated(
@@ -366,7 +366,7 @@ const runAnalyticsQuery = async () => {
           storageTableName,
           paginatedResult.rows as Record<string, unknown>[],
           props.boxId,
-          paginatedResult.schema
+          paginatedResult.columns
         )
 
         // Initialize fetch state for pagination
@@ -377,7 +377,7 @@ const runAnalyticsQuery = async () => {
           nextOffset: paginatedResult.nextOffset,
           originalQuery: query,
           connectionId,
-          schema: paginatedResult.schema
+          schema: paginatedResult.columns
         })
       } else if (sourceEngine === 'snowflake') {
         const paginatedResult = await snowflakeStore.runQueryPaginated(
@@ -393,7 +393,7 @@ const runAnalyticsQuery = async () => {
           storageTableName,
           paginatedResult.rows as Record<string, unknown>[],
           props.boxId,
-          paginatedResult.schema
+          paginatedResult.columns
         )
 
         // Initialize fetch state for pagination
@@ -404,7 +404,7 @@ const runAnalyticsQuery = async () => {
           nextOffset: paginatedResult.nextOffset,
           originalQuery: query,
           connectionId,
-          schema: paginatedResult.schema
+          schema: paginatedResult.columns
         })
       }
     } else {

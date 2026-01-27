@@ -520,12 +520,12 @@ const runQuery = async () => {
 
           result = {
             rows: paginatedResult.rows,
-            schema: paginatedResult.schema,
+            schema: paginatedResult.columns,
             stats: paginatedResult.stats
           }
 
           // Store first batch in DuckDB
-          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.schema)
+          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
 
           // Initialize fetch state
           // Note: Background loading is disabled - we use lazy loading only
@@ -538,7 +538,7 @@ const runQuery = async () => {
             pageToken: paginatedResult.pageToken,
             originalQuery: query,
             connectionId,
-            schema: paginatedResult.schema
+            schema: paginatedResult.columns
           })
         } else {
           // Non-paginated flow (original behavior)
@@ -569,12 +569,12 @@ const runQuery = async () => {
 
           result = {
             rows: paginatedResult.rows,
-            schema: paginatedResult.schema,
+            schema: paginatedResult.columns,
             stats: paginatedResult.stats
           }
 
           // Store first batch in DuckDB
-          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.schema)
+          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
 
           // Initialize fetch state
           // Note: Background loading is disabled - we use lazy loading only
@@ -587,7 +587,7 @@ const runQuery = async () => {
             nextOffset: paginatedResult.nextOffset,
             originalQuery: query,
             connectionId,
-            schema: paginatedResult.schema
+            schema: paginatedResult.columns
           })
         } else {
           // Non-paginated flow (original behavior)
@@ -618,12 +618,12 @@ const runQuery = async () => {
 
           result = {
             rows: paginatedResult.rows,
-            schema: paginatedResult.schema,
+            schema: paginatedResult.columns,
             stats: paginatedResult.stats
           }
 
           // Store first batch in DuckDB
-          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.schema)
+          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
 
           // Initialize fetch state
           // Note: Background loading is disabled - we use lazy loading only
@@ -636,7 +636,7 @@ const runQuery = async () => {
             nextOffset: paginatedResult.nextOffset,
             originalQuery: query,
             connectionId,
-            schema: paginatedResult.schema
+            schema: paginatedResult.columns
           })
         } else {
           // Non-paginated flow (original behavior)

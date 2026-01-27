@@ -112,7 +112,7 @@ class PaginatedQueryRequest(BaseModel):
 
 class PaginatedQueryResponse(BaseModel):
     rows: list[dict[str, Any]]
-    schema: list[ColumnInfo]
+    columns: list[ColumnInfo]
     total_rows: int | None  # From COUNT(*), only on first request
     has_more: bool
     next_offset: int
@@ -385,7 +385,7 @@ async def execute_paginated_query(
 
     return PaginatedQueryResponse(
         rows=rows,
-        schema=schema_info,
+        columns=schema_info,
         total_rows=total_rows,
         has_more=has_more,
         next_offset=next_offset,

@@ -47,7 +47,7 @@ const DRY_RUN_CACHE_TTL = 60000 // 60 seconds
 // Paginated query result for BigQuery
 export interface BigQueryPaginatedQueryResult {
   rows: Record<string, unknown>[]
-  schema: { name: string; type: string }[]
+  columns: { name: string; type: string }[]
   totalRows: number | null
   hasMore: boolean
   pageToken?: string
@@ -627,7 +627,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       })
       return {
         rows,
-        schema,
+        columns: schema,
         totalRows,
         hasMore,
         pageToken: data.pageToken,
@@ -637,7 +637,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
 
     return {
       rows: [],
-      schema: [],
+      columns: [],
       totalRows: 0,
       hasMore: false,
       stats

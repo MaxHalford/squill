@@ -216,6 +216,8 @@ onUnmounted(() => {
   transform: translateZ(0);
   /* Entry animation */
   animation: box-enter 0.12s ease-out;
+  /* Smooth arrow key movement */
+  transition: left 0.12s ease-out, top 0.12s ease-out;
 }
 
 @keyframes box-enter {
@@ -232,6 +234,7 @@ onUnmounted(() => {
 @media (prefers-reduced-motion: reduce) {
   .resizable-box {
     animation: none;
+    transition: none;
   }
   .resizable-box.deleting {
     animation: none;

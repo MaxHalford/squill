@@ -29,7 +29,7 @@ export interface PostgresQueryResult {
 
 export interface PostgresPaginatedQueryResult {
   rows: Record<string, unknown>[]
-  schema: { name: string; type: string }[]
+  columns: { name: string; type: string }[]
   totalRows: number | null
   hasMore: boolean
   nextOffset: number
@@ -300,7 +300,7 @@ export const usePostgresStore = defineStore('postgres', () => {
       const data = await response.json()
       return {
         rows: data.rows,
-        schema: data.schema.map((col: { name: string; type: string }) => ({
+        columns: data.columns.map((col: { name: string; type: string }) => ({
           name: col.name,
           type: col.type
         })),
