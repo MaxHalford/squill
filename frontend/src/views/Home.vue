@@ -50,7 +50,7 @@ const uploadCurrentIndex = ref(0)
 const boxExecutors = ref(new Map())
 
 // Registry for SqlBox component refs (to focus editor on Enter)
-const sqlBoxRefs = new Map<number, { focusEditor: () => void }>()
+const sqlBoxRefs = ref(new Map<number, { focusEditor: () => void }>())
 
 // Register a box's run method
 const registerBoxExecutor = (boxId: number, runFn: () => Promise<void>) => {
@@ -83,10 +83,13 @@ const showOnboarding = computed(() => {
 })
 
 // Computed: get the currently selected SQL box for creation buttons
+// Only returns the box if it's actually mounted (ref exists)
 const selectedSqlBox = computed(() => {
   if (canvasStore.selectedBoxId === null) return null
   const box = canvasStore.boxes.find(b => b.id === canvasStore.selectedBoxId)
-  return box && box.type === 'sql' ? box : null
+  if (!box || box.type !== 'sql') return null
+  // Only return the box if it's actually mounted
+  return sqlBoxRefs.value.has(box.id) ? box : null
 })
 
 // Handle BigQuery selection from onboarding
@@ -648,7 +651,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
   if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !isInTextInput && canvasStore.selectedBoxId !== null) {
     const box = canvasStore.boxes.find(b => b.id === canvasStore.selectedBoxId)
     if (box?.type === 'sql') {
-      const sqlBoxRef = sqlBoxRefs.get(box.id)
+      const sqlBoxRef = sqlBoxRefs.value.get(box.id)
       if (sqlBoxRef) {
         e.preventDefault()
         sqlBoxRef.focusEditor()
