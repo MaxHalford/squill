@@ -1,4 +1,8 @@
+import logging
+
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleOAuthService:
@@ -23,6 +27,11 @@ class GoogleOAuthService:
                     "grant_type": "authorization_code",
                 },
             )
+            if not response.is_success:
+                logger.error(
+                    f"Google token exchange failed: status={response.status_code}, "
+                    f"redirect_uri={redirect_uri}, response={response.text}"
+                )
             response.raise_for_status()
             return response.json()
 
