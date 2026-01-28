@@ -301,9 +301,9 @@ const handleRefreshSchemas = async () => {
     await duckdbStore.loadTablesMetadata()
     refreshedCount++
 
-    // Refresh all BigQuery connections with valid tokens and project IDs
+    // Refresh all BigQuery connections with project IDs (token refresh handled automatically)
     for (const conn of connections.filter(c => c.type === 'bigquery')) {
-      if (conn.projectId && connectionsStore.hasValidToken(conn.id)) {
+      if (conn.projectId) {
         await bigqueryStore.fetchAllSchemas(conn.projectId, conn.id)
         refreshedCount++
       }
