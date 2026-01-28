@@ -504,9 +504,10 @@ const runQuery = async () => {
 
       if (engine === 'bigquery') {
         const connectionId = boxConnection.value?.id
-        if (!connectionId || !connectionsStore.hasValidToken(connectionId)) {
+        if (!connectionId) {
           throw new Error('Please connect to BigQuery first')
         }
+        // Token refresh is handled automatically by bigqueryStore.runQuery/runQueryPaginated
 
         if (usePagination) {
           // Use paginated query for BigQuery

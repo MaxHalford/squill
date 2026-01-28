@@ -45,6 +45,8 @@ const NON_FIXABLE_PATTERNS = [
   /504 gateway/i,
   // Unfixable user errors
   /no tables specified/i,
+  // TypeScript errors
+  'Cannot read properties of undefined',
 ]
 
 /**

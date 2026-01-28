@@ -17,7 +17,9 @@ export default defineConfig(() => ({
           'assets/duckdb-*worker*.js'
         ],
         // Increase max file size for WASM (~35MB)
-        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024
+        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024,
+        // Disable navigation fallback since we only cache DuckDB files
+        navigateFallback: null
       },
       manifest: false
     })
