@@ -35,6 +35,12 @@ bd sync               # Sync with git
   - We're going for a minimalist retro look, using a limited color palette and simple shapes.
 - Use the semantic design system in style.css for consistent styling.
 
+## Skills
+
+The following skills are available in `.claude/skills/`:
+
+- **add-database**: Guide for adding support for a new database flavor (MySQL, SQLite, etc.)
+
 ## Code style and guidelines
 
 - Don't hesitate to refactor and improve the structure as needed.
