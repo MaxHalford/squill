@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { EditorView } from 'codemirror'
-import { sql, PostgreSQL } from '@codemirror/lang-sql'
+import { sql } from '@codemirror/lang-sql'
 import { Compartment, StateField, StateEffect, RangeSet } from '@codemirror/state'
 import { Decoration, WidgetType, tooltips, lineNumbers, highlightActiveLineGutter, highlightActiveLine, drawSelection, dropCursor, highlightSpecialChars, keymap } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, insertNewline } from '@codemirror/commands'
@@ -10,7 +10,7 @@ import { tags } from '@lezer/highlight'
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, acceptCompletion } from '@codemirror/autocomplete'
 import { schemaCompletionSource } from '@codemirror/lang-sql'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
-import { BigQueryDialect } from '../utils/bigQueryDialect'
+import { getCodeMirrorDialect, type SqlDialect } from '../utils/sqlDialects'
 import { boostedSqlKeywords, filterExactMatches } from '../utils/sqlKeywordCompletions'
 import { useSettingsStore } from '../stores/settings'
 import { useBigQueryStore, type DryRunResult } from '../stores/bigquery'
@@ -369,8 +369,8 @@ const editorTheme = EditorView.theme({
 }, { dark: false })
 
 const buildSQLExtension = (dialect: string, _schema: SchemaTable) => {
-  // PostgreSQL and DuckDB both use PostgreSQL-like syntax
-  const sqlDialect = (dialect === 'duckdb' || dialect === 'postgres') ? PostgreSQL : BigQueryDialect
+  // Get the CodeMirror dialect for syntax highlighting
+  const sqlDialect = getCodeMirrorDialect(dialect as SqlDialect)
   // Don't pass schema to sql() - we'll handle completions separately
   const sqlLang = sql({ dialect: sqlDialect, upperCaseKeywords: true })
 
@@ -378,17 +378,19 @@ const buildSQLExtension = (dialect: string, _schema: SchemaTable) => {
 }
 
 // Build completion sources with exact match filtering
-const buildCompletionSources = (dialect: string, schema: SchemaTable) => {
-  const sqlDialect = (dialect === 'duckdb' || dialect === 'postgres') ? PostgreSQL : BigQueryDialect
+const buildCompletionSources = (dialect: string, schema: SchemaTable, connectionType?: string) => {
+  const sqlDialect = getCodeMirrorDialect(dialect as SqlDialect)
 
   // Wrap schema completions to filter out exact matches
   // We only use boostedSqlKeywords for keywords (not keywordCompletionSource) to avoid duplicates
   const filteredSchema = filterExactMatches(schemaCompletionSource({ dialect: sqlDialect, schema }))
 
-  return [boostedSqlKeywords, filteredSchema]
+  // Use connectionType for keyword completions (more specific, includes snowflake)
+  const keywordDialect = (connectionType || dialect) as SqlDialect
+  return [boostedSqlKeywords(keywordDialect), filteredSchema]
 }
 
-watch([() => props.dialect, () => props.schema], ([newDialect, newSchema]) => {
+watch([() => props.dialect, () => props.schema, () => props.connectionType], ([newDialect, newSchema, newConnectionType]) => {
   if (editorView.value) {
     editorView.value.dispatch({
       effects: [
@@ -397,7 +399,7 @@ watch([() => props.dialect, () => props.schema], ([newDialect, newSchema]) => {
         ),
         autocompleteCompartment.reconfigure(
           autocompletion({
-            override: buildCompletionSources(newDialect || 'bigquery', newSchema || {}),
+            override: buildCompletionSources(newDialect || 'bigquery', newSchema || {}, newConnectionType),
             filterStrict: true
           })
         )
@@ -479,7 +481,7 @@ onMounted(() => {
       closeBrackets(),
       autocompleteCompartment.of(
         autocompletion({
-          override: buildCompletionSources(props.dialect || 'bigquery', props.schema || {}),
+          override: buildCompletionSources(props.dialect || 'bigquery', props.schema || {}, props.connectionType),
           filterStrict: true
         })
       ),
