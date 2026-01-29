@@ -30,6 +30,13 @@ const boostedKeywords: Completion[] = [
   { label: 'ON', type: 'keyword', boost: 78 },
   { label: 'USING', type: 'keyword', boost: 77 },
 
+  // Aggregate functions (very common)
+  { label: 'COUNT', type: 'function', boost: 86 },
+  { label: 'SUM', type: 'function', boost: 85 },
+  { label: 'AVG', type: 'function', boost: 84 },
+  { label: 'MIN', type: 'function', boost: 83 },
+  { label: 'MAX', type: 'function', boost: 82 },
+
   // Grouping and ordering
   { label: 'GROUP', type: 'keyword', boost: 75 },
   { label: 'ORDER', type: 'keyword', boost: 74 },
