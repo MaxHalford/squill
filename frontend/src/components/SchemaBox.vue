@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, inject, onMounted } from 'vue'
+import { ref, computed, inject, onMounted, nextTick } from 'vue'
 import BaseBox from './BaseBox.vue'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useConnectionsStore } from '../stores/connections'
@@ -9,6 +9,7 @@ import { useSnowflakeStore } from '../stores/snowflake'
 import { useSchemaStore } from '../stores/bigquerySchema'
 import { getTypeCategory } from '../utils/typeUtils'
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
+import { collectSchemaForConnection } from '../utils/schemaAdapter'
 
 const bigqueryStore = useBigQueryStore()
 const connectionsStore = useConnectionsStore()
@@ -308,6 +309,7 @@ const selectSnowflakeSchema = async (schemaName: string) => {
 // Select table
 const selectTable = async (tableId: string) => {
   selectedTable.value = tableId
+  selectedColumn.value = null
 
   // Load schema
   let key: string
@@ -621,6 +623,232 @@ const handleResizeEnd = () => {
 
 // Column analytics state
 const hoveredField = ref<string | null>(null)
+const selectedColumn = ref<string | null>(null)
+const hoveredTableItem = ref<string | null>(null)
+
+// Search state
+interface SearchResult {
+  connectionId: string
+  connectionName: string
+  connectionType: DatabaseEngine
+  tableName: string
+  displayName: string
+  matchedColumns: string[]
+  // Navigation path info
+  projectId?: string
+  datasetId?: string
+  schemaName?: string
+  databaseName?: string
+}
+
+const searchQuery = ref('')
+const searchInputRef = ref<HTMLInputElement | null>(null)
+const schemaBrowserRef = ref<HTMLElement | null>(null)
+
+// Computed search results
+const searchResults = computed<SearchResult[]>(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return []
+
+  const results: SearchResult[] = []
+
+  // Search DuckDB
+  const duckdbSchema = collectSchemaForConnection('duckdb')
+  for (const item of duckdbSchema) {
+    const tableMatches = item.tableName.toLowerCase().includes(query)
+    const matchedColumns = item.columns
+      .filter(col => col.name.toLowerCase().includes(query))
+      .map(col => col.name)
+
+    if (tableMatches || matchedColumns.length > 0) {
+      results.push({
+        connectionId: 'duckdb',
+        connectionName: DATABASE_INFO.duckdb.name,
+        connectionType: 'duckdb',
+        tableName: item.tableName,
+        displayName: item.tableName,
+        matchedColumns
+      })
+    }
+  }
+
+  // Search BigQuery
+  const bigquerySchema = collectSchemaForConnection('bigquery')
+  for (const item of bigquerySchema) {
+    const parts = item.tableName.split('.')
+    if (parts.length !== 3) continue
+    const [projectId, datasetId, tableOnly] = parts
+
+    const tableMatches = tableOnly.toLowerCase().includes(query) ||
+                         item.tableName.toLowerCase().includes(query)
+    const matchedColumns = item.columns
+      .filter(col => col.name.toLowerCase().includes(query))
+      .map(col => col.name)
+
+    if (tableMatches || matchedColumns.length > 0) {
+      results.push({
+        connectionId: 'bigquery',
+        connectionName: DATABASE_INFO.bigquery.name,
+        connectionType: 'bigquery',
+        tableName: item.tableName,
+        displayName: `${datasetId}.${tableOnly}`,
+        matchedColumns,
+        projectId,
+        datasetId
+      })
+    }
+  }
+
+  // Search PostgreSQL connections
+  const postgresConnections = connectionsStore.getConnectionsByType('postgres')
+  for (const conn of postgresConnections) {
+    const schema = collectSchemaForConnection('postgres', conn.id)
+    for (const item of schema) {
+      const tableMatches = item.tableName.toLowerCase().includes(query)
+      const matchedColumns = item.columns
+        .filter(col => col.name.toLowerCase().includes(query))
+        .map(col => col.name)
+
+      if (tableMatches || matchedColumns.length > 0) {
+        const parts = item.tableName.split('.')
+        const schemaName = parts.length === 2 ? parts[0] : 'public'
+
+        results.push({
+          connectionId: conn.id,
+          connectionName: conn.name || conn.database || DATABASE_INFO.postgres.name,
+          connectionType: 'postgres',
+          tableName: item.tableName,
+          displayName: item.tableName,
+          matchedColumns,
+          schemaName
+        })
+      }
+    }
+  }
+
+  // Search Snowflake connections
+  const snowflakeConnections = connectionsStore.getConnectionsByType('snowflake')
+  for (const conn of snowflakeConnections) {
+    const schema = collectSchemaForConnection('snowflake', conn.id)
+    for (const item of schema) {
+      const parts = item.tableName.split('.')
+      if (parts.length !== 3) continue
+      const [databaseName, schemaName, tableOnly] = parts
+
+      const tableMatches = tableOnly.toLowerCase().includes(query) ||
+                           item.tableName.toLowerCase().includes(query)
+      const matchedColumns = item.columns
+        .filter(col => col.name.toLowerCase().includes(query))
+        .map(col => col.name)
+
+      if (tableMatches || matchedColumns.length > 0) {
+        results.push({
+          connectionId: conn.id,
+          connectionName: conn.name || conn.database || DATABASE_INFO.snowflake.name,
+          connectionType: 'snowflake',
+          tableName: item.tableName,
+          displayName: `${schemaName}.${tableOnly}`,
+          matchedColumns,
+          databaseName,
+          schemaName
+        })
+      }
+    }
+  }
+
+  // Limit results and sort by table name match first, then column matches
+  return results
+    .sort((a, b) => {
+      const aTableMatch = a.displayName.toLowerCase().includes(query) ? 1 : 0
+      const bTableMatch = b.displayName.toLowerCase().includes(query) ? 1 : 0
+      if (bTableMatch !== aTableMatch) return bTableMatch - aTableMatch
+      return a.displayName.localeCompare(b.displayName)
+    })
+    .slice(0, 50)
+})
+
+// Group search results by connection
+const groupedSearchResults = computed(() => {
+  const groups: Record<string, { connectionName: string; connectionType: DatabaseEngine; results: SearchResult[] }> = {}
+
+  for (const result of searchResults.value) {
+    if (!groups[result.connectionId]) {
+      groups[result.connectionId] = {
+        connectionName: result.connectionName,
+        connectionType: result.connectionType,
+        results: []
+      }
+    }
+    groups[result.connectionId].results.push(result)
+  }
+
+  return groups
+})
+
+// Scroll selected items into view
+const scrollSelectedIntoView = () => {
+  if (!schemaBrowserRef.value) return
+  // Scroll selected items (tables, datasets, etc.)
+  const selectedItems = schemaBrowserRef.value.querySelectorAll('.item.selected')
+  selectedItems.forEach(item => {
+    item.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  })
+  // Scroll selected column
+  const selectedColumnEl = schemaBrowserRef.value.querySelector('.schema-field.selected')
+  if (selectedColumnEl) {
+    selectedColumnEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+}
+
+// Navigate to a search result
+const navigateToSearchResult = async (result: SearchResult) => {
+  // Clear search
+  searchQuery.value = ''
+
+  if (result.connectionType === 'duckdb') {
+    await selectProject('duckdb')
+    await selectTable(result.tableName)
+  } else if (result.connectionType === 'bigquery') {
+    await selectProject(result.projectId!)
+    await selectDataset(result.datasetId!)
+    const tableOnly = result.tableName.split('.')[2]
+    await selectTable(tableOnly)
+  } else if (result.connectionType === 'postgres') {
+    await selectProject(result.connectionId)
+    await selectTable(result.tableName)
+  } else if (result.connectionType === 'snowflake') {
+    await selectProject(result.connectionId)
+    await selectSnowflakeDatabase(result.databaseName!)
+    await selectSnowflakeSchema(result.schemaName!)
+    const tableOnly = result.tableName.split('.')[2]
+    await selectTable(tableOnly)
+  }
+
+  // Select the first matched column if any
+  if (result.matchedColumns.length > 0) {
+    selectedColumn.value = result.matchedColumns[0]
+  } else {
+    selectedColumn.value = null
+  }
+
+  // Scroll selected items into view after DOM updates
+  await nextTick()
+  scrollSelectedIntoView()
+}
+
+// Clear search
+const clearSearch = () => {
+  searchQuery.value = ''
+  searchInputRef.value?.focus()
+}
+
+// Highlight matching text in search results
+const highlightMatch = (text: string, query: string): string => {
+  if (!query.trim()) return text
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escaped})`, 'gi')
+  return text.replace(regex, '<mark class="search-highlight">$1</mark>')
+}
 
 // Check if type is unsupported for analytics (binary/json)
 const isUnsupportedType = (typeStr: string): boolean => {
@@ -735,7 +963,59 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
     @maximize="emit('maximize')"
     @update:name="emit('update:name', $event)"
   >
-    <div class="schema-browser">
+    <!-- Search Bar -->
+    <div class="search-container">
+      <input
+        ref="searchInputRef"
+        v-model="searchQuery"
+        class="search-input"
+        type="text"
+        placeholder="Search tables and columns..."
+        @keydown.escape="clearSearch"
+      />
+      <button v-if="searchQuery" class="clear-search-btn" @click="clearSearch">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <!-- Search Results Dropdown -->
+      <div v-if="searchQuery && searchResults.length > 0" class="search-results" @wheel.stop>
+        <template v-for="(group, connectionId) in groupedSearchResults" :key="connectionId">
+          <div class="search-group-header">
+            <span
+              class="engine-badge"
+              :style="{
+                background: DATABASE_INFO[group.connectionType].color,
+                color: DATABASE_INFO[group.connectionType].textColor
+              }"
+            >
+              {{ DATABASE_INFO[group.connectionType].shortName }}
+            </span>
+            <span class="search-group-name">{{ group.connectionName }}</span>
+          </div>
+          <div
+            v-for="result in group.results"
+            :key="result.tableName"
+            class="search-result-item"
+            @click="navigateToSearchResult(result)"
+          >
+            <span class="search-result-table" v-html="highlightMatch(result.displayName, searchQuery)"></span>
+            <span v-if="result.matchedColumns.length > 0" class="search-result-columns">
+              <span v-html="highlightMatch(result.matchedColumns.slice(0, 3).join(', '), searchQuery)"></span>{{ result.matchedColumns.length > 3 ? '...' : '' }}
+            </span>
+          </div>
+        </template>
+      </div>
+
+      <!-- No Results -->
+      <div v-if="searchQuery && searchResults.length === 0" class="search-no-results">
+        No tables or columns match "{{ searchQuery }}"
+      </div>
+    </div>
+
+    <div ref="schemaBrowserRef" class="schema-browser">
       <!-- Column 1: Connections -->
       <div class="column" :style="{ width: `${col1Width}px` }">
         <div class="column-header">Connections</div>
@@ -782,11 +1062,14 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
                     selectedProjectType === 'snowflake' ? selectSnowflakeDatabase(item.id) :
                     selectTable(item.id)"
             @dblclick="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' ? insertTableName(item) : null"
+            @mouseenter="hoveredTableItem = item.id"
+            @mouseleave="hoveredTableItem = null"
           >
             <span class="item-name">{{ item.name }}</span>
             <button
-              v-if="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' && selectedTable === item.id"
+              v-if="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake'"
               class="query-button"
+              :class="{ visible: hoveredTableItem === item.id }"
               @click.stop="queryTable(item)"
               v-tooltip="'Query this table'"
             >
@@ -814,11 +1097,14 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
             }]"
             @click="selectedProjectType === 'snowflake' ? selectSnowflakeSchema(item.id) : selectTable(item.id)"
             @dblclick="selectedProjectType !== 'snowflake' ? insertTableName(item) : null"
+            @mouseenter="hoveredTableItem = item.id"
+            @mouseleave="hoveredTableItem = null"
           >
             <span class="item-name">{{ item.name }}</span>
             <button
-              v-if="selectedProjectType !== 'snowflake' && selectedTable === item.id"
+              v-if="selectedProjectType !== 'snowflake'"
               class="query-button"
+              :class="{ visible: hoveredTableItem === item.id }"
               @click.stop="queryTable(item)"
               v-tooltip="'Query this table'"
             >
@@ -842,11 +1128,13 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
             :class="['item', { selected: selectedTable === table.id }]"
             @click="selectTable(table.id)"
             @dblclick="insertTableName(table)"
+            @mouseenter="hoveredTableItem = table.id"
+            @mouseleave="hoveredTableItem = null"
           >
             <span class="item-name">{{ table.name }}</span>
             <button
-              v-if="selectedTable === table.id"
               class="query-button"
+              :class="{ visible: hoveredTableItem === table.id }"
               @click.stop="queryTable(table)"
               v-tooltip="'Query this table'"
             >
@@ -867,7 +1155,8 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
           <div
             v-for="field in (selectedProjectType === 'snowflake' ? column5Items : column4Items)"
             :key="field.name"
-            class="schema-field"
+            :class="['schema-field', { selected: selectedColumn === field.name }]"
+            @click="selectedColumn = selectedColumn === field.name ? null : field.name"
             @mouseenter="hoveredField = field.name"
             @mouseleave="hoveredField = null"
           >
@@ -894,6 +1183,143 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
 </template>
 
 <style scoped>
+/* Search Container */
+.search-container {
+  position: relative;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-secondary);
+  border-bottom: var(--table-border-width) solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.search-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  padding-right: 32px;
+  border: var(--border-width-thin) solid var(--border-secondary);
+  background: var(--surface-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.search-input:focus {
+  border-color: var(--border-primary);
+}
+
+.search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: var(--space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clear-search-btn:hover {
+  color: var(--text-primary);
+}
+
+/* Search Results Dropdown */
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: var(--space-3);
+  right: var(--space-3);
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--surface-primary);
+  border: var(--border-width-thin) solid var(--border-primary);
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+}
+
+.search-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: var(--border-width-thin) solid var(--border-secondary);
+}
+
+.search-group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.search-result-item:hover {
+  background: var(--table-row-hover-bg);
+}
+
+.search-result-table {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  color: var(--text-primary);
+}
+
+.search-result-columns {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+}
+
+.search-result-columns::before {
+  content: 'Columns: ';
+  color: var(--text-tertiary);
+}
+
+:deep(.search-highlight) {
+  background: var(--color-warning-bg, #fef3c7);
+  color: var(--text-primary);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.search-no-results {
+  position: absolute;
+  top: 100%;
+  left: var(--space-3);
+  right: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-primary);
+  border: var(--border-width-thin) solid var(--border-primary);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-body-sm);
+  z-index: 100;
+}
+
 /* Schema Browser - Column View */
 .schema-browser {
   display: flex;
@@ -992,6 +1418,15 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
   align-items: center;
   padding: var(--space-2) var(--space-3);
   gap: var(--space-2);
+  cursor: pointer;
+}
+
+.schema-field:hover {
+  background: var(--table-row-stripe-bg);
+}
+
+.schema-field.selected {
+  background: var(--table-row-hover-bg);
 }
 
 .field-info {
@@ -1032,9 +1467,13 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
   cursor: pointer;
   font-size: 10px;
   color: var(--text-primary);
-  opacity: 0.7;
-  transition: opacity 0.2s ease;
+  opacity: 0;
+  transition: opacity 0.1s ease;
   flex-shrink: 0;
+}
+
+.query-button.visible {
+  opacity: 0.7;
 }
 
 .query-button:hover {
