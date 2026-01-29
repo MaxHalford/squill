@@ -341,8 +341,10 @@ const editorTheme = EditorView.theme({
     fontFamily: 'var(--font-family-mono)',
     background: 'var(--surface-primary)',
     border: '1px solid var(--border-primary)',
-    borderRadius: '4px',
     boxShadow: 'var(--shadow-md)',
+  },
+  '.cm-completionIcon': {
+    display: 'none',
   },
   '.cm-tooltip-autocomplete > ul': {
     fontFamily: 'var(--font-family-mono)',
