@@ -16,7 +16,8 @@ export const SettingsSchema = z.object({
   panToBoxOnSelect: z.boolean(),
   autofixEnabled: z.boolean(),
   themePreference: ThemePreferenceSchema,
-  showEditorLineNumbers: z.boolean()
+  showEditorLineNumbers: z.boolean(),
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/)
 }).partial() // All fields optional since we merge with defaults
 
 export type SettingsData = z.infer<typeof SettingsSchema>

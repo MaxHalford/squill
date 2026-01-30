@@ -211,7 +211,7 @@ onUnmounted(() => {
   background: var(--surface-secondary);
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--color-purple) 40%, var(--border-primary));
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--border-primary));
 }
 
 .option-card:active {
@@ -220,7 +220,7 @@ onUnmounted(() => {
 }
 
 .option-card:focus-visible {
-  outline: 2px solid var(--color-purple);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -270,9 +270,9 @@ onUnmounted(() => {
 
 .option-badge {
   font-size: var(--font-size-caption);
-  color: var(--color-purple);
+  color: var(--color-accent);
   font-weight: 600;
-  background: color-mix(in srgb, var(--color-purple) 10%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--border-radius-sm);
   margin-top: var(--space-2);
@@ -300,7 +300,7 @@ onUnmounted(() => {
 }
 
 .skip-button:focus-visible {
-  outline: 2px solid var(--color-purple);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
   border-radius: var(--border-radius-sm);
 }

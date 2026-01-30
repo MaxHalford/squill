@@ -48,7 +48,7 @@ defineProps<{
 .progress-bar-indeterminate {
   height: 100%;
   width: 30%;
-  background: var(--color-purple);
+  background: var(--color-accent);
   border-radius: 2px;
   animation: indeterminate 1.5s ease-in-out infinite;
 }

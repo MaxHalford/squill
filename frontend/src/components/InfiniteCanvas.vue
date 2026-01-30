@@ -542,8 +542,8 @@ onUnmounted(() => {
 
 .selection-rectangle {
   position: absolute;
-  border: 2px solid color-mix(in srgb, var(--color-purple) 60%, transparent);
-  background-color: color-mix(in srgb, var(--color-purple) 15%, transparent);
+  border: 2px solid color-mix(in srgb, var(--color-accent) 60%, transparent);
+  background-color: color-mix(in srgb, var(--color-accent) 15%, transparent);
   pointer-events: none;
   z-index: 9999;
 }
@@ -553,14 +553,14 @@ onUnmounted(() => {
   content: 'Drop CSV file to import';
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--color-purple) 15%, transparent);
-  border: 3px dashed color-mix(in srgb, var(--color-purple) 60%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  border: 3px dashed color-mix(in srgb, var(--color-accent) 60%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 32px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--color-purple) 90%, transparent);
+  color: color-mix(in srgb, var(--color-accent) 90%, transparent);
   pointer-events: none;
   z-index: 10000;
 }

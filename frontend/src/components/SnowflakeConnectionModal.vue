@@ -420,7 +420,7 @@ onUnmounted(() => {
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: var(--color-purple);
+  border-color: var(--color-accent);
 }
 
 .form-group input::placeholder {
@@ -485,13 +485,13 @@ onUnmounted(() => {
 }
 
 .btn-primary {
-  background: var(--color-purple);
-  border: var(--border-width-thick) solid var(--color-purple);
+  background: var(--color-accent);
+  border: var(--border-width-thick) solid var(--color-accent);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-purple) 85%, black);
+  background: color-mix(in srgb, var(--color-accent) 85%, black);
 }
 
 .btn-primary:disabled {

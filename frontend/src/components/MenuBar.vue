@@ -29,6 +29,15 @@ const snowflakeStore = useSnowflakeStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 
+// Accent color palette presets
+const accentColors = [
+  '#9333ea',  // Purple (default)
+  '#aed581',  // Green
+  '#81d4fa',  // Blue
+  '#ffcc80',  // Orange
+  '#f87171',  // Red
+]
+
 // Emits for parent component to handle
 const emit = defineEmits<{
   'box-created': [boxId: number]
@@ -706,6 +715,37 @@ onUnmounted(() => {
           </div>
 
           <div class="settings-section">
+            <div class="setting-header">Accent color</div>
+            <div class="setting-description">
+              Main highlight color used throughout the app
+            </div>
+            <div class="color-palette">
+              <button
+                v-for="color in accentColors"
+                :key="color"
+                class="color-swatch"
+                :class="{ active: settingsStore.accentColor === color }"
+                :style="{ background: color }"
+                @click="settingsStore.setTableLinkHighlightColor(color)"
+                :title="color"
+              />
+              <label class="color-picker-wrapper">
+                <input
+                  type="color"
+                  class="color-picker-input"
+                  :value="settingsStore.accentColor"
+                  @input="settingsStore.setTableLinkHighlightColor(($event.target as HTMLInputElement).value)"
+                />
+                <span
+                  class="color-swatch color-picker-swatch"
+                  :class="{ active: !accentColors.includes(settingsStore.accentColor) }"
+                  :style="{ background: accentColors.includes(settingsStore.accentColor) ? 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' : settingsStore.accentColor }"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div class="settings-section">
             <div class="setting-header">Viewport behavior</div>
             <div class="setting-description">
               Control how the viewport moves when interacting with boxes
@@ -1241,6 +1281,48 @@ onUnmounted(() => {
 
 .setting-input-number[type=number] {
   -moz-appearance: textfield;
+}
+
+/* Color palette for highlight colors */
+.color-palette {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+  padding: 0;
+}
+
+.color-swatch:hover {
+  transform: scale(1.1);
+}
+
+.color-swatch.active {
+  box-shadow: 0 0 0 2px var(--surface-primary), 0 0 0 3px var(--border-secondary);
+}
+
+.color-picker-wrapper {
+  position: relative;
+  cursor: pointer;
+}
+
+.color-picker-input {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.color-picker-swatch {
+  display: block;
 }
 
 /* Connection Dropdown Styles */

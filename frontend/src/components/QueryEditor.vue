@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { Compartment, StateField, StateEffect, RangeSet } from '@codemirror/state'
-import { Decoration, WidgetType, tooltips, lineNumbers, highlightActiveLineGutter, highlightActiveLine, drawSelection, dropCursor, highlightSpecialChars, keymap } from '@codemirror/view'
+import { Decoration, WidgetType, tooltips, lineNumbers, highlightActiveLineGutter, drawSelection, dropCursor, highlightSpecialChars, keymap } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, insertNewline } from '@codemirror/commands'
 import { syntaxHighlighting, HighlightStyle, bracketMatching, indentUnit } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
@@ -366,9 +366,9 @@ const editorTheme = EditorView.theme({
     color: 'var(--color-accent)',
     textDecoration: 'none',
   },
-  // Cursor styling - uses CSS variable for color
+  // Cursor styling - uses accent color
   '.cm-cursor, .cm-cursor-primary': {
-    borderLeftColor: 'var(--text-primary)',
+    borderLeftColor: 'var(--color-accent)',
     borderLeftWidth: '2px'
   },
 }, { dark: false })
@@ -490,7 +490,6 @@ onMounted(() => {
           filterStrict: true
         })
       ),
-      highlightActiveLine(),
       highlightSelectionMatches(),
       indentUnit.of(' '), // Two space indent unit
       keymap.of([

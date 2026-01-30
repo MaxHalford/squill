@@ -15,6 +15,7 @@ interface Settings {
   autofixEnabled: boolean
   themePreference: ThemePreference
   showEditorLineNumbers: boolean
+  accentColor: string  // Highlighter color for Cmd+click table links
 }
 
 // Default settings
@@ -25,7 +26,8 @@ const DEFAULT_SETTINGS: Settings = {
   panToBoxOnSelect: true,
   autofixEnabled: true,
   themePreference: 'system',
-  showEditorLineNumbers: false
+  showEditorLineNumbers: false,
+  accentColor: '#9333ea'  // Purple (default accent color)
 }
 
 const loadSettings = (): Settings => {
@@ -78,6 +80,9 @@ export const useSettingsStore = defineStore('settings', () => {
   // Editor settings
   const showEditorLineNumbers = ref(savedSettings.showEditorLineNumbers)
 
+  // Table link highlight color
+  const accentColor = ref(savedSettings.accentColor)
+
   // Resolve system preference to actual theme
   const getSystemTheme = (): 'light' | 'dark' => {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -91,7 +96,7 @@ export const useSettingsStore = defineStore('settings', () => {
   })
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers], () => {
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, accentColor], () => {
     saveSettings({
       fetchBatchSize: fetchBatchSize.value,
       fetchPaginationEnabled: fetchPaginationEnabled.value,
@@ -99,7 +104,8 @@ export const useSettingsStore = defineStore('settings', () => {
       panToBoxOnSelect: panToBoxOnSelect.value,
       autofixEnabled: autofixEnabled.value,
       themePreference: themePreference.value,
-      showEditorLineNumbers: showEditorLineNumbers.value
+      showEditorLineNumbers: showEditorLineNumbers.value,
+      accentColor: accentColor.value
     })
   })
 
@@ -145,6 +151,13 @@ export const useSettingsStore = defineStore('settings', () => {
     showEditorLineNumbers.value = !showEditorLineNumbers.value
   }
 
+  const setTableLinkHighlightColor = (color: string) => {
+    // Validate hex color format
+    if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+      accentColor.value = color
+    }
+  }
+
   const resetToDefaults = () => {
     fetchBatchSize.value = DEFAULT_SETTINGS.fetchBatchSize
     fetchPaginationEnabled.value = DEFAULT_SETTINGS.fetchPaginationEnabled
@@ -153,6 +166,7 @@ export const useSettingsStore = defineStore('settings', () => {
     autofixEnabled.value = DEFAULT_SETTINGS.autofixEnabled
     themePreference.value = DEFAULT_SETTINGS.themePreference
     showEditorLineNumbers.value = DEFAULT_SETTINGS.showEditorLineNumbers
+    accentColor.value = DEFAULT_SETTINGS.accentColor
   }
 
   return {
@@ -176,6 +190,9 @@ export const useSettingsStore = defineStore('settings', () => {
     // Editor settings
     showEditorLineNumbers,
     toggleEditorLineNumbers,
+    // Table link highlight
+    accentColor,
+    setTableLinkHighlightColor,
     resetToDefaults
   }
 })

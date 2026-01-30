@@ -333,7 +333,7 @@ const toggleDropdown = () => {
 .canvas-name-input {
   width: 100%;
   padding: 2px var(--space-1);
-  border: var(--border-width-thin) solid var(--color-purple);
+  border: var(--border-width-thin) solid var(--color-accent);
   background: var(--surface-primary);
   font-size: var(--font-size-body-sm);
   font-family: var(--font-family-ui);

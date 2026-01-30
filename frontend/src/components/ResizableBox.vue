@@ -260,7 +260,7 @@ onUnmounted(() => {
 
 .resizable-box.selected {
   z-index: 10;
-  border-color: var(--color-purple);
+  border-color: var(--color-accent);
 }
 
 .resizable-box.dragging {

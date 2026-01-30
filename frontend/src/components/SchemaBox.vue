@@ -1363,7 +1363,7 @@ defineExpose({
 }
 
 :deep(.search-highlight) {
-  background: var(--color-warning-bg, #fef3c7);
+  background: var(--color-accent);
   color: var(--text-primary);
   border-radius: 2px;
   padding: 0 1px;

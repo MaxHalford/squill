@@ -38,13 +38,11 @@
   --border-error: #c62828;        /* Error borders */
 
   /* Semantic Colors */
-  --color-accent: #42b883;        /* Accent color */
+  --color-accent: #9333ea;        /* Configurable accent color (default: purple) */
   --color-error: #c62828;         /* Error states */
   --color-error-bg: #ffebee;      /* Error backgrounds */
   --color-success: #10b981;       /* Success states */
   --color-warning: #f59e0b;       /* Warning states */
-  --color-purple: rgb(147, 51, 234);  /* Purple accent for selections and overlays */
-  --color-selection: rgba(147, 51, 234, 0.3);  /* Text selection highlight */
 
   /* Engine Badge Colors */
   --color-bigquery: #4285f4;
@@ -158,7 +156,7 @@
   --dropdown-item-border: var(--border-width-thin) solid var(--border-secondary);
 
   /* Modal */
-  --modal-overlay-bg: color-mix(in srgb, var(--color-purple) 10%, transparent);
+  --modal-overlay-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);
   --modal-overlay-blur: 8px;
   --modal-z-index: 10001;
 
