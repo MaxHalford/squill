@@ -14,6 +14,8 @@ import { getCodeMirrorDialect, type SqlDialect } from '../utils/sqlDialects'
 import { boostedSqlKeywords, filterExactMatches } from '../utils/sqlKeywordCompletions'
 import { useSettingsStore } from '../stores/settings'
 import { useBigQueryStore, type DryRunResult } from '../stores/bigquery'
+import { createTableLinkExtension } from '../utils/tableLinkExtension'
+import type { TableReferenceWithPosition } from '../utils/queryAnalyzer'
 
 // Types for error suggestions
 interface LineSuggestion {
@@ -45,6 +47,7 @@ const emit = defineEmits<{
   'stop': []
   'accept-suggestion': []
   'dismiss-suggestion': []
+  'navigate-to-table': [ref: TableReferenceWithPosition]
 }>()
 
 const settingsStore = useSettingsStore()
@@ -535,6 +538,7 @@ onMounted(() => {
       suggestionField,
       suggestionTheme,
       keyboardHandlers,
+      createTableLinkExtension((ref) => emit('navigate-to-table', ref)),
       tooltips({ parent: document.body }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {

@@ -35,6 +35,75 @@ export function extractTableReferences(query: string): string[] {
 }
 
 /**
+ * Table reference with position information for Cmd+click navigation
+ */
+export interface TableReferenceWithPosition {
+  tableName: string      // Full reference including quotes: "`project.dataset.table`"
+  rawName: string        // Name without quotes: "project.dataset.table"
+  from: number           // Start offset in document
+  to: number             // End offset in document
+  parts: string[]        // Split components: ["project", "dataset", "table"]
+}
+
+/**
+ * Extract qualified table references with their positions in the document.
+ * Only returns qualified names (containing dots) that can be unambiguously resolved.
+ * Used for Cmd+click navigation feature.
+ */
+export function extractTableReferencesWithPositions(query: string): TableReferenceWithPosition[] {
+  const refs: TableReferenceWithPosition[] = []
+
+  // Pattern matches FROM/JOIN followed by:
+  // - Backtick-quoted: `project.dataset.table`
+  // - Double-quoted parts: "db"."schema"."table"
+  // - Unquoted: schema.table
+  // Captures the full table reference including any quotes
+  const pattern = /(?:FROM|JOIN)\s+(`[^`]+`|"[^"]+(?:"\s*\.\s*"[^"]+)*"|[^\s,;()]+)/gi
+
+  let match
+  while ((match = pattern.exec(query)) !== null) {
+    const fullMatch = match[0]
+    const tableRef = match[1]
+
+    // Calculate position of the table reference within the full match
+    const keywordAndSpace = fullMatch.slice(0, fullMatch.length - tableRef.length)
+    const from = match.index + keywordAndSpace.length
+    const to = from + tableRef.length
+
+    // Parse the table name, removing quotes
+    let rawName: string
+    let parts: string[]
+
+    if (tableRef.startsWith('`') && tableRef.endsWith('`')) {
+      // BigQuery backtick format: `project.dataset.table`
+      rawName = tableRef.slice(1, -1)
+      parts = rawName.split('.')
+    } else if (tableRef.includes('"')) {
+      // Double-quoted format: "db"."schema"."table"
+      rawName = tableRef.replace(/"/g, '').replace(/\s*\.\s*/g, '.')
+      parts = rawName.split('.')
+    } else {
+      // Unquoted format: schema.table
+      rawName = tableRef
+      parts = tableRef.split('.')
+    }
+
+    // Only include qualified names (with at least one dot)
+    if (parts.length >= 2) {
+      refs.push({
+        tableName: tableRef,
+        rawName,
+        from,
+        to,
+        parts
+      })
+    }
+  }
+
+  return refs
+}
+
+/**
  * Check if query references any local DuckDB table
  * Used to override connection-based routing to DuckDB when needed
  */

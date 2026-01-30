@@ -52,6 +52,9 @@ const boxExecutors = ref(new Map())
 // Registry for SqlBox component refs (to focus editor on Enter)
 const sqlBoxRefs = ref(new Map<number, { focusEditor: () => void }>())
 
+// Registry for SchemaBox component refs (to navigate to tables)
+const schemaBoxRefs = ref(new Map<number, { navigateToTable: (info: any) => Promise<void> }>())
+
 // Register a box's run method
 const registerBoxExecutor = (boxId: number, runFn: () => Promise<void>) => {
   boxExecutors.value.set(boxId, runFn)
@@ -554,6 +557,62 @@ const handleShowColumnAnalytics = (data: {
   }
 }
 
+// Handle Cmd+click navigation from SQL query to table in Schema Explorer
+const handleNavigateToTable = async (info: {
+  connectionType: string
+  connectionId?: string
+  tableName: string
+  projectId?: string
+  datasetId?: string
+  databaseName?: string
+  schemaName?: string
+}) => {
+  try {
+    // Find existing schema box or create one
+    let schemaBox = canvasStore.boxes.find(box => box.type === 'schema')
+
+    if (!schemaBox) {
+      // Create schema box near the center of the viewport
+      const center = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
+      const schemaBoxId = canvasStore.addBox('schema', center)
+      schemaBox = canvasStore.boxes.find(box => box.id === schemaBoxId)
+
+      // Wait for the box to mount
+      await nextTick()
+      // Give async component time to load
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    if (!schemaBox) {
+      console.error('Failed to find or create schema box')
+      return
+    }
+
+    // Select and pan to the schema box
+    selectBox(schemaBox.id, { shouldPan: true })
+
+    // Wait for selection and potential async component loading
+    await nextTick()
+
+    // Navigate within the schema box
+    const schemaBoxRef = schemaBoxRefs.value.get(schemaBox.id)
+    if (schemaBoxRef) {
+      await schemaBoxRef.navigateToTable(info)
+    } else {
+      // If ref not available yet (async component still loading), retry after a short delay
+      setTimeout(async () => {
+        const retryRef = schemaBoxRefs.value.get(schemaBox!.id)
+        if (retryRef) {
+          await retryRef.navigateToTable(info)
+        }
+      }, 200)
+    }
+
+  } catch (error) {
+    console.error('Failed to navigate to table:', error)
+  }
+}
+
 // Handle creating a new SQL box that queries from an existing box
 const handleCreateQueryBoxBelow = async (sourceBox: { id: number; name: string; x: number; y: number; width: number; height: number; connectionId?: string }) => {
   // Default SQL box dimensions: 600x500
@@ -926,11 +985,13 @@ onUnmounted(() => {
           @show-column-analytics="handleShowColumnAnalytics"
           @drag-start="handleDragStart"
           @drag-end="handleDragEnd"
+          @navigate-to-table="handleNavigateToTable"
         />
 
         <!-- Schema Browser Box -->
         <SchemaBox
           v-else-if="box.type === 'schema'"
+          :ref="(el: any) => { if (el) schemaBoxRefs.set(box.id, el); else schemaBoxRefs.delete(box.id) }"
           :box-id="box.id"
           :initial-x="box.x"
           :initial-y="box.y"

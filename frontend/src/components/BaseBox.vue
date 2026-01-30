@@ -172,7 +172,7 @@ defineExpose({ boxName })
 .box-name {
   cursor: pointer;
   user-select: none;
-  line-height: 1;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -194,7 +194,7 @@ defineExpose({ boxName })
   font-weight: bold;
   min-width: 100px;
   max-width: 400px;
-  line-height: 1;
+  line-height: 1.2;
 }
 
 .header-buttons {

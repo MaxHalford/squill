@@ -13,7 +13,7 @@ import { useConnectionsStore } from '../stores/connections'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import { useQueryResultsStore } from '../stores/queryResults'
-import { getEffectiveEngine, extractTableReferences, isLocalConnectionType } from '../utils/queryAnalyzer'
+import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { buildDuckDBSchema, buildBigQuerySchema, buildPostgresSchema, buildSnowflakeSchema, combineSchemas } from '../utils/schemaBuilder'
 import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai'
 import { useQueryHistoryStore } from '../stores/queryHistory'
@@ -54,7 +54,7 @@ const props = defineProps({
   connectionId: { type: String, default: undefined }
 })
 
-const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query', 'show-row-detail', 'show-column-analytics', 'drag-start', 'drag-end'])
+const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 'maximize', 'update:name', 'update:query', 'show-row-detail', 'show-column-analytics', 'drag-start', 'drag-end', 'navigate-to-table'])
 
 // Reference to BaseBox to access boxName
 const baseBoxRef = ref<any>(null)
@@ -808,6 +808,46 @@ const handleUpdateName = async (newName: string) => {
   emit('update:name', newName)
 }
 
+// Handle Cmd+click navigation to table in schema explorer
+const handleNavigateToTable = (ref: TableReferenceWithPosition) => {
+  const connectionType = boxConnection.value?.type || 'duckdb'
+  const connectionId = boxConnection.value?.id
+
+  // Build navigation info based on connection type and table reference parts
+  const navigationInfo: {
+    connectionType: string
+    connectionId?: string
+    tableName: string
+    projectId?: string
+    datasetId?: string
+    databaseName?: string
+    schemaName?: string
+  } = {
+    connectionType,
+    connectionId,
+    tableName: ref.rawName
+  }
+
+  // Parse parts based on connection type
+  if (connectionType === 'bigquery' && ref.parts.length === 3) {
+    // BigQuery: project.dataset.table
+    navigationInfo.projectId = ref.parts[0]
+    navigationInfo.datasetId = ref.parts[1]
+    navigationInfo.tableName = ref.parts[2]
+  } else if (connectionType === 'snowflake' && ref.parts.length === 3) {
+    // Snowflake: database.schema.table
+    navigationInfo.databaseName = ref.parts[0]
+    navigationInfo.schemaName = ref.parts[1]
+    navigationInfo.tableName = ref.parts[2]
+  } else if ((connectionType === 'postgres' || connectionType === 'snowflake') && ref.parts.length === 2) {
+    // PostgreSQL or Snowflake: schema.table
+    navigationInfo.schemaName = ref.parts[0]
+    navigationInfo.tableName = ref.parts[1]
+  }
+
+  emit('navigate-to-table', navigationInfo)
+}
+
 // Handle keyboard shortcuts when box is selected but editor is not focused
 const handleKeydown = (event: KeyboardEvent) => {
   if (!props.isSelected) return
@@ -916,6 +956,7 @@ defineExpose({
       @stop="stopQuery"
       @accept-suggestion="handleAcceptSuggestion"
       @dismiss-suggestion="suggestion = null"
+      @navigate-to-table="handleNavigateToTable"
     />
 
     <!-- Splitter -->

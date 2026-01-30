@@ -943,6 +943,70 @@ const handleShowAnalytics = (event: MouseEvent, field: { name: string; type: str
     availableColumns: getCurrentTableColumns()
   })
 }
+
+// Navigation info for Cmd+click table navigation from query editor
+interface TableNavigationInfo {
+  connectionType: string
+  connectionId?: string
+  tableName: string
+  projectId?: string
+  datasetId?: string
+  databaseName?: string
+  schemaName?: string
+}
+
+// Navigate to a table from external request (e.g., Cmd+click in query editor)
+const navigateToTable = async (info: TableNavigationInfo) => {
+  // Clear any active search
+  searchQuery.value = ''
+
+  if (info.connectionType === 'duckdb') {
+    // DuckDB doesn't have qualified names, but handle gracefully
+    await selectProject('duckdb')
+    // For DuckDB, tableName might be schema.table format, use last part
+    const tableOnly = info.tableName.includes('.') ? info.tableName.split('.').pop()! : info.tableName
+    await selectTable(tableOnly)
+  } else if (info.connectionType === 'bigquery') {
+    if (info.projectId) {
+      await selectProject(info.projectId)
+    }
+    if (info.datasetId) {
+      await selectDataset(info.datasetId)
+    }
+    await selectTable(info.tableName)
+  } else if (info.connectionType === 'postgres') {
+    if (info.connectionId) {
+      await selectProject(info.connectionId)
+    }
+    // For postgres, construct schema.table format if schemaName provided
+    const fullTableName = info.schemaName
+      ? `${info.schemaName}.${info.tableName}`
+      : info.tableName
+    await selectTable(fullTableName)
+  } else if (info.connectionType === 'snowflake') {
+    if (info.connectionId) {
+      await selectProject(info.connectionId)
+    }
+    if (info.databaseName) {
+      await selectSnowflakeDatabase(info.databaseName)
+    }
+    if (info.schemaName) {
+      await selectSnowflakeSchema(info.schemaName)
+    }
+    await selectTable(info.tableName)
+  }
+
+  // Clear column selection
+  selectedColumn.value = null
+
+  // Scroll selected items into view after DOM updates
+  await nextTick()
+  scrollSelectedIntoView()
+}
+
+defineExpose({
+  navigateToTable
+})
 </script>
 
 <template>
