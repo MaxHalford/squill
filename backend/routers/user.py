@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import BigQueryConnection, PostgresConnection, User
-from routers.billing import cancel_paddle_subscription
+from routers.billing import cancel_polar_subscription
 from services.auth import get_current_user
 
 router = APIRouter(prefix="/user", tags=["user"])
@@ -38,10 +38,10 @@ async def delete_current_user(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete user account and all associated connections. Requires authentication."""
-    # Cancel Paddle subscription if active
-    if user.paddle_subscription_id:
+    # Cancel Polar subscription if active
+    if user.polar_subscription_id:
         logger.info(f"Canceling subscription for deleted user {user.email}")
-        await cancel_paddle_subscription(user.paddle_subscription_id)
+        await cancel_polar_subscription(user.polar_subscription_id)
 
     # Delete all BigQuery connections for this user
     bq_result = await db.execute(

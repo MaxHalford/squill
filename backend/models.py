@@ -31,11 +31,11 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # Paddle integration
-    paddle_customer_id: Mapped[str | None] = mapped_column(
+    # Polar integration
+    polar_customer_id: Mapped[str | None] = mapped_column(
         String(255), unique=True, nullable=True
     )
-    paddle_subscription_id: Mapped[str | None] = mapped_column(
+    polar_subscription_id: Mapped[str | None] = mapped_column(
         String(255), unique=True, nullable=True
     )
 

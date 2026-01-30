@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { User } from '../types/user'
-import { getCheckoutSettings, initializePaddle, openPaddleCheckout } from '../services/billing'
+import { createCheckoutSession, openPolarCheckout } from '../services/billing'
 import { UserSchema } from '../utils/storageSchemas'
 
 const STORAGE_KEY = 'squill-user'
@@ -291,7 +291,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /**
-   * Open Paddle checkout overlay for Pro subscription
+   * Open Polar checkout overlay for Pro subscription
    */
   const upgradeToProCheckout = async (): Promise<void> => {
     if (!sessionToken.value) {
@@ -302,16 +302,16 @@ export const useUserStore = defineStore('user', () => {
     error.value = null
 
     try {
-      // Get checkout settings from backend (now authenticated)
-      const settings = await getCheckoutSettings(sessionToken.value)
+      // Create checkout session via backend
+      const session = await createCheckoutSession(sessionToken.value)
 
-      // Initialize Paddle with correct environment
-      initializePaddle(settings.environment as 'sandbox' | 'production')
-
-      // Open Paddle checkout overlay
-      const successUrl = `${window.location.origin}/account?checkout=success`
-      openPaddleCheckout(settings.price_id, settings.customer_email, successUrl)
+      // Open Polar embedded checkout (handles redirect on success)
+      await openPolarCheckout(session.checkout_url)
     } catch (err) {
+      // User closed checkout is not an error to display
+      if (err instanceof Error && err.message === 'Checkout was closed') {
+        return
+      }
       error.value = err instanceof Error ? err.message : 'Failed to start checkout'
       throw err
     } finally {

@@ -58,9 +58,9 @@
               {{ planDescription }}
             </p>
 
-            <!-- Free users see upgrade button -->
+            <!-- Users without Pro subscription see upgrade button -->
             <button
-              v-if="!userStore.isPro"
+              v-if="userStore.user?.plan !== 'pro'"
               class="upgrade-button"
               :disabled="isUpgrading"
               @click="handleUpgrade"
@@ -68,9 +68,9 @@
               {{ isUpgrading ? 'Loading...' : 'Upgrade to Pro' }}
             </button>
 
-            <!-- Pro users see subscription info -->
+            <!-- Pro subscribers see subscription info -->
             <p v-else class="manage-info">
-              Manage your subscription via the email from Paddle.
+              Manage your subscription via the email from Polar.
             </p>
           </div>
         </section>

@@ -28,6 +28,7 @@ dependencies = [
     "google-cloud-bigquery[bqstorage]>=3.40.0",
     # Snowflake
     "snowflake-connector-python>=3.0.0",
+    "polar-sdk>=0.28.4",
 ]
 
 [dependency-groups]

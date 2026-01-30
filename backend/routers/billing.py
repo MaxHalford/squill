@@ -1,10 +1,8 @@
-import hashlib
-import hmac
 import logging
-from datetime import datetime
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from polar_sdk import Polar
+from polar_sdk.webhooks import validate_event, WebhookVerificationError
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,115 +15,86 @@ from services.auth import get_current_user
 router = APIRouter(prefix="/billing", tags=["billing"])
 logger = logging.getLogger(__name__)
 
+# Initialize Polar client
+polar = Polar(
+    access_token=settings.polar_access_token,
+    server=settings.polar_server,  # type: ignore
+)
+
 
 # Response Models
 
 
-class CheckoutSettingsResponse(BaseModel):
-    price_id: str
-    environment: str
-    customer_email: str
+class CheckoutSessionResponse(BaseModel):
+    checkout_url: str
 
 
-# Paddle API helper
+# Polar API helper
 
 
-async def cancel_paddle_subscription(subscription_id: str) -> bool:
-    """Cancel a subscription via Paddle API."""
+async def cancel_polar_subscription(subscription_id: str) -> bool:
+    """Cancel a subscription via Polar API."""
     if not subscription_id:
         return False
 
-    url = f"https://api.paddle.com/subscriptions/{subscription_id}/cancel"
-    if settings.paddle_environment == "sandbox":
-        url = f"https://sandbox-api.paddle.com/subscriptions/{subscription_id}/cancel"
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                url,
-                headers={
-                    "Authorization": f"Bearer {settings.paddle_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"effective_from": "immediately"},
-            )
-            if response.status_code in (200, 201):
-                logger.info(f"Canceled Paddle subscription {subscription_id}")
-                return True
-            else:
-                logger.error(
-                    f"Failed to cancel subscription {subscription_id}: {response.text}"
-                )
-                return False
-        except Exception as e:
-            logger.error(f"Error canceling subscription {subscription_id}: {e}")
-            return False
+    try:
+        polar.subscriptions.cancel(id=subscription_id)
+        logger.info(f"Canceled Polar subscription {subscription_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error canceling subscription {subscription_id}: {e}")
+        return False
 
 
 # Endpoints
 
 
-@router.get("/checkout-settings", response_model=CheckoutSettingsResponse)
-async def get_checkout_settings(user: User = Depends(get_current_user)):
-    """Get settings for Paddle.js checkout overlay. Requires authentication."""
+@router.post("/checkout-session", response_model=CheckoutSessionResponse)
+async def create_checkout_session(user: User = Depends(get_current_user)):
+    """Create a Polar checkout session for Pro subscription."""
     if user.plan == "pro":
         raise HTTPException(status_code=400, detail="Already subscribed to Pro")
 
-    return CheckoutSettingsResponse(
-        price_id=settings.paddle_price_id,
-        environment=settings.paddle_environment,
-        customer_email=user.email,
-    )
-
-
-def verify_paddle_signature(payload: bytes, signature: str) -> bool:
-    """Verify Paddle webhook signature."""
     try:
-        # Paddle uses ts;h1=hash format
-        parts = dict(part.split("=", 1) for part in signature.split(";"))
-        ts = parts.get("ts", "")
-        h1 = parts.get("h1", "")
-
-        if not ts or not h1:
-            return False
-
-        # Build signed payload: timestamp + ":" + payload
-        signed_payload = f"{ts}:{payload.decode()}"
-        expected_sig = hmac.new(
-            settings.paddle_webhook_secret.encode(),
-            signed_payload.encode(),
-            hashlib.sha256,
-        ).hexdigest()
-
-        return hmac.compare_digest(expected_sig, h1)
+        checkout = polar.checkouts.create(
+            request={
+                "products": [settings.polar_product_id],
+                "success_url": f"{settings.frontend_url}/account?checkout=success&checkout_id={{CHECKOUT_ID}}",
+                "customer_email": user.email,
+                "embed_origin": settings.frontend_url,
+                "metadata": {"user_id": user.id},
+            }
+        )
+        return CheckoutSessionResponse(checkout_url=checkout.url)
     except Exception as e:
-        logger.error(f"Signature verification error: {e}")
-        return False
+        logger.error(f"Failed to create checkout session: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create checkout session")
 
 
 @router.post("/webhook")
-async def paddle_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """Handle Paddle webhook events."""
+async def polar_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """Handle Polar webhook events."""
     payload = await request.body()
-    signature = request.headers.get("paddle-signature", "")
+    headers = dict(request.headers)
 
-    if not verify_paddle_signature(payload, signature):
+    try:
+        event = validate_event(payload, headers, settings.polar_webhook_secret)
+    except WebhookVerificationError as e:
+        logger.error(f"Webhook verification failed: {e}")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    event = await request.json()
-    event_type = event.get("event_type")
-    data = event.get("data", {})
+    event_type = event.TYPE
+    data = event.data
 
-    logger.info(f"Received Paddle webhook: {event_type}")
+    logger.info(f"Received Polar webhook: {event_type}")
 
-    if event_type == "subscription.activated":
-        await handle_subscription_activated(data, db)
+    if event_type == "subscription.created":
+        await handle_subscription_created(data, db)
     elif event_type == "subscription.updated":
         await handle_subscription_updated(data, db)
     elif event_type == "subscription.canceled":
         await handle_subscription_canceled(data, db)
-    elif event_type == "transaction.completed":
-        await handle_transaction_completed(data, db)
+    # Ignore other events like checkout.created, checkout.updated, etc.
 
     return {"status": "ok"}
 
@@ -133,19 +102,24 @@ async def paddle_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 # Webhook Handlers
 
 
-async def handle_subscription_activated(data: dict, db: AsyncSession):
+async def handle_subscription_created(subscription, db: AsyncSession):
     """Handle new subscription - activate Pro plan."""
-    customer_id = data.get("customer_id")
-    subscription_id = data.get("id")
-    customer_email = data.get("customer", {}).get("email")
+    customer_id = subscription.customer_id
+    subscription_id = subscription.id
+    customer_email = subscription.customer.email if subscription.customer else None
 
     if not customer_email:
-        # Try to get email from custom_data
-        custom_data = data.get("custom_data") or {}
-        customer_email = custom_data.get("email")
+        # Try to get email from metadata
+        metadata = subscription.metadata or {}
+        user_id = metadata.get("user_id")
+        if user_id:
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            if user:
+                customer_email = user.email
 
     if not customer_email:
-        logger.warning(f"No email found in subscription.activated for {subscription_id}")
+        logger.warning(f"No email found in subscription.created for {subscription_id}")
         return
 
     result = await db.execute(select(User).where(User.email == customer_email))
@@ -155,28 +129,24 @@ async def handle_subscription_activated(data: dict, db: AsyncSession):
         logger.warning(f"User not found for email {customer_email}")
         return
 
-    # Get next billing date from current_billing_period
-    billing_period = data.get("current_billing_period") or {}
-    ends_at = billing_period.get("ends_at")
-
     user.plan = "pro"
-    user.paddle_customer_id = customer_id
-    user.paddle_subscription_id = subscription_id
+    user.polar_customer_id = customer_id
+    user.polar_subscription_id = subscription_id
 
-    if ends_at:
-        user.plan_expires_at = datetime.fromisoformat(ends_at.replace("Z", "+00:00"))
+    if subscription.current_period_end:
+        user.plan_expires_at = subscription.current_period_end
 
     await db.commit()
     logger.info(f"Activated Pro for user {customer_email}")
 
 
-async def handle_subscription_updated(data: dict, db: AsyncSession):
+async def handle_subscription_updated(subscription, db: AsyncSession):
     """Handle subscription updates (renewal, etc.)."""
-    subscription_id = data.get("id")
-    status = data.get("status")
+    subscription_id = subscription.id
+    status = subscription.status
 
     result = await db.execute(
-        select(User).where(User.paddle_subscription_id == subscription_id)
+        select(User).where(User.polar_subscription_id == subscription_id)
     )
     user = result.scalar_one_or_none()
 
@@ -186,10 +156,8 @@ async def handle_subscription_updated(data: dict, db: AsyncSession):
 
     if status == "active":
         user.plan = "pro"
-        billing_period = data.get("current_billing_period") or {}
-        ends_at = billing_period.get("ends_at")
-        if ends_at:
-            user.plan_expires_at = datetime.fromisoformat(ends_at.replace("Z", "+00:00"))
+        if subscription.current_period_end:
+            user.plan_expires_at = subscription.current_period_end
         logger.info(f"Updated subscription for user {user.email}, status: {status}")
     elif status == "canceled":
         # Subscription canceled but may still be active until period ends
@@ -200,12 +168,12 @@ async def handle_subscription_updated(data: dict, db: AsyncSession):
     await db.commit()
 
 
-async def handle_subscription_canceled(data: dict, db: AsyncSession):
+async def handle_subscription_canceled(subscription, db: AsyncSession):
     """Handle subscription cancellation (end of billing period)."""
-    subscription_id = data.get("id")
+    subscription_id = subscription.id
 
     result = await db.execute(
-        select(User).where(User.paddle_subscription_id == subscription_id)
+        select(User).where(User.polar_subscription_id == subscription_id)
     )
     user = result.scalar_one_or_none()
 
@@ -214,25 +182,9 @@ async def handle_subscription_canceled(data: dict, db: AsyncSession):
         return
 
     user.plan = "free"
-    user.paddle_subscription_id = None
+    user.polar_subscription_id = None
     user.plan_expires_at = None
-    # Keep paddle_customer_id for potential resubscription
+    # Keep polar_customer_id for potential resubscription
 
     await db.commit()
     logger.info(f"Subscription ended for user {user.email}")
-
-
-async def handle_transaction_completed(data: dict, db: AsyncSession):
-    """Handle completed transaction (payment success)."""
-    # This confirms payment went through
-    subscription_id = data.get("subscription_id")
-    if not subscription_id:
-        return  # One-time purchase, not subscription
-
-    result = await db.execute(
-        select(User).where(User.paddle_subscription_id == subscription_id)
-    )
-    user = result.scalar_one_or_none()
-
-    if user:
-        logger.info(f"Payment completed for user {user.email}")

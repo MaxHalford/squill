@@ -379,6 +379,10 @@ const editorTheme = EditorView.theme({
     borderLeftColor: 'var(--color-accent)',
     borderLeftWidth: '2px'
   },
+  // Selection styling - uses accent color
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+    backgroundColor: 'var(--color-selection)'
+  },
 }, { dark: false })
 
 const buildSQLExtension = (dialect: string, _schema: SchemaTable) => {

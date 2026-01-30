@@ -39,6 +39,7 @@
 
   /* Semantic Colors */
   --color-accent: #9333ea;        /* Configurable accent color (default: purple) */
+  --color-selection: color-mix(in srgb, var(--color-accent) 30%, transparent);
   --color-error: #c62828;         /* Error states */
   --color-error-bg: #ffebee;      /* Error backgrounds */
   --color-success: #10b981;       /* Success states */
@@ -202,7 +203,7 @@ html.dark {
   --color-success: #4ade80;
   --color-success-bg: rgba(74, 222, 128, 0.15);
   --color-warning: #fbbf24;
-  --color-selection: rgba(147, 51, 234, 0.4);
+  --color-selection: color-mix(in srgb, var(--color-accent) 40%, transparent);
   --color-primary: #64b5f6;
 
   /* Table */
