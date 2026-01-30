@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import BaseBox from './BaseBox.vue'
+import JsonTree from './JsonTree.vue'
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -48,11 +49,15 @@ const fields = computed(() => {
   return Object.entries(rowData.value)
 })
 
+// Check if value is complex (object or array) and should use JsonTree
+const isComplexValue = (value: unknown): boolean => {
+  return value !== null && typeof value === 'object'
+}
+
 // Format value for display (handle null, undefined, etc.)
-const formatValue = (value: any): string => {
+const formatValue = (value: unknown): string => {
   if (value === null) return 'null'
   if (value === undefined) return 'undefined'
-  if (typeof value === 'object') return JSON.stringify(value, null, 2)
   return String(value)
 }
 </script>
@@ -84,7 +89,10 @@ const formatValue = (value: any): string => {
           <span class="field-label">{{ field }}</span>
           <span v-if="columnTypes[field]" class="field-type">{{ columnTypes[field] }}</span>
         </div>
-        <div class="field-value" :class="{ 'null-value': value === null }">{{ formatValue(value) }}</div>
+        <div class="field-value" :class="{ 'null-value': value === null }">
+          <JsonTree v-if="isComplexValue(value)" :data="value" :default-expand-depth="2" />
+          <template v-else>{{ formatValue(value) }}</template>
+        </div>
       </div>
       <div v-if="fields.length === 0" class="empty-state">
         No data available
