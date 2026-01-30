@@ -34,6 +34,15 @@ export function escapeIdentifier(identifier: string): string {
 }
 
 /**
+ * Clean a SQL query for execution
+ * - Trims whitespace
+ * - Removes trailing semicolons (they break subquery wrapping for pagination)
+ */
+export function cleanQueryForExecution(query: string): string {
+  return query.trim().replace(/;\s*$/, '')
+}
+
+/**
  * Generate a unique table name by appending a counter if needed
  */
 export function generateUniqueTableName(

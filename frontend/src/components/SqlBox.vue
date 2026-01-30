@@ -14,6 +14,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import { useQueryResultsStore } from '../stores/queryResults'
 import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
+import { cleanQueryForExecution } from '../utils/sqlSanitize'
 import { buildDuckDBSchema, buildBigQuerySchema, buildPostgresSchema, buildSnowflakeSchema, combineSchemas } from '../utils/schemaBuilder'
 import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai'
 import { useQueryHistoryStore } from '../stores/queryHistory'
@@ -456,7 +457,8 @@ const runQuery = async () => {
   }
 
   try {
-    const query = editorRef.value.getQuery()
+    // Get query and clean it for execution (removes trailing semicolons, trims whitespace)
+    const query = cleanQueryForExecution(editorRef.value.getQuery())
 
     // Run missing dependencies first
     try {

@@ -24,6 +24,8 @@ interface QueryResult {
     rowCount: number
     engine: 'duckdb'
   }
+  columns?: string[]
+  columnTypes?: Record<string, string>
 }
 
 // Schema field type from remote databases (BigQuery, etc.)
@@ -524,8 +526,8 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   // Execute DuckDB query and store results as a table using CTAS
-  // This is more efficient than runQuery + storeResults as it avoids
-  // converting Arrow to JS objects and back to SQL INSERT statements
+  // Returns only metadata - data stays in DuckDB and is fetched page-by-page
+  // by ResultsTable via queryTablePage() for optimal memory usage
   const runQueryWithStorage = async (
     query: string,
     boxName: string,
@@ -541,27 +543,27 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     const startTime = performance.now()
 
     try {
-      // Use CREATE OR REPLACE TABLE AS to store results directly
-      // This avoids the Arrow → JS → SQL INSERT roundtrip
+      // Use CREATE OR REPLACE TABLE AS to store results directly in DuckDB
       await conn.value!.query(`CREATE OR REPLACE TABLE ${tableName} AS (${query})`)
 
-      // Now select from the created table to get results for display
-      const result = await conn.value!.query(`SELECT * FROM ${tableName}`)
       const endTime = performance.now()
 
-      // Convert Arrow result to array of objects for display
-      const rows = result.toArray().map(row => {
-        const obj: Record<string, any> = {}
-        result.schema.fields.forEach((field) => {
-          obj[field.name] = serializeDuckDBValue(row[field.name])
-        })
-        return obj
+      // Get row count without transferring data
+      const countResult = await conn.value!.query(`SELECT COUNT(*) as count FROM ${tableName}`)
+      const countData = countResult.toArray()
+      const rowCount = Number(countData[0]?.count || 0)
+
+      // Get schema (columns + types) without fetching any data
+      const schemaResult = await conn.value!.query(`SELECT * FROM ${tableName} LIMIT 0`)
+      const columns = schemaResult.schema.fields.map(f => f.name)
+      const columnTypes: Record<string, string> = {}
+      schemaResult.schema.fields.forEach(f => {
+        columnTypes[f.name] = f.type.toString()
       })
 
       // Update metadata
-      const columns = result.schema.fields.map(f => f.name)
       tables.value[tableName] = {
-        rowCount: rows.length,
+        rowCount,
         columns,
         lastUpdated: Date.now(),
         originalBoxName: boxName,
@@ -571,13 +573,16 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       // Trigger reactive updates for dependent components
       schemaVersion.value++
 
+      // Return empty rows - ResultsTable will fetch via queryTablePage()
       return {
-        rows,
+        rows: [],
         stats: {
           executionTimeMs: Math.round(endTime - startTime),
-          rowCount: rows.length,
+          rowCount,
           engine: 'duckdb'
-        }
+        },
+        columns,
+        columnTypes
       }
     } catch (err: unknown) {
       console.error('DuckDB query with storage failed:', err)

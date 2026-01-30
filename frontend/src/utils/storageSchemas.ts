@@ -17,6 +17,7 @@ export const SettingsSchema = z.object({
   autofixEnabled: z.boolean(),
   themePreference: ThemePreferenceSchema,
   showEditorLineNumbers: z.boolean(),
+  editorFontSize: z.number().min(8).max(24),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/)
 }).partial() // All fields optional since we merge with defaults
 

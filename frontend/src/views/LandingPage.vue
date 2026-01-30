@@ -81,6 +81,7 @@ const webApplicationSchema = {
     'PostgreSQL integration',
     'CSV file analysis',
     'Schema explorer',
+    'Go to definition (Cmd+click)',
     'AI SQL fixer (Pro)'
   ]
 }
@@ -264,7 +265,7 @@ const toggleFaq = (index: number) => {
             <span class="bracket">]</span>
           </div>
           <h3>Smart SQL editor</h3>
-          <p>Auto-completion that knows your schema. Syntax highlighting. Use keyboard shortcuts. Works like you expect.</p>
+          <p>Auto-completion that knows your schema. Syntax highlighting. Cmd+click to jump to table definitions. Works like you expect.</p>
         </div>
 
         <div class="feature-card">

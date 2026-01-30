@@ -123,6 +123,14 @@ const runButtonTooltip = computed(() => {
 const languageCompartment = new Compartment()
 const lineNumbersCompartment = new Compartment()
 const autocompleteCompartment = new Compartment()
+const fontSizeCompartment = new Compartment()
+
+// Create a dynamic font size extension
+const fontSizeExtension = (size: number) => EditorView.theme({
+  '&': { fontSize: `${size}px` },
+  '.cm-content': { fontSize: `${size}px` },
+  '.cm-gutters': { fontSize: `${size}px` },
+})
 
 // State effect to set suggestions
 const setSuggestions = StateEffect.define<LineSuggestion | null>()
@@ -424,6 +432,15 @@ watch(() => settingsStore.showEditorLineNumbers, (show) => {
   }
 })
 
+// Watch for font size setting changes
+watch(() => settingsStore.editorFontSize, (size) => {
+  if (editorView.value) {
+    editorView.value.dispatch({
+      effects: fontSizeCompartment.reconfigure(fontSizeExtension(size))
+    })
+  }
+})
+
 // Clear dry run result when query changes (to show fresh estimate on next hover)
 watch(() => props.modelValue, () => {
   // Only reset if the query actually changed from what we estimated
@@ -477,6 +494,7 @@ onMounted(() => {
     extensions: [
       // Custom setup without indentation handling or code folding
       lineNumbersCompartment.of(settingsStore.showEditorLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []),
+      fontSizeCompartment.of(fontSizeExtension(settingsStore.editorFontSize)),
       highlightSpecialChars(),
       history(),
       drawSelection({ cursorBlinkRate: 0 }),

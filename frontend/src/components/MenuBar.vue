@@ -154,6 +154,7 @@ const addDatabaseMenuOpen = ref(false)
 // Settings state
 const fetchBatchInputValue = ref<number | string>(settingsStore.fetchBatchSize)
 const paginationInputValue = ref<number | string>(settingsStore.paginationSize)
+const editorFontSizeInputValue = ref<number | string>(settingsStore.editorFontSize)
 
 // Toggle dropdown - opening one closes all others
 const toggleDropdown = (dropdown: string) => {
@@ -379,6 +380,22 @@ const handlePaginationChange = (e: Event) => {
   }, 500)
 }
 
+// Handle editor font size changes with debouncing
+let fontSizeDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const handleEditorFontSizeChange = (e: Event) => {
+  const value = (e.target as HTMLInputElement).value
+  editorFontSizeInputValue.value = value
+
+  // Debounce setting the value
+  if (fontSizeDebounceTimer) clearTimeout(fontSizeDebounceTimer)
+  fontSizeDebounceTimer = setTimeout(() => {
+    const numValue = parseInt(value, 10)
+    if (!isNaN(numValue) && numValue >= 8 && numValue <= 24) {
+      settingsStore.setEditorFontSize(numValue)
+    }
+  }, 500)
+}
+
 // Sync fetch batch input when store changes
 watch(() => settingsStore.fetchBatchSize, (newValue) => {
   fetchBatchInputValue.value = newValue
@@ -387,6 +404,11 @@ watch(() => settingsStore.fetchBatchSize, (newValue) => {
 // Sync pagination input when store changes
 watch(() => settingsStore.paginationSize, (newValue) => {
   paginationInputValue.value = newValue
+})
+
+// Sync editor font size input when store changes
+watch(() => settingsStore.editorFontSize, (newValue) => {
+  editorFontSizeInputValue.value = newValue
 })
 
 // Close dropdown when clicking outside
@@ -681,6 +703,39 @@ onUnmounted(() => {
           </div>
 
           <div class="settings-section">
+            <div class="setting-header">Code editor</div>
+            <div class="setting-description">
+              Configure the SQL editor appearance
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">
+                <span>Font size</span>
+                <input
+                  type="number"
+                  :value="editorFontSizeInputValue"
+                  @input="handleEditorFontSizeChange"
+                  min="8"
+                  max="24"
+                  class="setting-input-number"
+                />
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">
+                <input
+                  type="checkbox"
+                  :checked="settingsStore.showEditorLineNumbers"
+                  @change="settingsStore.toggleEditorLineNumbers"
+                  class="setting-checkbox"
+                />
+                <span>Show line numbers</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="settings-section">
             <div class="setting-header">Appearance</div>
             <div class="setting-description">
               Change the look and feel of the canvas
@@ -698,18 +753,6 @@ onUnmounted(() => {
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                 </select>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">
-                <input
-                  type="checkbox"
-                  :checked="settingsStore.showEditorLineNumbers"
-                  @change="settingsStore.toggleEditorLineNumbers"
-                  class="setting-checkbox"
-                />
-                <span>Show editor line numbers</span>
               </label>
             </div>
           </div>

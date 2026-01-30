@@ -14,7 +14,9 @@ interface Settings {
   panToBoxOnSelect: boolean
   autofixEnabled: boolean
   themePreference: ThemePreference
+  // Code editor settings
   showEditorLineNumbers: boolean
+  editorFontSize: number  // Font size in pixels for code editor
   accentColor: string  // Highlighter color for Cmd+click table links
 }
 
@@ -27,6 +29,7 @@ const DEFAULT_SETTINGS: Settings = {
   autofixEnabled: true,
   themePreference: 'system',
   showEditorLineNumbers: false,
+  editorFontSize: 13,  // Default font size in pixels for code editor
   accentColor: '#9333ea'  // Purple (default accent color)
 }
 
@@ -79,6 +82,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Editor settings
   const showEditorLineNumbers = ref(savedSettings.showEditorLineNumbers)
+  const editorFontSize = ref(savedSettings.editorFontSize)
 
   // Table link highlight color
   const accentColor = ref(savedSettings.accentColor)
@@ -96,7 +100,7 @@ export const useSettingsStore = defineStore('settings', () => {
   })
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, accentColor], () => {
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, accentColor], () => {
     saveSettings({
       fetchBatchSize: fetchBatchSize.value,
       fetchPaginationEnabled: fetchPaginationEnabled.value,
@@ -105,6 +109,7 @@ export const useSettingsStore = defineStore('settings', () => {
       autofixEnabled: autofixEnabled.value,
       themePreference: themePreference.value,
       showEditorLineNumbers: showEditorLineNumbers.value,
+      editorFontSize: editorFontSize.value,
       accentColor: accentColor.value
     })
   })
@@ -151,6 +156,13 @@ export const useSettingsStore = defineStore('settings', () => {
     showEditorLineNumbers.value = !showEditorLineNumbers.value
   }
 
+  const setEditorFontSize = (value: string | number) => {
+    const numValue = typeof value === 'string' ? parseInt(value, 10) : value
+    if (numValue >= 8 && numValue <= 24) {
+      editorFontSize.value = numValue
+    }
+  }
+
   const setTableLinkHighlightColor = (color: string) => {
     // Validate hex color format
     if (/^#[0-9a-fA-F]{6}$/.test(color)) {
@@ -166,6 +178,7 @@ export const useSettingsStore = defineStore('settings', () => {
     autofixEnabled.value = DEFAULT_SETTINGS.autofixEnabled
     themePreference.value = DEFAULT_SETTINGS.themePreference
     showEditorLineNumbers.value = DEFAULT_SETTINGS.showEditorLineNumbers
+    editorFontSize.value = DEFAULT_SETTINGS.editorFontSize
     accentColor.value = DEFAULT_SETTINGS.accentColor
   }
 
@@ -190,6 +203,8 @@ export const useSettingsStore = defineStore('settings', () => {
     // Editor settings
     showEditorLineNumbers,
     toggleEditorLineNumbers,
+    editorFontSize,
+    setEditorFontSize,
     // Table link highlight
     accentColor,
     setTableLinkHighlightColor,
