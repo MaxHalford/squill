@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useQueryResultsStore } from '../stores/queryResults'
-import { getTypeCategory } from '../utils/typeUtils'
+import { getTypeCategory, simplifyTypeName } from '../utils/typeUtils'
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 
 interface QueryStats {
@@ -498,7 +498,7 @@ defineExpose({ resetPagination })
                 <!-- Left group: type icon, column name, analytics button -->
                 <span class="column-info">
                   <!-- Type icon -->
-                  <span class="type-icon" v-tooltip="columnTypes[column]">
+                  <span class="type-icon" v-tooltip="simplifyTypeName(columnTypes[column])">
                     <!-- Number type -->
                     <svg v-if="getTypeCategory(columnTypes[column] || '') === 'number'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                       <rect x="2" y="5" width="3" height="8" rx="0.5"/>
@@ -521,9 +521,10 @@ defineExpose({ resetPagination })
                     <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'binary'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                       <path d="M5.526 13.09c.976 0 1.524-.79 1.524-2.205 0-1.412-.548-2.203-1.524-2.203-.978 0-1.526.79-1.526 2.203 0 1.415.548 2.206 1.526 2.206zm-.832-2.205c0-1.05.29-1.612.832-1.612.358 0 .607.247.733.721L4.7 11.137a6.749 6.749 0 0 1-.006-.252zm.832 1.614c-.36 0-.606-.246-.732-.718l1.556-1.145c.003.079.005.164.005.258 0 1.05-.29 1.605-.829 1.605zm5.329.501v-.595H9.73V8.772h-.69l-1.19.786v.688L8.986 9.5h.05v2.906h-1.18V13h3z"/>
                     </svg>
-                    <!-- JSON/struct type -->
-                    <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'json'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M6.95.435c-.58-.58-1.52-.58-2.1 0L.436 4.85c-.58.58-.58 1.519 0 2.098l4.414 4.414c.58.58 1.519.58 2.098 0l4.414-4.414c.58-.58.58-1.519 0-2.098L6.95.435zm1.4 1.4a.495.495 0 0 1 0 .7L6.05 4.835a.495.495 0 0 1-.7 0L3.05 2.535a.495.495 0 0 1 0-.7l2.3-2.3a.495.495 0 0 1 .7 0l2.3 2.3zm0 9.9l-2.3 2.3a.495.495 0 0 1-.7 0l-2.3-2.3a.495.495 0 0 1 0-.7l2.3-2.3a.495.495 0 0 1 .7 0l2.3 2.3a.495.495 0 0 1 0 .7z"/>
+                    <!-- JSON/struct type - curly braces -->
+                    <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'json'" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M4 2C2.5 2 2 3 2 4v2.5c0 .5-.5 1.5-1.5 1.5 1 0 1.5 1 1.5 1.5V12c0 1 .5 2 2 2"/>
+                      <path d="M12 2c1.5 0 2 1 2 2v2.5c0 .5.5 1.5 1.5 1.5-1 0-1.5 1-1.5 1.5V12c0 1-.5 2-2 2"/>
                     </svg>
                   </span>
                   <span class="column-name">{{ column }}</span>

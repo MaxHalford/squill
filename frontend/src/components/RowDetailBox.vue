@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import BaseBox from './BaseBox.vue'
 import JsonTree from './JsonTree.vue'
+import { simplifyTypeName } from '../utils/typeUtils'
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -87,7 +88,7 @@ const formatValue = (value: unknown): string => {
       >
         <div class="field-header">
           <span class="field-label">{{ field }}</span>
-          <span v-if="columnTypes[field]" class="field-type">{{ columnTypes[field] }}</span>
+          <span v-if="columnTypes[field]" class="field-type">{{ simplifyTypeName(columnTypes[field]) }}</span>
         </div>
         <div class="field-value" :class="{ 'null-value': value === null }">
           <JsonTree v-if="isComplexValue(value)" :data="value" :default-expand-depth="2" />
