@@ -298,6 +298,17 @@ body {
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
+/* Text selection highlighting using accent color */
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  color: inherit;
+}
+
+::-moz-selection {
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  color: inherit;
+}
+
 /* Column resize cursor override */
 body.resizing-column,
 body.resizing-column * {
