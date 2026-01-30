@@ -40,24 +40,20 @@ const getErrorMessage = (err: unknown): string => {
 }
 
 // Convert DuckDB/Arrow values to JSON-serializable types
+// Arrow types implement toJSON(), so we leverage JSON.stringify/parse for clean conversion
 const serializeDuckDBValue = (value: unknown): SerializableValue => {
   if (value === null || value === undefined) return null
-  if (typeof value === 'bigint') return Number(value)
-  if (value instanceof Date) return value.toISOString()
-  if (value instanceof Uint8Array) return Array.from(value)
-  if (Array.isArray(value)) return value.map(serializeDuckDBValue)
-  if (typeof value === 'object' && value !== null) {
-    // Handle plain objects (structs, maps)
-    const result: Record<string, SerializableValue> = {}
-    for (const key of Object.keys(value)) {
-      result[key] = serializeDuckDBValue((value as Record<string, unknown>)[key])
-    }
-    return result
-  }
+  if (typeof value === 'bigint') return Number(value) // BigInt not supported by JSON
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return value
   }
-  return String(value)
+  // Use JSON round-trip to leverage Arrow's built-in toJSON() methods
+  // This handles Structs, Lists, Maps, Dates, etc. correctly
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch {
+    return String(value)
+  }
 }
 
 export const useDuckDBStore = defineStore('duckdb', () => {
