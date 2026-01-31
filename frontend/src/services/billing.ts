@@ -27,6 +27,23 @@ export async function createCheckoutSession(sessionToken: string): Promise<Check
 }
 
 /**
+ * Resubscribe by uncanceling a pending cancellation
+ */
+export async function resubscribe(sessionToken: string): Promise<void> {
+  const response = await fetch(`${BACKEND_URL}/billing/resubscribe`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${sessionToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to resubscribe')
+  }
+}
+
+/**
  * Open Polar embedded checkout
  */
 export async function openPolarCheckout(checkoutUrl: string): Promise<void> {

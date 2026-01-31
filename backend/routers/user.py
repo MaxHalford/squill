@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -19,6 +20,8 @@ class UserProfileResponse(BaseModel):
     email: str
     plan: str
     is_vip: bool
+    plan_expires_at: datetime | None
+    subscription_cancel_at_period_end: bool
 
 
 @router.get("/me", response_model=UserProfileResponse)
@@ -29,6 +32,8 @@ async def get_user_profile(user: User = Depends(get_current_user)):
         email=user.email,
         plan=user.plan,
         is_vip=user.is_vip,
+        plan_expires_at=user.plan_expires_at,
+        subscription_cancel_at_period_end=user.subscription_cancel_at_period_end,
     )
 
 

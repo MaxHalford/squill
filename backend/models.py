@@ -38,6 +38,10 @@ class User(Base):
     polar_subscription_id: Mapped[str | None] = mapped_column(
         String(255), unique=True, nullable=True
     )
+    # True if user canceled but still has access until plan_expires_at
+    subscription_cancel_at_period_end: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
 
     # VIP status - allows Pro features without subscription
     is_vip: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

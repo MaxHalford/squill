@@ -33,16 +33,20 @@ class CheckoutSessionResponse(BaseModel):
 
 
 async def cancel_polar_subscription(subscription_id: str) -> bool:
-    """Cancel a subscription via Polar API."""
+    """Cancel a subscription via Polar API (at period end)."""
     if not subscription_id:
         return False
 
     try:
-        polar.subscriptions.cancel(id=subscription_id)
-        logger.info(f"Canceled Polar subscription {subscription_id}")
+        # Use update with cancel_at_period_end to allow access until period ends
+        polar.subscriptions.update(
+            id=subscription_id,
+            subscription_update={"cancel_at_period_end": True},
+        )
+        logger.info(f"Canceled Polar subscription {subscription_id} (at period end)")
         return True
     except Exception as e:
-        logger.error(f"Error canceling subscription {subscription_id}: {e}")
+        logger.exception(f"Error canceling subscription {subscription_id}")
         return False
 
 
@@ -71,6 +75,44 @@ async def create_checkout_session(user: User = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Failed to create checkout session")
 
 
+@router.post("/cancel-subscription")
+async def cancel_subscription(user: User = Depends(get_current_user)):
+    """Cancel the user's Pro subscription."""
+    if user.plan != "pro":
+        raise HTTPException(status_code=400, detail="No active subscription to cancel")
+
+    if not user.polar_subscription_id:
+        raise HTTPException(status_code=400, detail="No subscription found")
+
+    success = await cancel_polar_subscription(user.polar_subscription_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to cancel subscription")
+
+    return {"status": "ok"}
+
+
+@router.post("/resubscribe")
+async def resubscribe(user: User = Depends(get_current_user)):
+    """Resubscribe by uncanceling a pending cancellation."""
+    if not user.subscription_cancel_at_period_end:
+        raise HTTPException(status_code=400, detail="No pending cancellation to undo")
+
+    if not user.polar_subscription_id:
+        raise HTTPException(status_code=400, detail="No subscription found")
+
+    try:
+        # Uncancel the subscription
+        polar.subscriptions.update(
+            id=user.polar_subscription_id,
+            subscription_update={"cancel_at_period_end": False},
+        )
+        logger.info(f"Resubscribed user {user.email}")
+        return {"status": "ok"}
+    except Exception as e:
+        logger.exception(f"Error resubscribing user {user.email}")
+        raise HTTPException(status_code=500, detail="Failed to resubscribe")
+
+
 @router.post("/webhook")
 async def polar_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """Handle Polar webhook events."""
@@ -84,17 +126,29 @@ async def polar_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     event_type = event.TYPE
-    data = event.data
+    subscription = event.data
 
     logger.info(f"Received Polar webhook: {event_type}")
 
-    if event_type == "subscription.created":
-        await handle_subscription_created(data, db)
-    elif event_type == "subscription.updated":
-        await handle_subscription_updated(data, db)
+    if event_type == "subscription.active":
+        # Payment succeeded, subscription is now active
+        await handle_subscription_active(subscription, db)
     elif event_type == "subscription.canceled":
-        await handle_subscription_canceled(data, db)
-    # Ignore other events like checkout.created, checkout.updated, etc.
+        # User canceled, but subscription remains active until period ends
+        await handle_subscription_canceled(subscription, db)
+    elif event_type == "subscription.uncanceled":
+        # User resubscribed before period ended
+        await handle_subscription_uncanceled(subscription, db)
+    elif event_type == "subscription.revoked":
+        # Subscription has ended (after cancellation period or immediate revoke)
+        await handle_subscription_revoked(subscription, db)
+    elif event_type == "subscription.past_due":
+        # Payment failed
+        await handle_subscription_past_due(subscription, db)
+    elif event_type == "subscription.updated":
+        # General updates (renewal, plan change, etc.)
+        await handle_subscription_updated(subscription, db)
+    # Ignore: subscription.created (wait for active), checkout.*, etc.
 
     return {"status": "ok"}
 
@@ -102,8 +156,8 @@ async def polar_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 # Webhook Handlers
 
 
-async def handle_subscription_created(subscription, db: AsyncSession):
-    """Handle new subscription - activate Pro plan."""
+async def handle_subscription_active(subscription, db: AsyncSession):
+    """Handle subscription.active - payment succeeded, activate Pro plan."""
     customer_id = subscription.customer_id
     subscription_id = subscription.id
     customer_email = subscription.customer.email if subscription.customer else None
@@ -119,7 +173,7 @@ async def handle_subscription_created(subscription, db: AsyncSession):
                 customer_email = user.email
 
     if not customer_email:
-        logger.warning(f"No email found in subscription.created for {subscription_id}")
+        logger.warning(f"No email found in subscription.active for {subscription_id}")
         return
 
     result = await db.execute(select(User).where(User.email == customer_email))
@@ -132,6 +186,7 @@ async def handle_subscription_created(subscription, db: AsyncSession):
     user.plan = "pro"
     user.polar_customer_id = customer_id
     user.polar_subscription_id = subscription_id
+    user.subscription_cancel_at_period_end = False  # Fresh subscription
 
     if subscription.current_period_end:
         user.plan_expires_at = subscription.current_period_end
@@ -141,9 +196,8 @@ async def handle_subscription_created(subscription, db: AsyncSession):
 
 
 async def handle_subscription_updated(subscription, db: AsyncSession):
-    """Handle subscription updates (renewal, etc.)."""
+    """Handle subscription.updated - renewal, plan change, etc."""
     subscription_id = subscription.id
-    status = subscription.status
 
     result = await db.execute(
         select(User).where(User.polar_subscription_id == subscription_id)
@@ -154,22 +208,16 @@ async def handle_subscription_updated(subscription, db: AsyncSession):
         logger.warning(f"User not found for subscription {subscription_id}")
         return
 
-    if status == "active":
-        user.plan = "pro"
-        if subscription.current_period_end:
-            user.plan_expires_at = subscription.current_period_end
-        logger.info(f"Updated subscription for user {user.email}, status: {status}")
-    elif status == "canceled":
-        # Subscription canceled but may still be active until period ends
-        logger.info(f"Subscription canceled for user {user.email}")
-    elif status == "past_due":
-        logger.warning(f"Subscription past_due for user {user.email}")
+    # Update expiration date on renewal
+    if subscription.current_period_end:
+        user.plan_expires_at = subscription.current_period_end
 
     await db.commit()
+    logger.info(f"Updated subscription for user {user.email}")
 
 
 async def handle_subscription_canceled(subscription, db: AsyncSession):
-    """Handle subscription cancellation (end of billing period)."""
+    """Handle subscription.canceled - user canceled but still has access until period ends."""
     subscription_id = subscription.id
 
     result = await db.execute(
@@ -181,10 +229,76 @@ async def handle_subscription_canceled(subscription, db: AsyncSession):
         logger.warning(f"User not found for canceled subscription {subscription_id}")
         return
 
+    # Mark as canceling - user keeps Pro until period ends
+    user.subscription_cancel_at_period_end = True
+    if subscription.current_period_end:
+        user.plan_expires_at = subscription.current_period_end
+
+    await db.commit()
+    logger.info(
+        f"Subscription canceled for user {user.email}, "
+        f"access until {subscription.current_period_end}"
+    )
+
+
+async def handle_subscription_uncanceled(subscription, db: AsyncSession):
+    """Handle subscription.uncanceled - user resubscribed before period ended."""
+    subscription_id = subscription.id
+
+    result = await db.execute(
+        select(User).where(User.polar_subscription_id == subscription_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        logger.warning(f"User not found for uncanceled subscription {subscription_id}")
+        return
+
+    # User resubscribed - clear the cancel flag
+    user.subscription_cancel_at_period_end = False
+
+    await db.commit()
+    logger.info(f"Subscription reactivated for user {user.email}")
+
+
+async def handle_subscription_revoked(subscription, db: AsyncSession):
+    """Handle subscription.revoked - subscription has ended, remove Pro access."""
+    subscription_id = subscription.id
+
+    result = await db.execute(
+        select(User).where(User.polar_subscription_id == subscription_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        logger.warning(f"User not found for revoked subscription {subscription_id}")
+        return
+
     user.plan = "free"
     user.polar_subscription_id = None
     user.plan_expires_at = None
+    user.subscription_cancel_at_period_end = False
     # Keep polar_customer_id for potential resubscription
 
     await db.commit()
-    logger.info(f"Subscription ended for user {user.email}")
+    logger.info(f"Subscription ended for user {user.email}, reverted to free plan")
+
+
+async def handle_subscription_past_due(subscription, db: AsyncSession):
+    """Handle subscription.past_due - payment failed."""
+    subscription_id = subscription.id
+
+    result = await db.execute(
+        select(User).where(User.polar_subscription_id == subscription_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        logger.warning(f"User not found for past_due subscription {subscription_id}")
+        return
+
+    # Log the issue - Polar will retry payment and send revoked if it fails permanently
+    logger.warning(
+        f"Payment failed for user {user.email}, subscription {subscription_id}. "
+        "Polar will retry payment automatically."
+    )

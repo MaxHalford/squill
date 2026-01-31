@@ -62,6 +62,8 @@ const handleLoginFlow = async (code: string): Promise<void> => {
     email: data.user.email,
     plan: data.user.plan,
     isVip: data.user.is_vip ?? false,
+    planExpiresAt: data.user.plan_expires_at ?? null,
+    subscriptionCancelAtPeriodEnd: data.user.subscription_cancel_at_period_end ?? false,
   }, data.session_token)
 }
 
@@ -92,6 +94,8 @@ const handleBigQueryFlow = async (code: string): Promise<void> => {
     email: data.user.email,
     plan: data.user.plan,
     isVip: data.user.is_vip ?? false,
+    planExpiresAt: data.user.plan_expires_at ?? null,
+    subscriptionCancelAtPeriodEnd: data.user.subscription_cancel_at_period_end ?? false,
   }, data.session_token)
 
   // Add connection with access token (stored in memory)

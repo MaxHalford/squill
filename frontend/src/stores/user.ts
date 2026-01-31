@@ -173,6 +173,8 @@ export const useUserStore = defineStore('user', () => {
         email: data.email,
         plan: data.plan as 'free' | 'pro',
         isVip: data.is_vip ?? false,
+        planExpiresAt: data.plan_expires_at ?? null,
+        subscriptionCancelAtPeriodEnd: data.subscription_cancel_at_period_end ?? false,
       }
 
       return user.value
@@ -319,6 +321,49 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /**
+   * Cancel the current Pro subscription
+   */
+  const cancelSubscription = async (): Promise<void> => {
+    if (!sessionToken.value) {
+      throw new Error('Must be logged in to cancel subscription')
+    }
+
+    const response = await fetch(`${BACKEND_URL}/billing/cancel-subscription`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${sessionToken.value}`,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Failed to cancel subscription')
+    }
+
+    // Optimistically update local state (webhook will also update backend)
+    if (user.value) {
+      user.value = { ...user.value, subscriptionCancelAtPeriodEnd: true }
+    }
+  }
+
+  /**
+   * Resubscribe by uncanceling a pending cancellation
+   */
+  const resubscribeAction = async (): Promise<void> => {
+    if (!sessionToken.value) {
+      throw new Error('Must be logged in to resubscribe')
+    }
+
+    const { resubscribe } = await import('../services/billing')
+    await resubscribe(sessionToken.value)
+
+    // Optimistically update local state (webhook will also update backend)
+    if (user.value) {
+      user.value = { ...user.value, subscriptionCancelAtPeriodEnd: false }
+    }
+  }
+
   // Auto-fetch profile on store creation to sync plan status from backend
   if (sessionToken.value) {
     fetchProfile().catch((err) => {
@@ -347,5 +392,7 @@ export const useUserStore = defineStore('user', () => {
     deleteAccount,
     clearError,
     upgradeToProCheckout,
+    cancelSubscription,
+    resubscribeAction,
   }
 })

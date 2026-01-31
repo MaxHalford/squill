@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,6 +14,12 @@ from routers.connections import router as connections_router
 from routers.postgres import router as postgres_router
 from routers.snowflake import router as snowflake_router
 from routers.user import router as user_router
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s - %(name)s - %(message)s",
+)
 
 
 def run_migrations() -> None:

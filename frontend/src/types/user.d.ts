@@ -11,6 +11,8 @@ export interface User {
   email: string
   plan: PlanType
   isVip: boolean
+  planExpiresAt: string | null
+  subscriptionCancelAtPeriodEnd: boolean
 }
 
 /**
@@ -30,4 +32,6 @@ export interface UserProfileResponse {
   email: string
   plan: string
   is_vip: boolean
+  plan_expires_at: string | null
+  subscription_cancel_at_period_end: boolean
 }

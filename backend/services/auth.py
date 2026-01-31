@@ -87,4 +87,16 @@ async def get_current_user(
             detail="Invalid session.",
         )
 
+    # Check for expired Pro subscription (safety net if webhook missed)
+    if user.plan == "pro" and user.plan_expires_at:
+        expires_at = user.plan_expires_at
+        # Handle naive datetimes from SQLite (assume UTC)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
+            user.plan = "free"
+            user.polar_subscription_id = None
+            user.plan_expires_at = None
+            await db.commit()
+
     return user

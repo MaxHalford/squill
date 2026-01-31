@@ -107,7 +107,9 @@ export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
   plan: PlanTypeSchema,
-  isVip: z.boolean()
+  isVip: z.boolean(),
+  planExpiresAt: z.string().nullable().optional().default(null),
+  subscriptionCancelAtPeriodEnd: z.boolean().optional().default(false)
 })
 
 export type UserData = z.infer<typeof UserSchema>

@@ -50,28 +50,100 @@
 
           <div class="plan-card">
             <div class="plan-status">
-              <span class="plan-badge" :class="userStore.user?.plan">
+              <span class="plan-badge" :class="badgeClass">
                 {{ planLabel }}
               </span>
             </div>
-            <p class="plan-description">
-              {{ planDescription }}
-            </p>
 
-            <!-- Users without Pro subscription see upgrade button -->
-            <button
-              v-if="userStore.user?.plan !== 'pro'"
-              class="upgrade-button"
-              :disabled="isUpgrading"
-              @click="handleUpgrade"
-            >
-              {{ isUpgrading ? 'Loading...' : 'Upgrade to Pro' }}
-            </button>
+            <!-- VIP users -->
+            <template v-if="userStore.user?.isVip">
+              <p class="plan-description">
+                You have lifetime Pro access. Enjoy all Pro features forever.
+              </p>
 
-            <!-- Pro subscribers see subscription info -->
-            <p v-else class="manage-info">
-              Manage your subscription via the email from Polar.
-            </p>
+              <!-- VIP without subscription -->
+              <button
+                v-if="userStore.user?.plan !== 'pro'"
+                class="support-button"
+                :disabled="isUpgrading"
+                @click="handleUpgrade"
+              >
+                {{ isUpgrading ? 'Loading...' : 'Support Squill with a subscription' }}
+              </button>
+
+              <!-- VIP with active subscription -->
+              <template v-else-if="!userStore.user?.subscriptionCancelAtPeriodEnd">
+                <p class="subscription-info">
+                  Thank you for your support! Renews on <strong>{{ formatDate(userStore.user?.planExpiresAt) }}</strong>
+                </p>
+                <button
+                  class="cancel-button"
+                  :disabled="isCanceling"
+                  @click="handleCancelSubscription"
+                >
+                  {{ isCanceling ? 'Canceling...' : 'Cancel subscription' }}
+                </button>
+              </template>
+
+              <!-- VIP with canceled subscription -->
+              <template v-else>
+                <p class="subscription-info">
+                  Your support subscription ends on <strong>{{ formatDate(userStore.user?.planExpiresAt) }}</strong>
+                </p>
+                <button
+                  class="support-button"
+                  :disabled="isUpgrading"
+                  @click="handleResubscribe"
+                >
+                  {{ isUpgrading ? 'Loading...' : 'Resubscribe' }}
+                </button>
+              </template>
+            </template>
+
+            <!-- Pro subscribers (active, will renew) -->
+            <template v-else-if="userStore.user?.plan === 'pro' && !userStore.user?.subscriptionCancelAtPeriodEnd">
+              <p class="plan-description">
+                You have access to all Pro features including cloud sync and advanced integrations.
+              </p>
+              <p class="subscription-info">
+                Renews on <strong>{{ formatDate(userStore.user?.planExpiresAt) }}</strong>
+              </p>
+              <button
+                class="cancel-button"
+                :disabled="isCanceling"
+                @click="handleCancelSubscription"
+              >
+                {{ isCanceling ? 'Canceling...' : 'Cancel subscription' }}
+              </button>
+            </template>
+
+            <!-- Pro subscribers (canceled, access until period end) -->
+            <template v-else-if="userStore.user?.plan === 'pro' && userStore.user?.subscriptionCancelAtPeriodEnd">
+              <p class="plan-description warning">
+                Your subscription is canceled. You'll keep Pro access until <strong>{{ formatDate(userStore.user?.planExpiresAt) }}</strong>.
+              </p>
+              <button
+                class="upgrade-button"
+                :disabled="isUpgrading"
+                @click="handleResubscribe"
+              >
+                {{ isUpgrading ? 'Loading...' : 'Resubscribe' }}
+              </button>
+            </template>
+
+            <!-- Free users -->
+            <template v-else>
+              <p class="plan-description">
+                You are on the free plan. Upgrade to Pro for cloud sync, team features, and more.
+              </p>
+              <button
+                class="upgrade-button"
+                :disabled="isUpgrading"
+                @click="handleUpgrade"
+              >
+                {{ isUpgrading ? 'Loading...' : 'Upgrade to Pro' }}
+              </button>
+            </template>
           </div>
         </section>
 
@@ -116,6 +188,7 @@ const userStore = useUserStore()
 
 const isDeleting = ref(false)
 const isUpgrading = ref(false)
+const isCanceling = ref(false)
 const checkoutStatus = ref<'success' | 'cancelled' | null>(null)
 
 // Handle checkout return
@@ -160,6 +233,34 @@ const handleUpgrade = async () => {
   }
 }
 
+const handleResubscribe = async () => {
+  isUpgrading.value = true
+  try {
+    await userStore.resubscribeAction()
+  } catch {
+    alert('Failed to resubscribe. Please try again.')
+  } finally {
+    isUpgrading.value = false
+  }
+}
+
+const handleCancelSubscription = async () => {
+  const confirmed = window.confirm(
+    'Are you sure you want to cancel your Pro subscription? You will keep access until the end of your billing period.'
+  )
+
+  if (!confirmed) return
+
+  isCanceling.value = true
+  try {
+    await userStore.cancelSubscription()
+  } catch {
+    alert('Failed to cancel subscription. Please try again.')
+  } finally {
+    isCanceling.value = false
+  }
+}
+
 const handleDeleteAccount = async () => {
   const confirmed = window.confirm(
     'Are you sure you want to delete your account? This will permanently remove all your data and cannot be undone.'
@@ -186,18 +287,26 @@ const emailInitial = computed(() => {
 })
 
 const planLabel = computed(() => {
-  const plan = userStore.user?.plan
-  if (plan === 'pro') return 'Pro'
+  if (userStore.user?.isVip) return 'VIP'
+  if (userStore.user?.plan === 'pro') return 'Pro'
   return 'Free'
 })
 
-const planDescription = computed(() => {
-  const plan = userStore.user?.plan
-  if (plan === 'pro') {
-    return 'You have access to all Pro features including cloud sync and advanced integrations.'
-  }
-  return 'You are on the free plan. Upgrade to Pro for cloud sync, team features, and more.'
+const badgeClass = computed(() => {
+  if (userStore.user?.isVip) return 'vip'
+  if (userStore.user?.plan === 'pro') return 'pro'
+  return 'free'
 })
+
+const formatDate = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return 'N/A'
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+}
 </script>
 
 <style scoped>
@@ -379,11 +488,54 @@ h1 {
   border-color: var(--color-accent, #42b883);
 }
 
+.plan-badge.vip {
+  background: linear-gradient(135deg, #d4a017 0%, #ffdf6c 25%, #d4a017 50%, #b8860b 100%);
+  color: #1a0a00;
+  border: 2px solid #8b6914;
+  box-shadow:
+    0 0 8px rgba(212, 160, 23, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  text-shadow: 0 1px 0 rgba(255, 223, 108, 0.5);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  animation: vip-shimmer 3s ease-in-out infinite;
+}
+
+@keyframes vip-shimmer {
+  0%, 100% {
+    box-shadow:
+      0 0 8px rgba(212, 160, 23, 0.6),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 16px rgba(255, 215, 0, 0.8),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  }
+}
+
 .plan-description {
   color: var(--text-secondary, #666);
   font-size: var(--font-size-body, 0.875rem);
-  margin-bottom: var(--space-4, 1rem);
+  margin-bottom: var(--space-3, 0.75rem);
   line-height: 1.5;
+}
+
+.plan-description.warning {
+  color: var(--color-warning, #e65100);
+}
+
+.subscription-info {
+  color: var(--text-secondary, #666);
+  font-size: var(--font-size-body, 0.875rem);
+  margin-bottom: var(--space-4, 1rem);
+}
+
+.subscription-info strong {
+  color: var(--text-primary, black);
 }
 
 .success-banner {
@@ -411,6 +563,47 @@ h1 {
 }
 
 .upgrade-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.support-button {
+  background: transparent;
+  color: var(--text-secondary, #666);
+  border: 1.5px dashed var(--border-secondary, #ccc);
+  padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.support-button:hover:not(:disabled) {
+  border-color: var(--color-accent, #42b883);
+  color: var(--color-accent, #42b883);
+  border-style: solid;
+}
+
+.support-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-button {
+  background: transparent;
+  color: var(--text-secondary, #666);
+  border: 1.5px solid var(--border-secondary, #ddd);
+  padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.cancel-button:hover:not(:disabled) {
+  border-color: var(--color-error, #c62828);
+  color: var(--color-error, #c62828);
+}
+
+.cancel-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
