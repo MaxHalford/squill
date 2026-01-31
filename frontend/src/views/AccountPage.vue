@@ -593,39 +593,6 @@ h1 {
   cursor: not-allowed;
 }
 
-.manage-info {
-  color: var(--text-secondary, #666);
-  font-size: var(--font-size-body, 0.875rem);
-  margin: 0;
-}
-
-/* Settings Card */
-.settings-card {
-  padding: var(--space-4, 1rem);
-  border: 1.5px solid var(--border-secondary, #ddd);
-  background: var(--surface-secondary, #f9f9f9);
-}
-
-.settings-card p {
-  color: var(--text-secondary, #666);
-  font-size: var(--font-size-body, 0.875rem);
-  margin-bottom: var(--space-3, 0.75rem);
-}
-
-.settings-link {
-  background: transparent;
-  border: 1.5px solid var(--border-primary, black);
-  color: var(--text-primary, black);
-  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.1s ease;
-}
-
-.settings-link:hover {
-  background: var(--surface-secondary, #f5f5f5);
-}
-
 /* Danger Zone */
 .danger-zone h2 {
   color: var(--color-error, #c62828);

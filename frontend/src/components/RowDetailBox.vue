@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import BaseBox from './BaseBox.vue'
 import JsonTree from './JsonTree.vue'
-import { simplifyTypeName } from '../utils/typeUtils'
+import { simplifyTypeName, getTypeCategory, formatDateValue } from '../utils/typeUtils'
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -55,10 +55,13 @@ const isComplexValue = (value: unknown): boolean => {
   return value !== null && typeof value === 'object'
 }
 
-// Format value for display (handle null, undefined, etc.)
-const formatValue = (value: unknown): string => {
+// Format value for display (handle null, undefined, dates, etc.)
+const formatValue = (value: unknown, columnType?: string): string => {
   if (value === null) return 'null'
   if (value === undefined) return 'undefined'
+  if (columnType && getTypeCategory(columnType) === 'date') {
+    return formatDateValue(value)
+  }
   return String(value)
 }
 </script>
@@ -92,7 +95,7 @@ const formatValue = (value: unknown): string => {
         </div>
         <div class="field-value" :class="{ 'null-value': value === null }">
           <JsonTree v-if="isComplexValue(value)" :data="value" :default-expand-depth="2" />
-          <template v-else>{{ formatValue(value) }}</template>
+          <template v-else>{{ formatValue(value, columnTypes[field]) }}</template>
         </div>
       </div>
       <div v-if="fields.length === 0" class="empty-state">

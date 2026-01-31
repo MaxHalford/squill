@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useQueryResultsStore } from '../stores/queryResults'
-import { getTypeCategory, simplifyTypeName } from '../utils/typeUtils'
+import { getTypeCategory, simplifyTypeName, formatDateValue } from '../utils/typeUtils'
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 
 interface QueryStats {
@@ -273,6 +273,19 @@ const formatTime = (ms: number | undefined): string => {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
 }
 
+// Format cell value based on type
+const formatCellValue = (value: unknown, columnType: string): string => {
+  if (value === null) return 'null'
+
+  const typeCategory = getTypeCategory(columnType)
+
+  if (typeCategory === 'date') {
+    return formatDateValue(value)
+  }
+
+  return String(value)
+}
+
 // Calculate BigQuery on-demand cost ($5 per TB)
 const bigQueryCost = computed(() => {
   // Only show cost for BigQuery, non-cached queries
@@ -511,7 +524,10 @@ defineExpose({ resetPagination })
                     </svg>
                     <!-- Date type -->
                     <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'date'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M4 .5a.5.5 0 0 0-1 0V1H2a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-1V.5a.5.5 0 0 0-1 0V1H4V.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z"/>
+                      <rect x="2" y="3" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                      <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="1.5"/>
+                      <line x1="5" y1="1" x2="5" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                      <line x1="11" y1="1" x2="11" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                     </svg>
                     <!-- Boolean type -->
                     <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'boolean'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -588,7 +604,7 @@ defineExpose({ resetPagination })
                 'number-cell': getTypeCategory(columnTypes[column] || '') === 'number'
               }"
             >
-              {{ row[column] === null ? 'null' : row[column] }}
+              {{ formatCellValue(row[column], columnTypes[column] || '') }}
             </td>
           </tr>
         </tbody>

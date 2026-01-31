@@ -11,6 +11,7 @@ import { useQueryResultsStore } from '../stores/queryResults'
 import { useSettingsStore } from '../stores/settings'
 import { buildAnalyticsQuery, type TypeCategory } from '../utils/analyticsQueryBuilder'
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
+import { formatDateValue } from '../utils/typeUtils'
 
 interface AnalyticsData {
   tableName: string
@@ -552,6 +553,15 @@ const formatNumber = (val: number | null | unknown): string => {
   return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
 }
 
+// Format stat value based on type category
+const formatStatValue = (val: unknown): string => {
+  if (val === null || val === undefined) return 'NULL'
+  if (analyticsData.value?.typeCategory === 'date') {
+    return formatDateValue(val)
+  }
+  return formatNumber(val)
+}
+
 const nullCount = computed(() => {
   if (!numericStats.value) return 0
   return numericStats.value.count - numericStats.value.nonNullCount
@@ -649,11 +659,11 @@ onUnmounted(() => {
         <div v-else-if="showStatsGrid" class="stats-grid">
           <div class="stat-card">
             <div class="stat-label">Min</div>
-            <div class="stat-value">{{ formatNumber(numericStats!.min) }}</div>
+            <div class="stat-value">{{ formatStatValue(numericStats!.min) }}</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Max</div>
-            <div class="stat-value">{{ formatNumber(numericStats!.max) }}</div>
+            <div class="stat-value">{{ formatStatValue(numericStats!.max) }}</div>
           </div>
           <div v-if="numericStats!.avg !== null" class="stat-card">
             <div class="stat-label">Average</div>
