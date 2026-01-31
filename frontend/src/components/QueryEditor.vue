@@ -380,8 +380,8 @@ const editorTheme = EditorView.theme({
     borderLeftWidth: '2px'
   },
   // Selection styling - uses accent color
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'var(--color-selection)'
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
+    backgroundColor: 'var(--color-selection) !important'
   },
 }, { dark: false })
 
