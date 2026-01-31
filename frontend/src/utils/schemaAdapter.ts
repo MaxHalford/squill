@@ -1,6 +1,9 @@
 /**
  * Schema adapter for collecting and formatting database schemas
  * across BigQuery, DuckDB, and PostgreSQL in a unified format
+ *
+ * Includes localStorage-backed caching for performance with large schemas.
+ * Schema is only refreshed when explicitly requested by the user.
  */
 
 import { useSchemaStore } from '../stores/bigquerySchema'
@@ -11,10 +14,145 @@ import type { SchemaItem, ScoredSchemaItem } from './textSimilarity'
 
 export type ConnectionType = 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
 
+// localStorage key for schema cache
+const SCHEMA_CACHE_KEY = 'squill-schema-cache'
+
+interface SchemaCacheEntry {
+  items: SchemaItem[]
+  timestamp: number
+}
+
+interface SchemaCache {
+  [key: string]: SchemaCacheEntry
+}
+
+// In-memory cache (loaded from localStorage on first access)
+let memoryCache: SchemaCache | null = null
+
 /**
- * Collect schema items from the appropriate store based on connection type
+ * Get cache key for a connection
+ */
+function getCacheKey(connectionType: ConnectionType, connectionId?: string): string {
+  return connectionId ? `${connectionType}:${connectionId}` : connectionType
+}
+
+/**
+ * Load schema cache from localStorage
+ */
+function loadCache(): SchemaCache {
+  if (memoryCache !== null) return memoryCache
+
+  try {
+    const stored = localStorage.getItem(SCHEMA_CACHE_KEY)
+    memoryCache = stored ? JSON.parse(stored) : {}
+  } catch {
+    memoryCache = {}
+  }
+  return memoryCache!
+}
+
+/**
+ * Save schema cache to localStorage
+ */
+function saveCache(): void {
+  if (!memoryCache) return
+  try {
+    localStorage.setItem(SCHEMA_CACHE_KEY, JSON.stringify(memoryCache))
+  } catch (err) {
+    // localStorage might be full or unavailable
+    console.warn('Failed to save schema cache:', err)
+  }
+}
+
+/**
+ * Get cached schema for a connection (returns empty array if not cached)
+ */
+export function getCachedSchema(
+  connectionType: ConnectionType,
+  connectionId?: string
+): SchemaItem[] {
+  const cache = loadCache()
+  const key = getCacheKey(connectionType, connectionId)
+  return cache[key]?.items || []
+}
+
+/**
+ * Check if schema is cached for a connection
+ */
+export function hasSchemaCache(
+  connectionType: ConnectionType,
+  connectionId?: string
+): boolean {
+  const cache = loadCache()
+  const key = getCacheKey(connectionType, connectionId)
+  return key in cache
+}
+
+/**
+ * Refresh and cache schema for a connection.
+ * This should only be called when user explicitly requests a refresh.
+ */
+export function refreshSchemaCache(
+  connectionType: ConnectionType,
+  connectionId?: string
+): SchemaItem[] {
+  const items = doCollectSchema(connectionType, connectionId)
+  const cache = loadCache()
+  const key = getCacheKey(connectionType, connectionId)
+
+  cache[key] = {
+    items,
+    timestamp: Date.now()
+  }
+
+  saveCache()
+  return items
+}
+
+/**
+ * Clear schema cache for a specific connection or all connections
+ */
+export function clearSchemaCache(
+  connectionType?: ConnectionType,
+  connectionId?: string
+): void {
+  const cache = loadCache()
+
+  if (connectionType) {
+    const key = getCacheKey(connectionType, connectionId)
+    delete cache[key]
+  } else {
+    // Clear all
+    Object.keys(cache).forEach(key => delete cache[key])
+  }
+
+  saveCache()
+}
+
+/**
+ * Collect schema items from the appropriate store based on connection type.
+ * Returns cached data if available, otherwise collects fresh data and caches it.
+ *
+ * For performance-critical paths (like search), use getCachedSchema() directly.
  */
 export function collectSchemaForConnection(
+  connectionType: ConnectionType,
+  connectionId?: string
+): SchemaItem[] {
+  // Return cached data if available
+  const cached = getCachedSchema(connectionType, connectionId)
+  if (cached.length > 0) {
+    return cached
+  }
+
+  // No cache - collect fresh and cache it
+  return refreshSchemaCache(connectionType, connectionId)
+}
+
+/**
+ * Internal: Actually collect schema from stores (no caching)
+ */
+function doCollectSchema(
   connectionType: ConnectionType,
   connectionId?: string
 ): SchemaItem[] {

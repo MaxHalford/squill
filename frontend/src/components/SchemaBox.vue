@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, inject, onMounted, nextTick } from 'vue'
+import { ref, computed, inject, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import BaseBox from './BaseBox.vue'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useConnectionsStore } from '../stores/connections'
@@ -642,12 +642,28 @@ interface SearchResult {
 }
 
 const searchQuery = ref('')
+const debouncedSearchQuery = ref('')
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// Debounce search query updates for performance with large schemas
+watch(searchQuery, (newValue) => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    debouncedSearchQuery.value = newValue
+  }, 200)
+})
+
+// Cleanup timer on unmount
+onUnmounted(() => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+})
+
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const schemaBrowserRef = ref<HTMLElement | null>(null)
 
-// Computed search results
+// Computed search results (uses debounced query for performance)
 const searchResults = computed<SearchResult[]>(() => {
-  const query = searchQuery.value.trim().toLowerCase()
+  const query = debouncedSearchQuery.value.trim().toLowerCase()
   if (!query) return []
 
   const results: SearchResult[] = []
@@ -841,6 +857,7 @@ const clearSearch = () => {
   searchQuery.value = ''
   searchInputRef.value?.focus()
 }
+
 
 // Highlight matching text in search results
 const highlightMatch = (text: string, query: string): string => {
@@ -1065,9 +1082,9 @@ defineExpose({
             class="search-result-item"
             @click="navigateToSearchResult(result)"
           >
-            <span class="search-result-table" v-html="highlightMatch(result.displayName, searchQuery)"></span>
+            <span class="search-result-table" v-html="highlightMatch(result.displayName, debouncedSearchQuery)"></span>
             <span v-if="result.matchedColumns.length > 0" class="search-result-columns">
-              <span v-html="highlightMatch(result.matchedColumns.slice(0, 3).join(', '), searchQuery)"></span>{{ result.matchedColumns.length > 3 ? '...' : '' }}
+              <span v-html="highlightMatch(result.matchedColumns.slice(0, 3).join(', '), debouncedSearchQuery)"></span>{{ result.matchedColumns.length > 3 ? '...' : '' }}
             </span>
           </div>
         </template>
@@ -1438,9 +1455,14 @@ defineExpose({
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Performance: allow browser to optimize rendering */
+  contain: strict;
 }
 
 .item {
+  /* Performance: skip rendering off-screen items */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -1482,6 +1504,9 @@ defineExpose({
   padding: var(--space-2) var(--space-3);
   gap: var(--space-2);
   cursor: pointer;
+  /* Performance: skip rendering off-screen items */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
 }
 
 .schema-field:hover {

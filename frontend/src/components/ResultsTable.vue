@@ -355,7 +355,10 @@ const resetPagination = () => {
   currentPage.value = 1
 }
 
-// Column resize handlers
+// Column resize handlers with RAF for smooth 60fps updates
+let resizeRAF: number | null = null
+let pendingResizeWidth: number | null = null
+
 const startResize = (event: MouseEvent, column: string) => {
   resizingColumn.value = column
   resizeStartX.value = event.clientX
@@ -370,11 +373,32 @@ const startResize = (event: MouseEvent, column: string) => {
 const handleResize = (event: MouseEvent) => {
   if (!resizingColumn.value) return
   const delta = event.clientX - resizeStartX.value
-  const newWidth = Math.max(140, resizeStartWidth.value + delta)
-  columnWidths.value[resizingColumn.value] = newWidth
+  pendingResizeWidth = Math.max(140, resizeStartWidth.value + delta)
+
+  // Use RAF to batch updates for smooth 60fps resizing
+  if (!resizeRAF) {
+    resizeRAF = requestAnimationFrame(() => {
+      if (resizingColumn.value && pendingResizeWidth !== null) {
+        columnWidths.value[resizingColumn.value] = pendingResizeWidth
+      }
+      resizeRAF = null
+    })
+  }
 }
 
 const stopResize = () => {
+  // Apply any pending resize immediately
+  if (resizingColumn.value && pendingResizeWidth !== null) {
+    columnWidths.value[resizingColumn.value] = pendingResizeWidth
+  }
+
+  // Cancel pending RAF
+  if (resizeRAF) {
+    cancelAnimationFrame(resizeRAF)
+    resizeRAF = null
+  }
+  pendingResizeWidth = null
+
   resizingColumn.value = null
   document.removeEventListener('mousemove', handleResize)
   document.removeEventListener('mouseup', stopResize)

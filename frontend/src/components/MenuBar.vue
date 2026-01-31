@@ -15,6 +15,7 @@ import {
   getConnectionDisplayName,
   connectionRequiresAuth
 } from '../utils/connectionHelpers'
+import { refreshSchemaCache } from '../utils/schemaAdapter'
 import PostgresConnectionModal from './PostgresConnectionModal.vue'
 import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
 import CanvasDropdown from './CanvasDropdown.vue'
@@ -310,6 +311,7 @@ const handleRefreshSchemas = async () => {
 
     // Refresh DuckDB (always available)
     await duckdbStore.loadTablesMetadata()
+    refreshSchemaCache('duckdb') // Update localStorage cache
     refreshedCount++
 
     // Refresh all BigQuery connections with project IDs (token refresh handled automatically)
@@ -319,16 +321,22 @@ const handleRefreshSchemas = async () => {
         refreshedCount++
       }
     }
+    // Update BigQuery cache once after all connections refreshed
+    if (connections.some(c => c.type === 'bigquery')) {
+      refreshSchemaCache('bigquery')
+    }
 
     // Refresh all PostgreSQL connections
     for (const conn of connections.filter(c => c.type === 'postgres')) {
       await postgresStore.refreshSchemas(conn.id)
+      refreshSchemaCache('postgres', conn.id) // Update localStorage cache
       refreshedCount++
     }
 
     // Refresh all Snowflake connections
     for (const conn of connections.filter(c => c.type === 'snowflake')) {
       await snowflakeStore.refreshSchemas(conn.id)
+      refreshSchemaCache('snowflake', conn.id) // Update localStorage cache
       refreshedCount++
     }
 
