@@ -508,9 +508,13 @@ defineExpose({ resetPagination })
 <template>
   <section class="results-section">
     <div v-if="error" class="error-banner" role="alert">
-      <span>{{ error }}</span>
-      <span v-if="isFetchingFix" class="fix-loading">Getting fix suggestion...</span>
-      <span v-else-if="noRelevantFix" class="no-fix-found">No relevant fix found</span>
+      <div class="error-message">{{ error }}</div>
+      <div class="fix-status-wrapper" :class="{ 'has-content': isFetchingFix || noRelevantFix }">
+        <div class="fix-status-inner">
+          <span v-if="isFetchingFix">Getting fix suggestion...</span>
+          <span v-else-if="noRelevantFix">No relevant fix found</span>
+        </div>
+      </div>
     </div>
 
     <div class="table-container" role="region" aria-label="Query results" tabindex="0">
@@ -739,25 +743,34 @@ defineExpose({ resetPagination })
   padding: var(--space-2) var(--space-3);
   background: var(--color-error-bg);
   border-block-end: var(--border-width-thin) solid var(--border-error);
-  color: var(--color-error);
   font-size: var(--font-size-body-sm);
-  font-weight: 600;
   flex-shrink: 0;
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.fix-loading {
+.error-message {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.fix-status-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.fix-status-wrapper.has-content {
+  grid-template-rows: 1fr;
+}
+
+.fix-status-inner {
+  overflow: hidden;
   color: var(--text-secondary);
   font-weight: normal;
   font-style: italic;
-}
-
-.no-fix-found {
-  color: var(--text-secondary);
-  font-weight: normal;
-  font-style: italic;
+  font-size: var(--font-size-caption);
 }
 
 /* Table Container - scrollable region */

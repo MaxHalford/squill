@@ -2,7 +2,6 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
-import { tableFromArrays } from 'apache-arrow'
 import { loadCsvWithDuckDB } from '../services/csvHandler'
 import { sanitizeTableName } from '../utils/sqlSanitize'
 
@@ -171,146 +170,13 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
-  // Infer DuckDB type from JavaScript value (fallback when no schema available)
-  const inferDuckDBType = (value: unknown): string => {
-    if (value === null || value === undefined) return 'VARCHAR'
-    if (typeof value === 'number') {
-      return Number.isInteger(value) ? 'BIGINT' : 'DOUBLE'
-    }
-    if (typeof value === 'boolean') return 'BOOLEAN'
-    if (value instanceof Date) return 'TIMESTAMP'
-    // Check for date/timestamp strings
-    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-      return 'TIMESTAMP'
-    }
-    return 'VARCHAR'
-  }
-
-  // Map BigQuery types to DuckDB types
-  const bigQueryTypeToDuckDB = (sourceType: string): string => {
-    const typeMap: Record<string, string> = {
-      'INT64': 'BIGINT',
-      'INTEGER': 'BIGINT',
-      'FLOAT64': 'DOUBLE',
-      'FLOAT': 'DOUBLE',
-      'NUMERIC': 'DOUBLE',
-      'BIGNUMERIC': 'DOUBLE',
-      'STRING': 'VARCHAR',
-      'BOOL': 'BOOLEAN',
-      'BOOLEAN': 'BOOLEAN',
-      'DATE': 'DATE',
-      'DATETIME': 'TIMESTAMP',
-      'TIMESTAMP': 'TIMESTAMP',
-      'TIME': 'TIME',
-      'BYTES': 'BLOB',
-    }
-    return typeMap[sourceType.toUpperCase()] || 'VARCHAR'
-  }
-
-  // Map Postgres types to DuckDB types
-  const postgresTypeToDuckDB = (pgType: string): string => {
-    const type = pgType.toLowerCase()
-
-    // Integer types
-    if (type.includes('int2') || type.includes('smallint')) return 'SMALLINT'
-    if (type.includes('int4') || type === 'integer' || type === 'int') return 'INTEGER'
-    if (type.includes('int8') || type.includes('bigint')) return 'BIGINT'
-
-    // Floating point types
-    if (type.includes('float4') || type === 'real') return 'FLOAT'
-    if (type.includes('float8') || type.includes('double')) return 'DOUBLE'
-    if (type.includes('numeric') || type.includes('decimal')) return 'DOUBLE'
-
-    // Boolean
-    if (type.includes('bool')) return 'BOOLEAN'
-
-    // Date/time types
-    if (type === 'date') return 'DATE'
-    if (type.includes('timestamp')) return 'TIMESTAMP'
-    if (type === 'time') return 'TIME'
-    if (type.includes('interval')) return 'INTERVAL'
-
-    // Text types
-    if (type.includes('char') || type.includes('text') || type === 'name') return 'VARCHAR'
-
-    // Binary
-    if (type.includes('bytea')) return 'BLOB'
-
-    // JSON
-    if (type.includes('json')) return 'VARCHAR'
-
-    // UUID
-    if (type.includes('uuid')) return 'UUID'
-
-    // Default to VARCHAR for unknown types
-    return 'VARCHAR'
-  }
-
-  // Map source database type to DuckDB type (handles both BigQuery and Postgres)
-  const sourceTypeToDuckDB = (sourceType: string): string => {
-    const type = sourceType.toUpperCase()
-
-    // Check if it looks like a BigQuery type
-    if (['INT64', 'FLOAT64', 'BIGNUMERIC', 'STRING'].some(t => type.includes(t))) {
-      return bigQueryTypeToDuckDB(sourceType)
-    }
-
-    // Otherwise treat as Postgres type
-    return postgresTypeToDuckDB(sourceType)
-  }
-
-  // Convert source database values to appropriate JavaScript types
-  const convertSourceValue = (value: unknown, sourceType: string): unknown => {
-    if (value === null || value === undefined) return null
-    const type = sourceType.toLowerCase()
-
-    // Integer types (BigQuery and Postgres)
-    if (type.includes('int') || type === 'integer' || type === 'bigint' || type === 'smallint') {
-      const parsed = parseInt(String(value), 10)
-      return Number.isNaN(parsed) ? null : parsed
-    }
-    // Float types (BigQuery and Postgres)
-    if (type.includes('float') || type.includes('double') || type.includes('numeric') ||
-        type.includes('decimal') || type === 'real' || type.includes('bignumeric')) {
-      const parsed = parseFloat(String(value))
-      return Number.isNaN(parsed) || !Number.isFinite(parsed) ? null : parsed
-    }
-    // Boolean types
-    if (type.includes('bool')) {
-      return value === 'true' || value === true || value === 't'
-    }
-    return value
-  }
-
-  // Sanitize a value for Arrow/DuckDB insertion (converts NaN/Infinity to null)
-  const sanitizeValue = (value: unknown): unknown => {
-    if (value === null || value === undefined) return null
-    if (typeof value === 'number') {
-      if (Number.isNaN(value) || !Number.isFinite(value)) return null
-    }
-    return value
-  }
-
-  // Format value for SQL INSERT
-  const formatValueForSQL = (value: unknown): string | number | boolean => {
-    if (value === null || value === undefined) return 'NULL'
-    if (typeof value === 'number') {
-      // Handle NaN and Infinity which are valid JS numbers but not valid SQL literals
-      if (Number.isNaN(value)) return 'NULL'
-      if (!Number.isFinite(value)) return 'NULL'  // Handles Infinity and -Infinity
-      return value
-    }
-    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
-    // Escape single quotes and wrap in quotes
-    return `'${String(value).replace(/'/g, "''")}'`
-  }
-
-  // Store query results as DuckDB table
+  // Store query results as DuckDB table using JSON import
+  // This lets DuckDB handle type inference automatically
   const storeResults = async (
     boxName: string,
     results: Record<string, any>[],
     boxId: number | null = null,
-    schema?: ColumnSchema[]
+    _schema?: ColumnSchema[]  // Kept for API compatibility, but not used
   ): Promise<string | null> => {
     if (!isInitialized.value) {
       await initialize()
@@ -322,61 +188,27 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
 
     const tableName = sanitizeTableName(boxName)
-
-    // Build schema lookup map for efficient access
-    const schemaMap = new Map<string, string>()
-    if (schema) {
-      for (const field of schema) {
-        schemaMap.set(field.name, field.type)
-      }
-    }
+    const jsonFileName = `${tableName}.json`
 
     try {
       // Drop existing table if exists
       await conn.value!.query(`DROP TABLE IF EXISTS ${tableName}`)
 
-      // Build column definitions using schema when available
-      const columns = Object.keys(results[0])
-      const columnDefs = columns.map(col => {
-        const sourceType = schemaMap.get(col)
-        if (sourceType) {
-          return `"${col}" ${sourceTypeToDuckDB(sourceType)}`
-        }
-        // Fall back to inference when no schema available (e.g., local DuckDB queries)
-        const sampleValue = results[0][col]
-        return `"${col}" ${inferDuckDBType(sampleValue)}`
-      }).join(', ')
-
-      // Create table
-      await conn.value!.query(`CREATE TABLE ${tableName} (${columnDefs})`)
-
-      // Insert data in batches
-      const BATCH_SIZE = 1000
-      for (let i = 0; i < results.length; i += BATCH_SIZE) {
-        const batch = results.slice(i, i + BATCH_SIZE)
-        const values = batch.map(row => {
-          const vals = columns.map(col => {
-            let value = row[col]
-            // Convert value based on schema type if available
-            const sourceType = schemaMap.get(col)
-            if (sourceType) {
-              value = convertSourceValue(value, sourceType)
-            }
-            return formatValueForSQL(value)
-          }).join(', ')
-          return `(${vals})`
-        }).join(', ')
-
-        await conn.value!.query(`INSERT INTO ${tableName} VALUES ${values}`)
-      }
+      // Register JSON data as a virtual file and let DuckDB infer types
+      await db.value!.registerFileText(jsonFileName, JSON.stringify(results))
+      await conn.value!.insertJSONFromPath(jsonFileName, {
+        name: tableName,
+      })
+      await db.value!.dropFile(jsonFileName)
 
       // Update metadata
+      const columns = Object.keys(results[0])
       tables.value[tableName] = {
         rowCount: results.length,
         columns: columns,
         lastUpdated: Date.now(),
         originalBoxName: boxName,
-        boxId: boxId // Store box ID for dependency tracking
+        boxId: boxId
       }
 
       return tableName
@@ -387,11 +219,11 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   // Append rows to an existing table (for pagination)
-  // Uses Arrow-based insertion for efficiency
+  // Uses JSON import with INSERT INTO ... SELECT for simplicity
   const appendResults = async (
     tableName: string,
     rows: Record<string, unknown>[],
-    schema?: ColumnSchema[]
+    _schema?: ColumnSchema[]  // Kept for API compatibility, but not used
   ): Promise<number> => {
     if (!isInitialized.value) {
       await initialize()
@@ -401,40 +233,13 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       return 0
     }
 
-    // Build schema lookup map for efficient access
-    const schemaMap = new Map<string, string>()
-    if (schema) {
-      for (const field of schema) {
-        schemaMap.set(field.name, field.type)
-      }
-    }
+    const tempJsonFile = `_temp_append_${tableName}.json`
 
     try {
-      // Convert rows to columnar format for Arrow
-      const columns = Object.keys(rows[0])
-      const columnarData: Record<string, unknown[]> = {}
-
-      for (const col of columns) {
-        columnarData[col] = rows.map(row => {
-          let value = row[col]
-          // Convert value based on schema type if available
-          const sourceType = schemaMap.get(col)
-          if (sourceType) {
-            value = convertSourceValue(value, sourceType)
-          }
-          // Sanitize NaN/Infinity values to null
-          return sanitizeValue(value)
-        })
-      }
-
-      // Create Arrow table from columnar data
-      const arrowTable = tableFromArrays(columnarData)
-
-      // Insert using Arrow format (more efficient than SQL INSERT)
-      await conn.value!.insertArrowTable(arrowTable, {
-        name: tableName,
-        create: false  // Table already exists
-      })
+      // Register JSON and insert via temp table to match existing schema
+      await db.value!.registerFileText(tempJsonFile, JSON.stringify(rows))
+      await conn.value!.query(`INSERT INTO ${tableName} SELECT * FROM read_json_auto('${tempJsonFile}')`)
+      await db.value!.dropFile(tempJsonFile)
 
       // Update metadata with new row count
       const countResult = await conn.value!.query(`SELECT COUNT(*) as count FROM ${tableName}`)
@@ -445,9 +250,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         tables.value[tableName].rowCount = newRowCount
         tables.value[tableName].lastUpdated = Date.now()
       }
-
-      // Note: Don't increment schemaVersion here - appending rows doesn't change the schema
-      // schemaVersion is only for structural changes (new tables, renames, etc.)
 
       return rows.length
     } catch (err: unknown) {

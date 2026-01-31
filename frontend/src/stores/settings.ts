@@ -25,7 +25,7 @@ interface Settings {
 
 // Default settings
 const DEFAULT_SETTINGS: Settings = {
-  fetchBatchSize: 5000,  // Rows loaded per batch from source databases
+  fetchBatchSize: 500,  // Rows loaded per batch from source databases
   fetchPaginationEnabled: true,
   paginationSize: 100,  // Display pagination: rows per page in UI
   panToBoxOnSelect: true,
