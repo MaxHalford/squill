@@ -48,6 +48,7 @@ const emit = defineEmits<{
   'accept-suggestion': []
   'dismiss-suggestion': []
   'navigate-to-table': [ref: TableReferenceWithPosition]
+  'ready': []
 }>()
 
 const settingsStore = useSettingsStore()
@@ -574,6 +575,9 @@ onMounted(() => {
   // Listen for suggestion button clicks
   editorRef.value?.addEventListener('suggestion-accept', () => emit('accept-suggestion'))
   editorRef.value?.addEventListener('suggestion-dismiss', () => emit('dismiss-suggestion'))
+
+  // Signal that editor is ready
+  emit('ready')
 })
 
 onUnmounted(() => {
@@ -608,7 +612,13 @@ const acceptSuggestion = () => {
 
 defineExpose({
   getQuery: () => editorView.value?.state.doc.toString() || '',
-  focus: () => editorView.value?.focus(),
+  focus: () => {
+    if (editorView.value) {
+      editorView.value.focus()
+      return true
+    }
+    return false
+  },
   acceptSuggestion,
 })
 </script>

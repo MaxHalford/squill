@@ -1018,8 +1018,8 @@ defineExpose({
     :initial-height="initialHeight"
     :initial-z-index="initialZIndex"
     :is-selected="isSelected"
-    :initial-name="initialName"
-    :show-header-name="false"
+    initial-name="Schema explorer"
+    :show-header-name="true"
     @select="emit('select', $event)"
     @update:position="emit('update:position', $event)"
     @update:size="emit('update:size', $event)"
@@ -1250,27 +1250,26 @@ defineExpose({
 /* Search Container */
 .search-container {
   position: relative;
-  padding: var(--space-2) var(--space-3);
-  background: var(--surface-secondary);
-  border-bottom: var(--table-border-width) solid var(--border-primary);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border-secondary);
   flex-shrink: 0;
 }
 
 .search-input {
   width: 100%;
-  padding: var(--space-2) var(--space-3);
-  padding-right: 32px;
-  border: var(--border-width-thin) solid var(--border-secondary);
+  padding: var(--space-1) var(--space-2);
+  padding-right: 28px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--border-radius-sm);
   background: var(--surface-primary);
-  font-family: var(--font-family-mono);
+  font-family: var(--font-family-ui);
   font-size: var(--font-size-body-sm);
   color: var(--text-primary);
   outline: none;
-  transition: border-color 0.15s;
 }
 
 .search-input:focus {
-  border-color: var(--border-primary);
+  border-color: var(--color-accent);
 }
 
 .search-input::placeholder {
@@ -1279,11 +1278,11 @@ defineExpose({
 
 .clear-search-btn {
   position: absolute;
-  right: var(--space-4);
+  right: var(--space-3);
   top: 50%;
   transform: translateY(-50%);
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: none;
   background: transparent;

@@ -325,7 +325,7 @@ const handleDragEnd = () => {
 }
 
 // Handle restoring a query from history
-const handleRestoreQuery = (data: { query: string; connectionId: string; connectionType: string }) => {
+const handleRestoreQuery = async (data: { query: string; connectionId: string; connectionType: string }) => {
   // Find the history box position to place new box nearby
   const historyBox = canvasStore.boxes.find(box => box.type === 'history')
   let position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
@@ -344,6 +344,11 @@ const handleRestoreQuery = (data: { query: string; connectionId: string; connect
   canvasStore.updateBoxQuery(boxId, data.query)
 
   selectBox(boxId, { shouldPan: true })
+
+  // Focus the editor after component loads
+  setTimeout(() => {
+    sqlBoxRefs.value.get(boxId)?.focusEditor()
+  }, 300)
 }
 
 const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {

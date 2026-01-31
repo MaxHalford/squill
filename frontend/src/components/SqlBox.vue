@@ -888,6 +888,11 @@ const handleKeydown = (event: KeyboardEvent) => {
   }
 }
 
+// Called when QueryEditor signals it's ready (currently unused, but kept for potential future use)
+const handleEditorReady = () => {
+  // Focus is now handled by parent via focusEditor()
+}
+
 // Add global mouse listeners for splitter and register executor
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
@@ -897,16 +902,6 @@ onMounted(() => {
   // Register this box's runQuery method for dependency execution
   if (registerBoxExecutor) {
     registerBoxExecutor(props.boxId, runQuery)
-  }
-
-  // Auto-focus editor if box is selected (newly created or duplicated)
-  if (props.isSelected) {
-    // Wait for DOM updates and CodeMirror initialization
-    nextTick(() => {
-      setTimeout(() => {
-        editorRef.value?.focus()
-      }, 150)
-    })
   }
 })
 
@@ -980,6 +975,7 @@ defineExpose({
       @accept-suggestion="handleAcceptSuggestion"
       @dismiss-suggestion="suggestion = null"
       @navigate-to-table="handleNavigateToTable"
+      @ready="handleEditorReady"
     />
 
     <!-- Splitter -->

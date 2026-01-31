@@ -562,7 +562,8 @@ export const useCanvasStore = defineStore('canvas', () => {
             type === 'detail' ? `row_detail_${boxId}` :
             type === 'analytics' ? `analytics_${boxId}` :
             type === 'history' ? 'Query history' :
-            `schema_${boxId}`,
+            type === 'schema' ? 'Schema explorer' :
+            `box_${boxId}`,
       dependencies: [],
       connectionId: connectionId
     }

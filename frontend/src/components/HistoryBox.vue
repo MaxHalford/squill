@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import BaseBox from './BaseBox.vue'
 import { useQueryHistoryStore } from '../stores/queryHistory'
 import { useConnectionsStore } from '../stores/connections'
 import { DATABASE_INFO } from '../types/database'
 import type { QueryHistoryEntry } from '../utils/storageSchemas'
+import { formatRelativeTime, formatExecutionTime, formatRowCount, getFirstLine } from '../utils/formatUtils'
+import { EditorView } from 'codemirror'
+import { sql } from '@codemirror/lang-sql'
+import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
+import { EditorState } from '@codemirror/state'
 
 const historyStore = useQueryHistoryStore()
 const connectionsStore = useConnectionsStore()
@@ -17,7 +23,7 @@ defineProps({
   initialHeight: { type: Number, default: 500 },
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
-  initialName: { type: String, default: 'Query history' }
+  initialName: { type: String, default: 'Query History' }
 })
 
 const emit = defineEmits([
@@ -34,18 +40,63 @@ const emit = defineEmits([
 const searchQuery = ref('')
 const selectedConnectionId = ref<string | null>(null)
 const selectedEntryId = ref<string | null>(null)
+const copied = ref(false)
+
+// CodeMirror refs
+const editorRef = ref<HTMLElement | null>(null)
+let editorView: EditorView | null = null
+
+// SQL highlight style using CSS variables
+const sqlHighlightStyle = HighlightStyle.define([
+  { tag: tags.keyword, color: 'var(--syntax-keyword)' },
+  { tag: tags.operator, color: 'var(--syntax-operator)' },
+  { tag: tags.special(tags.string), color: 'var(--syntax-string)' },
+  { tag: tags.string, color: 'var(--syntax-string)' },
+  { tag: tags.number, color: 'var(--syntax-number)' },
+  { tag: tags.bool, color: 'var(--syntax-number)' },
+  { tag: tags.null, color: 'var(--syntax-number)' },
+  { tag: tags.comment, color: 'var(--syntax-comment)', fontStyle: 'italic' },
+  { tag: tags.punctuation, color: 'var(--syntax-punctuation)' },
+  { tag: tags.bracket, color: 'var(--syntax-punctuation)' },
+  { tag: tags.function(tags.variableName), color: 'var(--syntax-function)' },
+  { tag: tags.typeName, color: 'var(--syntax-type)' },
+  { tag: tags.propertyName, color: 'var(--syntax-property)' },
+  { tag: tags.variableName, color: 'var(--text-primary)' },
+])
+
+// Read-only editor theme
+const readOnlyTheme = EditorView.theme({
+  '&': {
+    fontFamily: 'var(--font-family-mono)',
+    fontSize: 'var(--font-size-body-sm)',
+    height: '100%',
+  },
+  '.cm-content': {
+    fontFamily: 'var(--font-family-mono)',
+    color: 'var(--text-primary)',
+    padding: 'var(--space-2)',
+  },
+  '.cm-scroller': {
+    fontFamily: 'var(--font-family-mono)',
+    overflow: 'auto',
+  },
+  '.cm-gutters': {
+    display: 'none',
+  },
+  '&.cm-focused': {
+    outline: 'none',
+  },
+})
 
 // Get available connections for filter dropdown
 const connectionOptions = computed(() => {
   const options: { id: string; name: string; type: string }[] = []
   const seenIds = new Set<string>()
 
-  // Get unique connection IDs from history
   for (const entry of historyStore.historyEntries) {
     if (seenIds.has(entry.connectionId)) continue
     seenIds.add(entry.connectionId)
 
-    // Try to find connection name
     const connection = connectionsStore.connections.find(c => c.id === entry.connectionId)
     const name = connection?.name || entry.connectionId
     const type = entry.connectionType
@@ -69,34 +120,6 @@ const selectedEntry = computed(() => {
   if (!selectedEntryId.value) return null
   return historyStore.getEntry(selectedEntryId.value)
 })
-
-// Format relative time
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now()
-  const diff = now - timestamp
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (days > 0) return `${days}d ago`
-  if (hours > 0) return `${hours}h ago`
-  if (minutes > 0) return `${minutes}m ago`
-  return 'just now'
-}
-
-// Format execution time
-function formatExecutionTime(ms?: number): string {
-  if (ms === undefined) return ''
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
-}
-
-// Get first line of query for preview
-function getQueryPreview(query: string): string {
-  const firstLine = query.split('\n')[0].trim()
-  return firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine
-}
 
 // Get connection name for tooltip
 function getConnectionName(entry: QueryHistoryEntry): string {
@@ -124,25 +147,55 @@ async function copyQuery() {
   if (!selectedEntry.value) return
   try {
     await navigator.clipboard.writeText(selectedEntry.value.query)
+    copied.value = true
+    setTimeout(() => {
+      copied.value = false
+    }, 2000)
   } catch (err) {
     console.error('Failed to copy:', err)
   }
 }
 
-// Delete selected entry
-function deleteEntry() {
-  if (!selectedEntryId.value) return
-  historyStore.deleteEntry(selectedEntryId.value)
-  selectedEntryId.value = null
+// Create/update CodeMirror editor
+function updateEditor(query: string) {
+  if (!editorRef.value) return
+
+  if (editorView) {
+    editorView.destroy()
+  }
+
+  editorView = new EditorView({
+    parent: editorRef.value,
+    state: EditorState.create({
+      doc: query,
+      extensions: [
+        sql(),
+        syntaxHighlighting(sqlHighlightStyle, { fallback: true }),
+        readOnlyTheme,
+        EditorState.readOnly.of(true),
+        EditorView.editable.of(false),
+      ]
+    })
+  })
 }
 
-// Clear all history
-function clearHistory() {
-  if (confirm('Clear all query history?')) {
-    historyStore.clearAllHistory()
-    selectedEntryId.value = null
+// Watch for selected entry changes
+watch(selectedEntry, (entry) => {
+  if (entry) {
+    // Use nextTick to ensure DOM is ready
+    setTimeout(() => updateEditor(entry.query), 0)
   }
-}
+})
+
+onMounted(() => {
+  if (selectedEntry.value) {
+    updateEditor(selectedEntry.value.query)
+  }
+})
+
+onUnmounted(() => {
+  editorView?.destroy()
+})
 </script>
 
 <template>
@@ -182,13 +235,6 @@ function clearHistory() {
             {{ conn.name }}
           </option>
         </select>
-        <button
-          class="clear-btn"
-          title="Clear all history"
-          @click="clearHistory"
-        >
-          Clear
-        </button>
       </div>
 
       <!-- Main content: list + preview -->
@@ -215,7 +261,7 @@ function clearHistory() {
               <span class="item-name">{{ entry.boxName || 'Query' }}</span>
               <span class="item-time">{{ formatRelativeTime(entry.timestamp) }}</span>
             </div>
-            <div class="item-preview">{{ getQueryPreview(entry.query) }}</div>
+            <div class="item-preview">{{ getFirstLine(entry.query) }}</div>
             <div class="item-meta">
               <span
                 class="engine-badge"
@@ -228,7 +274,7 @@ function clearHistory() {
                 {{ DATABASE_INFO[entry.connectionType].shortName }}
               </span>
               <span v-if="entry.success && entry.rowCount !== undefined" class="row-count">
-                {{ entry.rowCount }} rows
+                {{ formatRowCount(entry.rowCount) }}
               </span>
               <span v-if="entry.success && entry.executionTimeMs" class="exec-time">
                 {{ formatExecutionTime(entry.executionTimeMs) }}
@@ -246,27 +292,42 @@ function clearHistory() {
             Select a query to preview
           </div>
           <template v-else>
-            <div class="preview-header">
-              <span class="preview-title">{{ selectedEntry.boxName || 'Query' }}</span>
-              <span class="preview-time">
-                {{ new Date(selectedEntry.timestamp).toLocaleString() }}
-              </span>
+            <!-- Action buttons -->
+            <div class="preview-actions">
+              <button
+                class="icon-btn"
+                v-tooltip="'Open in new SQL box'"
+                @click.stop="restoreQuery"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+              </button>
+              <button
+                class="icon-btn"
+                :class="{ copied }"
+                v-tooltip="copied ? 'Copied!' : 'Copy to clipboard'"
+                @click.stop="copyQuery"
+              >
+                <!-- Checkmark icon when copied -->
+                <svg v-if="copied" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <!-- Copy icon -->
+                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              </button>
             </div>
+            <!-- Error message if failed -->
             <div v-if="!selectedEntry.success && selectedEntry.errorMessage" class="preview-error">
               {{ selectedEntry.errorMessage }}
             </div>
-            <pre class="preview-code"><code>{{ selectedEntry.query }}</code></pre>
-            <div class="preview-actions">
-              <button class="action-btn primary" @click="restoreQuery">
-                Restore Query
-              </button>
-              <button class="action-btn" @click="copyQuery">
-                Copy
-              </button>
-              <button class="action-btn delete" @click="deleteEntry">
-                Delete
-              </button>
-            </div>
+            <!-- CodeMirror editor -->
+            <div ref="editorRef" class="code-editor" />
           </template>
         </div>
       </div>
@@ -309,29 +370,14 @@ function clearHistory() {
 
 .connection-filter {
   padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border-secondary);
+  border: none;
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-body-sm);
   font-family: var(--font-family-ui);
   background: var(--surface-primary);
   color: var(--text-primary);
   cursor: pointer;
-}
-
-.clear-btn {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-body-sm);
-  font-family: var(--font-family-ui);
-  background: var(--surface-primary);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.clear-btn:hover {
-  background: var(--surface-secondary);
-  color: var(--color-error);
+  outline: none;
 }
 
 .main-content {
@@ -369,9 +415,7 @@ function clearHistory() {
   background: var(--color-selection);
 }
 
-.history-item.failed {
-  border-left: 3px solid var(--color-error);
-}
+/* Failed queries show "Failed" text indicator instead of border */
 
 .item-header {
   display: flex;
@@ -424,7 +468,7 @@ function clearHistory() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: var(--space-3);
+  position: relative;
 }
 
 .preview-empty {
@@ -436,26 +480,42 @@ function clearHistory() {
   font-size: var(--font-size-body-sm);
 }
 
-.preview-header {
+.preview-actions {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-2);
+  gap: var(--space-1);
+  z-index: 10;
 }
 
-.preview-title {
-  font-weight: 500;
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--surface-secondary);
   color: var(--text-primary);
 }
 
-.preview-time {
-  font-size: var(--font-size-caption);
-  color: var(--text-tertiary);
+.icon-btn.copied {
+  color: var(--color-success);
+  border-color: var(--color-success);
 }
 
 .preview-error {
   padding: var(--space-2);
-  margin-bottom: var(--space-2);
+  margin: var(--space-2);
   background: var(--color-error-bg);
   border-left: 3px solid var(--color-error);
   color: var(--color-error);
@@ -463,63 +523,20 @@ function clearHistory() {
   font-family: var(--font-family-mono);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.preview-code {
-  flex: 1;
-  margin: 0;
-  padding: var(--space-2);
-  background: var(--editor-bg);
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--border-radius-sm);
-  overflow: auto;
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-body-sm);
-  line-height: 1.5;
-  color: var(--text-primary);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.preview-actions {
-  display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
   flex-shrink: 0;
 }
 
-.action-btn {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-body-sm);
-  font-family: var(--font-family-ui);
-  background: var(--surface-primary);
-  color: var(--text-primary);
-  cursor: pointer;
+.code-editor {
+  flex: 1;
+  overflow: hidden;
+  background: var(--editor-bg);
 }
 
-.action-btn:hover {
-  background: var(--surface-secondary);
+.code-editor :deep(.cm-editor) {
+  height: 100%;
 }
 
-.action-btn.primary {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: white;
-}
-
-.action-btn.primary:hover {
-  opacity: 0.9;
-}
-
-.action-btn.delete {
-  color: var(--text-secondary);
-}
-
-.action-btn.delete:hover {
-  background: var(--color-error-bg);
-  border-color: var(--color-error);
-  color: var(--color-error);
+.code-editor :deep(.cm-scroller) {
+  overflow: auto;
 }
 </style>

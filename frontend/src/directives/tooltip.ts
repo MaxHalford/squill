@@ -102,6 +102,20 @@ const updateVisibleTooltip = (el: HTMLElement) => {
   const text = getTooltipText(value)
   if (text && tooltipEl.classList.contains('visible')) {
     tooltipEl.textContent = text
+
+    // Recalculate position after text change (width may have changed)
+    requestAnimationFrame(() => {
+      if (currentTarget !== el || !tooltipEl) return
+
+      const rect = el.getBoundingClientRect()
+      const tooltipRect = tooltipEl.getBoundingClientRect()
+
+      let left = rect.left + (rect.width - tooltipRect.width) / 2
+      const margin = 8
+      left = Math.max(margin, Math.min(left, window.innerWidth - tooltipRect.width - margin))
+
+      tooltipEl.style.left = `${left}px`
+    })
   }
 }
 

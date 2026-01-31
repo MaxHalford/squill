@@ -137,7 +137,7 @@ defineExpose({ boxName })
         </button>
         <button
           class="header-btn delete-btn"
-          v-tooltip="'Close (⌘X)'"
+          v-tooltip="'Close (Delete)'"
           aria-label="Close"
           @click="handleDelete"
         >
