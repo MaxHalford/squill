@@ -147,17 +147,6 @@
           </div>
         </section>
 
-        <!-- Settings Section -->
-        <section class="account-section">
-          <h2>Settings</h2>
-          <div class="settings-card">
-            <p>Application settings are available in the menu bar while using the app.</p>
-            <button class="settings-link" @click="goToApp">
-              Open app →
-            </button>
-          </div>
-        </section>
-
         <!-- Danger Zone -->
         <section class="account-section danger-zone">
           <h2>Danger zone</h2>
@@ -205,10 +194,6 @@ onMounted(async () => {
 })
 
 const goBack = () => {
-  router.push('/app')
-}
-
-const goToApp = () => {
   router.push('/app')
 }
 
