@@ -540,11 +540,13 @@ export const useCanvasStore = defineStore('canvas', () => {
     const width = type === 'note' ? 400 :
                   type === 'detail' ? 400 :
                   type === 'analytics' ? 450 :
-                  type === 'schema' ? 800 : 600
+                  type === 'schema' ? 800 :
+                  type === 'history' ? 700 : 600
     const height = type === 'note' ? 300 :
                    type === 'detail' ? 500 :
                    type === 'analytics' ? 400 :
-                   type === 'schema' ? 600 : 500
+                   type === 'schema' ? 600 :
+                   type === 'history' ? 500 : 500
 
     const newBox: Box = {
       id: boxId,
@@ -559,6 +561,7 @@ export const useCanvasStore = defineStore('canvas', () => {
             type === 'note' ? `note_${boxId}` :
             type === 'detail' ? `row_detail_${boxId}` :
             type === 'analytics' ? `analytics_${boxId}` :
+            type === 'history' ? 'Query history' :
             `schema_${boxId}`,
       dependencies: [],
       connectionId: connectionId
@@ -726,6 +729,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     const newName = originalBox.type === 'sql' ? getUniqueTreeName(boxes.value.map(b => b.name)) :
                     originalBox.type === 'note' ? `note_${boxId}` :
                     originalBox.type === 'detail' ? `row_detail_${boxId}` :
+                    originalBox.type === 'analytics' ? `analytics_${boxId}` :
+                    originalBox.type === 'history' ? 'Query history' :
                     `schema_${boxId}`
 
     const newBox: Box = {
@@ -764,6 +769,8 @@ export const useCanvasStore = defineStore('canvas', () => {
       const newName = originalBox.type === 'sql' ? getUniqueTreeName(boxes.value.map(b => b.name)) :
                       originalBox.type === 'note' ? `note_${boxId}` :
                       originalBox.type === 'detail' ? `row_detail_${boxId}` :
+                      originalBox.type === 'analytics' ? `analytics_${boxId}` :
+                      originalBox.type === 'history' ? 'Query history' :
                       `schema_${boxId}`
 
       const newBox: Box = {

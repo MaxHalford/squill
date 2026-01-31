@@ -681,9 +681,17 @@ const runQuery = async () => {
     // Update dependencies after query execution
     updateDependenciesFromQuery(query)
 
-    // Record successful query for AI context (used by fix suggestions)
+    // Record successful query in history
     if (props.connectionId) {
-      queryHistoryStore.recordSuccessfulQuery(props.connectionId, query)
+      queryHistoryStore.recordQuery({
+        query,
+        connectionId: props.connectionId,
+        connectionType: engine,
+        success: true,
+        boxName: baseBoxRef.value?.boxName || props.initialName,
+        executionTimeMs: Math.round(executionTimeMs),
+        rowCount: (result.stats as { rowCount?: number })?.rowCount
+      })
     }
   } catch (err: any) {
     if (err.name === 'AbortError') {
@@ -694,6 +702,19 @@ const runQuery = async () => {
       const errorMessage = err.message || err.toString() || 'Query execution failed'
       error.value = errorMessage
       console.error('Query error:', err)
+
+      // Record failed query in history
+      if (props.connectionId) {
+        const failedQuery = editorRef.value?.getQuery() || queryText.value
+        queryHistoryStore.recordQuery({
+          query: failedQuery,
+          connectionId: props.connectionId,
+          connectionType: currentEngine.value,
+          success: false,
+          boxName: baseBoxRef.value?.boxName || props.initialName,
+          errorMessage
+        })
+      }
 
       // Request AI fix suggestion (only for Pro users with autofix enabled, and only for fixable errors)
       suggestion.value = null

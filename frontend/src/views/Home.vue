@@ -13,6 +13,7 @@ const SchemaBox = defineAsyncComponent(() => import('../components/SchemaBox.vue
 const StickyNoteBox = defineAsyncComponent(() => import('../components/StickyNoteBox.vue'))
 const RowDetailBox = defineAsyncComponent(() => import('../components/RowDetailBox.vue'))
 const ColumnAnalyticsBox = defineAsyncComponent(() => import('../components/ColumnAnalyticsBox.vue'))
+const HistoryBox = defineAsyncComponent(() => import('../components/HistoryBox.vue'))
 
 // Lazy-load modals - only loaded when opened
 const PostgresConnectionModal = defineAsyncComponent(() => import('../components/PostgresConnectionModal.vue'))
@@ -321,6 +322,28 @@ const handleDragStart = () => {
 
 const handleDragEnd = () => {
   canvasStore.setDraggingBox(false)
+}
+
+// Handle restoring a query from history
+const handleRestoreQuery = (data: { query: string; connectionId: string; connectionType: string }) => {
+  // Find the history box position to place new box nearby
+  const historyBox = canvasStore.boxes.find(box => box.type === 'history')
+  let position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
+
+  if (historyBox) {
+    // Place new box to the right of history box
+    position = {
+      x: historyBox.x + historyBox.width + 100,
+      y: historyBox.y + historyBox.height / 2
+    }
+  }
+
+  // Create new SQL box with the query
+  const engine = data.connectionType as 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
+  const boxId = canvasStore.addBox('sql', position, engine, data.connectionId)
+  canvasStore.updateBoxQuery(boxId, data.query)
+
+  selectBox(boxId, { shouldPan: true })
 }
 
 const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
@@ -1071,6 +1094,26 @@ onUnmounted(() => {
           @update:data="handleUpdateQuery(box.id, $event)"
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
+        />
+
+        <!-- Query history Box -->
+        <HistoryBox
+          v-else-if="box.type === 'history'"
+          :box-id="box.id"
+          :initial-x="box.x"
+          :initial-y="box.y"
+          :initial-width="box.width"
+          :initial-height="box.height"
+          :initial-z-index="box.zIndex"
+          :initial-name="box.name"
+          :is-selected="canvasStore.isBoxSelected(box.id)"
+          @select="selectBox(box.id, $event)"
+          @update:position="handleUpdatePosition(box.id, $event)"
+          @update:size="handleUpdateSize(box.id, $event)"
+          @update:name="handleUpdateName(box.id, $event)"
+          @delete="handleDelete(box.id)"
+          @maximize="handleMaximize(box.id)"
+          @restore-query="handleRestoreQuery"
         />
       </template>
     </InfiniteCanvas>

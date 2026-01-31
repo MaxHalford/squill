@@ -1,81 +1,240 @@
 /**
- * Query history store for tracking successful queries per connection
- * Used to provide sample queries as context for the SQL fixer
+ * Query history store for tracking executed queries
+ * - Persists to localStorage for history browsing
+ * - Provides sample queries as context for the AI fixer
  */
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { QueryHistoryStateSchema, type QueryHistoryEntry } from '../utils/storageSchemas'
 
-const MAX_SAMPLE_QUERIES = 5
+// Simple debounce utility
+const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  const debounced = (...args: Parameters<T>) => {
+    if (timeoutId) clearTimeout(timeoutId)
+    timeoutId = setTimeout(() => fn(...args), ms)
+  }
+  return debounced
+}
 
-interface SampleQuery {
+const STORAGE_KEY = 'squill_query_history'
+const MAX_HISTORY_ENTRIES = 100
+const MAX_SAMPLE_QUERIES = 5 // For AI fixer compatibility
+
+type DatabaseEngine = 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
+
+export interface RecordQueryParams {
   query: string
-  timestamp: number
+  connectionId: string
+  connectionType: DatabaseEngine
+  success: boolean
+  boxName?: string
+  boxId?: number
+  executionTimeMs?: number
+  rowCount?: number
+  errorMessage?: string
 }
 
 export const useQueryHistoryStore = defineStore('queryHistory', () => {
-  // Map: connectionId -> array of recent successful queries
-  const sampleQueries = ref<Map<string, SampleQuery[]>>(new Map())
+  // Full history entries
+  const historyEntries = ref<QueryHistoryEntry[]>([])
+
+  // Generate UUID for entries
+  function generateId(): string {
+    return crypto.randomUUID()
+  }
+
+  // Load state from localStorage
+  function loadState(): void {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (!saved) return
+
+      const parsed = JSON.parse(saved)
+      const result = QueryHistoryStateSchema.safeParse(parsed)
+
+      if (result.success) {
+        historyEntries.value = result.data.entries
+      } else {
+        console.warn('Invalid query history in localStorage:', result.error.issues)
+      }
+    } catch (err) {
+      console.error('Failed to load query history:', err)
+    }
+  }
+
+  // Save state to localStorage
+  function saveState(): void {
+    try {
+      const state = {
+        version: 1 as const,
+        entries: historyEntries.value,
+        maxEntries: MAX_HISTORY_ENTRIES
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    } catch (err) {
+      console.error('Failed to save query history:', err)
+    }
+  }
+
+  // Debounced save
+  const debouncedSave = debounce(saveState, 500)
+
+  // Watch for changes and save
+  watch(historyEntries, () => {
+    debouncedSave()
+  }, { deep: true })
+
+  // Load on initialization
+  loadState()
 
   /**
-   * Record a successful query for a connection
-   * Maintains a ring buffer of the last MAX_SAMPLE_QUERIES queries
+   * Record a query execution (success or failure)
    */
-  function recordSuccessfulQuery(connectionId: string, query: string): void {
-    // Normalize query (trim whitespace)
-    const normalizedQuery = query.trim()
-
-    // Skip empty queries
+  function recordQuery(params: RecordQueryParams): void {
+    const normalizedQuery = params.query.trim()
     if (!normalizedQuery) return
 
-    const queries = sampleQueries.value.get(connectionId) || []
-
-    // Skip duplicates (same query text already exists)
-    const isDuplicate = queries.some((q) => q.query === normalizedQuery)
+    // Skip exact duplicates within last minute
+    const oneMinuteAgo = Date.now() - 60000
+    const isDuplicate = historyEntries.value.some(
+      e => e.query === normalizedQuery &&
+           e.connectionId === params.connectionId &&
+           e.timestamp > oneMinuteAgo
+    )
     if (isDuplicate) return
 
-    // Add new query
-    queries.push({
+    const entry: QueryHistoryEntry = {
+      id: generateId(),
       query: normalizedQuery,
       timestamp: Date.now(),
-    })
-
-    // Keep only the last MAX_SAMPLE_QUERIES
-    while (queries.length > MAX_SAMPLE_QUERIES) {
-      queries.shift()
+      connectionId: params.connectionId,
+      connectionType: params.connectionType,
+      boxName: params.boxName,
+      executionTimeMs: params.executionTimeMs,
+      rowCount: params.rowCount,
+      success: params.success,
+      errorMessage: params.errorMessage
     }
 
-    sampleQueries.value.set(connectionId, queries)
+    // Add to beginning (most recent first)
+    historyEntries.value.unshift(entry)
+
+    // Trim to max entries
+    if (historyEntries.value.length > MAX_HISTORY_ENTRIES) {
+      historyEntries.value = historyEntries.value.slice(0, MAX_HISTORY_ENTRIES)
+    }
   }
 
   /**
-   * Get sample queries for a connection
-   * Returns an array of query strings (most recent last)
+   * Backward compatibility: record successful query (for existing code)
+   */
+  function recordSuccessfulQuery(connectionId: string, query: string): void {
+    recordQuery({
+      query,
+      connectionId,
+      connectionType: 'duckdb', // Default, will be overridden by SqlBox
+      success: true
+    })
+  }
+
+  /**
+   * Get sample queries for AI fixer (backward compatible)
+   * Returns last 5 successful queries for a connection
    */
   function getSampleQueries(connectionId: string): string[] {
-    const queries = sampleQueries.value.get(connectionId) || []
-    return queries.map((q) => q.query)
+    return historyEntries.value
+      .filter(e => e.connectionId === connectionId && e.success)
+      .slice(0, MAX_SAMPLE_QUERIES)
+      .map(e => e.query)
+  }
+
+  /**
+   * Get history entries with optional filtering
+   */
+  function getHistory(options?: {
+    connectionId?: string
+    limit?: number
+    search?: string
+    successOnly?: boolean
+  }): QueryHistoryEntry[] {
+    let entries = historyEntries.value
+
+    if (options?.connectionId) {
+      entries = entries.filter(e => e.connectionId === options.connectionId)
+    }
+
+    if (options?.successOnly) {
+      entries = entries.filter(e => e.success)
+    }
+
+    if (options?.search) {
+      const searchLower = options.search.toLowerCase()
+      entries = entries.filter(e =>
+        e.query.toLowerCase().includes(searchLower) ||
+        e.boxName?.toLowerCase().includes(searchLower)
+      )
+    }
+
+    if (options?.limit) {
+      entries = entries.slice(0, options.limit)
+    }
+
+    return entries
+  }
+
+  /**
+   * Get a single entry by ID
+   */
+  function getEntry(id: string): QueryHistoryEntry | null {
+    return historyEntries.value.find(e => e.id === id) || null
+  }
+
+  /**
+   * Delete a history entry
+   */
+  function deleteEntry(id: string): void {
+    const index = historyEntries.value.findIndex(e => e.id === id)
+    if (index !== -1) {
+      historyEntries.value.splice(index, 1)
+    }
   }
 
   /**
    * Clear history for a specific connection
    */
   function clearHistory(connectionId: string): void {
-    sampleQueries.value.delete(connectionId)
+    historyEntries.value = historyEntries.value.filter(
+      e => e.connectionId !== connectionId
+    )
   }
 
   /**
    * Clear all query history
    */
   function clearAllHistory(): void {
-    sampleQueries.value.clear()
+    historyEntries.value = []
   }
 
+  /**
+   * Get all unique connection IDs in history
+   */
+  const connectionIds = computed(() => {
+    const ids = new Set(historyEntries.value.map(e => e.connectionId))
+    return Array.from(ids)
+  })
+
   return {
-    sampleQueries,
+    historyEntries,
+    connectionIds,
+    recordQuery,
     recordSuccessfulQuery,
     getSampleQueries,
+    getHistory,
+    getEntry,
+    deleteEntry,
     clearHistory,
-    clearAllHistory,
+    clearAllHistory
   }
 })

@@ -26,7 +26,7 @@ export type SettingsData = z.infer<typeof SettingsSchema>
 // ============================================
 // Canvas/Box Schema
 // ============================================
-const BoxTypeSchema = z.enum(['sql', 'schema', 'note', 'detail'])
+const BoxTypeSchema = z.enum(['sql', 'schema', 'note', 'detail', 'analytics', 'history'])
 
 const BoxSchema = z.object({
   id: z.number(),
@@ -127,6 +127,33 @@ export const SchemaStateSchema = z.object({
 })
 
 export type SchemaStateData = z.infer<typeof SchemaStateSchema>
+
+// ============================================
+// Query history schema
+// ============================================
+const DatabaseEngineSchema = z.enum(['bigquery', 'duckdb', 'postgres', 'snowflake'])
+
+export const QueryHistoryEntrySchema = z.object({
+  id: z.string(),
+  query: z.string(),
+  timestamp: z.number(),
+  connectionId: z.string(),
+  connectionType: DatabaseEngineSchema,
+  boxName: z.string().optional(),
+  executionTimeMs: z.number().optional(),
+  rowCount: z.number().optional(),
+  success: z.boolean(),
+  errorMessage: z.string().optional()
+})
+
+export const QueryHistoryStateSchema = z.object({
+  version: z.literal(1),
+  entries: z.array(QueryHistoryEntrySchema),
+  maxEntries: z.number().positive()
+})
+
+export type QueryHistoryEntry = z.infer<typeof QueryHistoryEntrySchema>
+export type QueryHistoryState = z.infer<typeof QueryHistoryStateSchema>
 
 // ============================================
 // Safe parse helper

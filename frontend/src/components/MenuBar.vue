@@ -145,7 +145,8 @@ const showShortcuts = () => {
 const boxTypes: Array<{ id: BoxType; name: string }> = [
   { id: 'sql', name: 'SQL editor' },
   { id: 'schema', name: 'Schema browser' },
-  { id: 'note', name: 'Sticky note' }
+  { id: 'note', name: 'Sticky note' },
+  { id: 'history', name: 'Query history' }
 ]
 
 // Submenu state

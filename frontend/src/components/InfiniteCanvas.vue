@@ -225,7 +225,7 @@ const isOverBox = (element: HTMLElement | null): boolean => {
 }
 
 const isOverScrollableArea = (element: HTMLElement | null): boolean => {
-  const scrollableClasses = ['table-container', 'sql-editor', 'query-editor', 'datasets-list', 'schema-browser', 'detail-content', 'search-results']
+  const scrollableClasses = ['table-container', 'sql-editor', 'query-editor', 'datasets-list', 'schema-browser', 'detail-content', 'search-results', 'history-list', 'preview-panel']
   let current = element
   while (current && current !== canvasRef.value) {
     if (scrollableClasses.some(cls => current!.classList?.contains(cls))) return true
