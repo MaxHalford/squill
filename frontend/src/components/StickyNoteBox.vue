@@ -166,7 +166,7 @@ onUnmounted(() => {
   font-family: 'Patrick Hand SC', cursive;
   /* Font size scales with container width */
   font-size: clamp(16px, 20cqi, 72px);
-  line-height: 1.4;
+  line-height: 1.1;
   color: var(--sticky-note-text);
   background: transparent;
   padding: 0;
