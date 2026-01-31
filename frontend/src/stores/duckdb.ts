@@ -189,20 +189,22 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
     const tableName = sanitizeTableName(boxName)
     const jsonFileName = `${tableName}.json`
+    // Preserve original column order from the first result row
+    const columns = Object.keys(results[0])
 
     try {
       // Drop existing table if exists
       await conn.value!.query(`DROP TABLE IF EXISTS ${tableName}`)
 
-      // Register JSON data as a virtual file and let DuckDB infer types
+      // Register JSON data and create table with explicit column order
       await db.value!.registerFileText(jsonFileName, JSON.stringify(results))
-      await conn.value!.insertJSONFromPath(jsonFileName, {
-        name: tableName,
-      })
+      const columnList = columns.map(c => `"${c}"`).join(', ')
+      await conn.value!.query(
+        `CREATE TABLE ${tableName} AS SELECT ${columnList} FROM read_json_auto('${jsonFileName}')`
+      )
       await db.value!.dropFile(jsonFileName)
 
       // Update metadata
-      const columns = Object.keys(results[0])
       tables.value[tableName] = {
         rowCount: results.length,
         columns: columns,
@@ -449,7 +451,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     try {
       const result = await conn.value!.query(query)
       const columns = result.schema.fields.map(f => f.name)
-      // Extract column types from Arrow schema
       const columnTypes: Record<string, string> = {}
       result.schema.fields.forEach(f => {
         columnTypes[f.name] = f.type.toString()
@@ -476,7 +477,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
 
     try {
-      // Query with LIMIT 0 to get schema without data
       const result = await conn.value!.query(`SELECT * FROM ${tableName} LIMIT 0`)
       return result.schema.fields.map(f => f.name)
     } catch (err: unknown) {
