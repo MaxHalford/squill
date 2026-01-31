@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import type { Box } from '../types/canvas'
 import { useCanvasStore } from '../stores/canvas'
+import { useSettingsStore } from '../stores/settings'
 
 interface BoundingBox {
   minX: number
@@ -21,6 +22,14 @@ const emit = defineEmits<{
 }>()
 
 const canvasStore = useCanvasStore()
+const settingsStore = useSettingsStore()
+
+// Compute canvas pattern class based on settings
+const canvasPatternClass = computed(() => {
+  const pattern = settingsStore.canvasPattern
+  if (pattern === 'dots') return '' // Default, no extra class needed
+  return `canvas-${pattern}`
+})
 
 const props = defineProps<{
   boxes: Box[]
@@ -476,7 +485,7 @@ onUnmounted(() => {
   <div
     ref="canvasRef"
     class="infinite-canvas"
-    :class="{ 'dragging-file': isDraggingFile }"
+    :class="[canvasPatternClass, { 'dragging-file': isDraggingFile }]"
     @mousedown="handleMouseDown"
     @dragenter="handleDragEnter"
     @dragleave="handleDragLeave"

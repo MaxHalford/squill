@@ -5,6 +5,7 @@ import { SettingsSchema } from '../utils/storageSchemas'
 const STORAGE_KEY = 'squill-settings'
 
 type ThemePreference = 'system' | 'light' | 'dark'
+type CanvasPattern = 'dots' | 'grid' | 'crosshatch' | 'none'
 
 interface Settings {
   // Fetch pagination: rows loaded per batch from source databases
@@ -18,6 +19,8 @@ interface Settings {
   showEditorLineNumbers: boolean
   editorFontSize: number  // Font size in pixels for code editor
   accentColor: string  // Highlighter color for Cmd+click table links
+  // Appearance settings
+  canvasPattern: CanvasPattern  // Background pattern for canvas
 }
 
 // Default settings
@@ -30,7 +33,8 @@ const DEFAULT_SETTINGS: Settings = {
   themePreference: 'system',
   showEditorLineNumbers: false,
   editorFontSize: 13,  // Default font size in pixels for code editor
-  accentColor: '#9333ea'  // Purple (default accent color)
+  accentColor: '#9333ea',  // Purple (default accent color)
+  canvasPattern: 'dots'  // Default canvas pattern
 }
 
 const loadSettings = (): Settings => {
@@ -87,6 +91,9 @@ export const useSettingsStore = defineStore('settings', () => {
   // Table link highlight color
   const accentColor = ref(savedSettings.accentColor)
 
+  // Appearance settings
+  const canvasPattern = ref<CanvasPattern>(savedSettings.canvasPattern)
+
   // Resolve system preference to actual theme
   const getSystemTheme = (): 'light' | 'dark' => {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -100,7 +107,7 @@ export const useSettingsStore = defineStore('settings', () => {
   })
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, accentColor], () => {
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, accentColor, canvasPattern], () => {
     saveSettings({
       fetchBatchSize: fetchBatchSize.value,
       fetchPaginationEnabled: fetchPaginationEnabled.value,
@@ -110,7 +117,8 @@ export const useSettingsStore = defineStore('settings', () => {
       themePreference: themePreference.value,
       showEditorLineNumbers: showEditorLineNumbers.value,
       editorFontSize: editorFontSize.value,
-      accentColor: accentColor.value
+      accentColor: accentColor.value,
+      canvasPattern: canvasPattern.value
     })
   })
 
@@ -170,6 +178,10 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  const setCanvasPattern = (pattern: CanvasPattern) => {
+    canvasPattern.value = pattern
+  }
+
   const resetToDefaults = () => {
     fetchBatchSize.value = DEFAULT_SETTINGS.fetchBatchSize
     fetchPaginationEnabled.value = DEFAULT_SETTINGS.fetchPaginationEnabled
@@ -180,6 +192,7 @@ export const useSettingsStore = defineStore('settings', () => {
     showEditorLineNumbers.value = DEFAULT_SETTINGS.showEditorLineNumbers
     editorFontSize.value = DEFAULT_SETTINGS.editorFontSize
     accentColor.value = DEFAULT_SETTINGS.accentColor
+    canvasPattern.value = DEFAULT_SETTINGS.canvasPattern
   }
 
   return {
@@ -208,6 +221,9 @@ export const useSettingsStore = defineStore('settings', () => {
     // Table link highlight
     accentColor,
     setTableLinkHighlightColor,
+    // Appearance
+    canvasPattern,
+    setCanvasPattern,
     resetToDefaults
   }
 })

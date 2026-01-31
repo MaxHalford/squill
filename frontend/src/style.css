@@ -437,3 +437,32 @@ body.resizing-column * {
   letter-spacing: 0.05em;
   user-select: none;
 }
+
+/* ===== CANVAS PATTERN OPTIONS ===== */
+
+/* Grid pattern */
+.canvas-grid {
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.08) 1px, transparent 1px) !important;
+  background-size: 20px 20px !important;
+}
+
+html.dark .canvas-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px) !important;
+}
+
+/* Crosshatch pattern */
+.canvas-crosshatch {
+  background-image:
+    linear-gradient(45deg, var(--canvas-dot-color) 1px, transparent 1px),
+    linear-gradient(-45deg, var(--canvas-dot-color) 1px, transparent 1px) !important;
+  background-size: 10px 10px !important;
+}
+
+/* No pattern (solid background) */
+.canvas-none {
+  background-image: none !important;
+}

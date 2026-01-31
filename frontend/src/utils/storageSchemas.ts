@@ -8,6 +8,7 @@ import { z } from 'zod'
 // Settings Schema
 // ============================================
 export const ThemePreferenceSchema = z.enum(['system', 'light', 'dark'])
+export const CanvasPatternSchema = z.enum(['dots', 'grid', 'crosshatch', 'none'])
 
 export const SettingsSchema = z.object({
   fetchBatchSize: z.number().positive(),
@@ -18,7 +19,8 @@ export const SettingsSchema = z.object({
   themePreference: ThemePreferenceSchema,
   showEditorLineNumbers: z.boolean(),
   editorFontSize: z.number().min(8).max(24),
-  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/)
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  canvasPattern: CanvasPatternSchema
 }).partial() // All fields optional since we merge with defaults
 
 export type SettingsData = z.infer<typeof SettingsSchema>
