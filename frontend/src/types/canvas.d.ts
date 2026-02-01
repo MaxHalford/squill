@@ -59,3 +59,10 @@ export interface MultiCanvasIndex {
   activeCanvasId: string
   canvases: CanvasMeta[]
 }
+
+export interface ViewportBounds {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}

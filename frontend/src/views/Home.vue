@@ -986,7 +986,7 @@ onUnmounted(() => {
         @create-box-right="handleCreateQueryBoxRight"
       />
 
-      <template v-for="box in canvasStore.boxes" :key="box.id">
+      <template v-for="box in canvasStore.visibleBoxes" :key="box.id">
         <!-- SQL Editor Box -->
         <SqlBox
           v-if="box.type === 'sql'"

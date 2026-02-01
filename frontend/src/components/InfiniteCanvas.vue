@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
-import type { Box } from '../types/canvas'
+import { ref, computed, onMounted, onUnmounted, provide, watch } from 'vue'
+import type { Box, ViewportBounds } from '../types/canvas'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 
@@ -97,6 +97,23 @@ const viewportStyle = computed(() => {
 })
 
 provide('canvasZoom', zoom)
+
+// Viewport bounds in canvas coordinates (for culling)
+const updateViewportBounds = () => {
+  if (!canvasRef.value) return
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const bounds: ViewportBounds = {
+    left: -pan.value.x / zoom.value,
+    top: -pan.value.y / zoom.value,
+    right: (rect.width - pan.value.x) / zoom.value,
+    bottom: (rect.height - pan.value.y) / zoom.value
+  }
+  canvasStore.setViewportBounds(bounds)
+}
+
+// Watch pan and zoom changes to update viewport bounds
+watch([pan, zoom], updateViewportBounds, { deep: true })
 
 const PADDING = 100
 
@@ -447,6 +464,10 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
   window.addEventListener('blur', handleWindowBlur)
+  window.addEventListener('resize', updateViewportBounds)
+
+  // Initial viewport bounds update
+  updateViewportBounds()
 })
 
 onUnmounted(() => {
@@ -456,6 +477,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
   window.removeEventListener('blur', handleWindowBlur)
+  window.removeEventListener('resize', updateViewportBounds)
 
   // Clean up animation frames
   if (animationFrameId !== null) {

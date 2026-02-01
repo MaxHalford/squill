@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch, computed, onScopeDispose } from 'vue'
-import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex } from '../types/canvas'
+import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex, ViewportBounds } from '../types/canvas'
 import type { DatabaseEngine } from '../types/database'
 import { getDefaultQuery } from '../constants/defaultQueries'
 import { CanvasDataSchema, MultiCanvasIndexSchema } from '../utils/storageSchemas'
@@ -125,11 +125,38 @@ export const useCanvasStore = defineStore('canvas', () => {
   const undoStack = ref<UndoRedoState[]>([])
   const redoStack = ref<UndoRedoState[]>([])
 
+  // Viewport culling state
+  const viewportBounds = ref<ViewportBounds | null>(null)
+  const VIEWPORT_PADDING = 200 // Extra padding around viewport for culling
+
   // Computed: active canvas name for display
   const activeCanvasName = computed(() => {
     const canvas = canvasIndex.value.find(c => c.id === activeCanvasId.value)
     return canvas?.name ?? 'Canvas'
   })
+
+  // Computed: boxes that intersect the viewport (with padding)
+  const visibleBoxes = computed(() => {
+    const bounds = viewportBounds.value
+    // If no viewport bounds set yet, return all boxes
+    if (!bounds) return boxes.value
+
+    const { left, top, right, bottom } = bounds
+    const padding = VIEWPORT_PADDING
+
+    return boxes.value.filter(box => {
+      // Box intersects viewport if it's not completely outside
+      return box.x + box.width > left - padding &&
+             box.x < right + padding &&
+             box.y + box.height > top - padding &&
+             box.y < bottom + padding
+    })
+  })
+
+  // Action: update viewport bounds (called by InfiniteCanvas)
+  const setViewportBounds = (bounds: ViewportBounds) => {
+    viewportBounds.value = bounds
+  }
 
   // ============================================
   // Multi-canvas storage functions
@@ -810,12 +837,15 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     // Current canvas state
     boxes,
+    visibleBoxes,
     selectedBoxId,
     selectionHistory,
     selectedBoxIds,
     rectangleSelection,
     isDraggingBox,
     canvasRef,
+    viewportBounds,
+    setViewportBounds,
 
     // State management
     loadState,
