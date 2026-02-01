@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import BaseBox from './BaseBox.vue'
+import CopyButton from './CopyButton.vue'
 import { useQueryHistoryStore } from '../stores/queryHistory'
 import { useConnectionsStore } from '../stores/connections'
 import { DATABASE_INFO } from '../types/database'
@@ -40,7 +41,6 @@ const emit = defineEmits([
 const searchQuery = ref('')
 const selectedConnectionId = ref<string | null>(null)
 const selectedEntryId = ref<string | null>(null)
-const copied = ref(false)
 
 // CodeMirror refs
 const editorRef = ref<HTMLElement | null>(null)
@@ -142,19 +142,6 @@ function restoreQuery() {
   })
 }
 
-// Copy query to clipboard
-async function copyQuery() {
-  if (!selectedEntry.value) return
-  try {
-    await navigator.clipboard.writeText(selectedEntry.value.query)
-    copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 2000)
-  } catch (err) {
-    console.error('Failed to copy:', err)
-  }
-}
 
 // Create/update CodeMirror editor
 function updateEditor(query: string) {
@@ -305,22 +292,7 @@ onUnmounted(() => {
                   <line x1="10" y1="14" x2="21" y2="3"/>
                 </svg>
               </button>
-              <button
-                class="icon-btn"
-                :class="{ copied }"
-                v-tooltip="copied ? 'Copied!' : 'Copy to clipboard'"
-                @click.stop="copyQuery"
-              >
-                <!-- Checkmark icon when copied -->
-                <svg v-if="copied" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <!-- Copy icon -->
-                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-              </button>
+              <CopyButton :text="selectedEntry.query" />
             </div>
             <!-- Error message if failed -->
             <div v-if="!selectedEntry.success && selectedEntry.errorMessage" class="preview-error">
@@ -508,10 +480,6 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
-.icon-btn.copied {
-  color: var(--color-success);
-  border-color: var(--color-success);
-}
 
 .preview-error {
   padding: var(--space-2);

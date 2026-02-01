@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import BaseBox from './BaseBox.vue'
 import ResultsTable from './ResultsTable.vue'
+import CopyButton from './CopyButton.vue'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useBigQueryStore } from '../stores/bigquery'
 import { usePostgresStore } from '../stores/postgres'
@@ -71,6 +72,9 @@ const needsRefresh = ref(true)
 
 // Table name for ResultsTable to display
 const analyticsTableName = ref<string | null>(null)
+
+// Current query for copy functionality
+const currentQuery = ref<string | null>(null)
 
 // Group by state
 const availableColumns = ref<string[]>([])
@@ -237,6 +241,7 @@ const refresh = async () => {
   }
 }
 
+
 // Run query against the appropriate database
 const runQueryOnSource = async (query: string, sourceEngine: string | undefined, connectionId: string | undefined): Promise<{ rows: Record<string, unknown>[] }> => {
   if (sourceEngine === 'bigquery' && connectionId) {
@@ -287,6 +292,9 @@ const runAnalyticsQuery = async () => {
     // Use existing buildQuery for DuckDB tables
     query = buildQuery(analyticsData.value)
   }
+
+  // Store query for copy functionality
+  currentQuery.value = query
 
   if (!isGrouped.value && (typeCategory === 'number' || typeCategory === 'date')) {
     const result = useSourceAnalytics
@@ -720,6 +728,14 @@ onUnmounted(() => {
         >
           {{ DATABASE_INFO[analyticsData.sourceEngine].shortName }}
         </span>
+
+        <!-- Copy query button -->
+        <CopyButton
+          v-if="currentQuery"
+          :text="currentQuery"
+          size="sm"
+          tooltip="Copy query"
+        />
 
         <div class="group-by-section" ref="dropdownRef">
           <span class="group-by-label">GROUP BY</span>
