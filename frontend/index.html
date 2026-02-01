@@ -24,6 +24,15 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="format-detection" content="telephone=no" />
     <meta name="google-site-verification" content="7DfdWB8AILKs4joDJC7JWoPQt06z3RMXAb-OpQMt0_k" />
+    <script>
+      if (location.hostname === 'squill.dev' || location.hostname === 'www.squill.dev') {
+        var s = document.createElement('script');
+        s.defer = true;
+        s.src = 'https://umami-production-cb9e.up.railway.app/script.js';
+        s.dataset.websiteId = '67e4a5d5-a941-4a78-9732-6b7d7ff7f843';
+        document.head.appendChild(s);
+      }
+    </script>
     <meta name="description" content="Squill is a browser-based SQL editor and data exploration tool. Run SQL queries on CSV files and databases directly in your browser with DuckDB. No data leaves your device." />
     <meta name="keywords" content="SQL editor, DuckDB, browser SQL, data exploration, CSV viewer, database tool" />
     <meta name="author" content="Max Halford" />
