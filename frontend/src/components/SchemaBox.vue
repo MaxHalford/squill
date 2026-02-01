@@ -18,6 +18,9 @@ const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
 const schemaStore = useSchemaStore()
 
+// ResizeObserver for virtual scroll container
+let columnsResizeObserver: ResizeObserver | null = null
+
 // Load BigQuery projects on mount if we have BQ connections but no projects loaded
 onMounted(async () => {
   const bigqueryConnections = connectionsStore.getConnectionsByType('bigquery')
@@ -28,6 +31,11 @@ onMounted(async () => {
       console.warn('Failed to load BigQuery projects:', err)
     }
   }
+
+  // Set up resize observer for virtual scroll container
+  columnsResizeObserver = new ResizeObserver(() => {
+    updateColumnsContainerHeight()
+  })
 })
 
 // Inject canvas zoom for resize handle dragging
@@ -235,6 +243,69 @@ const column5Items = computed(() => {
   return schemas.value[key] || []
 })
 
+// Virtual scrolling for columns list (performance optimization for large tables)
+const COLUMN_ITEM_HEIGHT = 32
+const COLUMN_BUFFER_SIZE = 10 // Extra items to render above/below viewport
+const columnsScrollTop = ref(0)
+const columnsContainerHeight = ref(400)
+const columnsContainerRef = ref<HTMLElement | null>(null)
+
+// Get the raw column items (either column4Items for non-Snowflake or column5Items for Snowflake)
+const rawColumnItems = computed(() => {
+  return selectedProjectType.value === 'snowflake' ? column5Items.value : column4Items.value
+})
+
+// Total height of the virtual scroll container
+const columnsTotalHeight = computed(() => {
+  return rawColumnItems.value.length * COLUMN_ITEM_HEIGHT
+})
+
+// Calculate visible items with virtual scrolling
+const visibleColumnItems = computed(() => {
+  const items = rawColumnItems.value
+  if (items.length === 0) return []
+
+  // For small lists (< 100 items), don't virtualize - the overhead isn't worth it
+  if (items.length < 100) {
+    return items.map((item, index) => ({
+      ...item,
+      index,
+      style: {}
+    }))
+  }
+
+  const startIndex = Math.max(0, Math.floor(columnsScrollTop.value / COLUMN_ITEM_HEIGHT) - COLUMN_BUFFER_SIZE)
+  const visibleCount = Math.ceil(columnsContainerHeight.value / COLUMN_ITEM_HEIGHT)
+  const endIndex = Math.min(items.length, startIndex + visibleCount + COLUMN_BUFFER_SIZE * 2)
+
+  return items.slice(startIndex, endIndex).map((item, i) => ({
+    ...item,
+    index: startIndex + i,
+    style: {
+      position: 'absolute' as const,
+      top: `${(startIndex + i) * COLUMN_ITEM_HEIGHT}px`,
+      left: '0',
+      right: '0',
+      height: `${COLUMN_ITEM_HEIGHT}px`
+    }
+  }))
+})
+
+// Whether to use virtual scrolling (only for large lists)
+const useVirtualScroll = computed(() => rawColumnItems.value.length >= 100)
+
+// Handle scroll events for virtual scrolling
+const handleColumnsScroll = (e: Event) => {
+  const target = e.target as HTMLElement
+  columnsScrollTop.value = target.scrollTop
+}
+
+// Update container height on resize
+const updateColumnsContainerHeight = () => {
+  if (columnsContainerRef.value) {
+    columnsContainerHeight.value = columnsContainerRef.value.clientHeight
+  }
+}
 
 // Select project
 const selectProject = async (projectId: string) => {
@@ -310,6 +381,11 @@ const selectSnowflakeSchema = async (schemaName: string) => {
 const selectTable = async (tableId: string) => {
   selectedTable.value = tableId
   selectedColumn.value = null
+  // Reset virtual scroll position when switching tables
+  columnsScrollTop.value = 0
+  if (columnsContainerRef.value) {
+    columnsContainerRef.value.scrollTop = 0
+  }
 
   // Load schema
   let key: string
@@ -622,7 +698,6 @@ const handleResizeEnd = () => {
 }
 
 // Column analytics state
-const hoveredField = ref<string | null>(null)
 const selectedColumn = ref<string | null>(null)
 const hoveredTableItem = ref<string | null>(null)
 
@@ -653,9 +728,24 @@ watch(searchQuery, (newValue) => {
   }, 200)
 })
 
-// Cleanup timer on unmount
+// Cleanup timer and resize observer on unmount
 onUnmounted(() => {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  if (columnsResizeObserver) {
+    columnsResizeObserver.disconnect()
+    columnsResizeObserver = null
+  }
+})
+
+// Watch for columnsContainerRef changes to set up resize observer
+watch(columnsContainerRef, (newRef, oldRef) => {
+  if (oldRef && columnsResizeObserver) {
+    columnsResizeObserver.unobserve(oldRef)
+  }
+  if (newRef && columnsResizeObserver) {
+    columnsResizeObserver.observe(newRef)
+    updateColumnsContainerHeight()
+  }
 })
 
 const searchInputRef = ref<HTMLInputElement | null>(null)
@@ -1231,22 +1321,28 @@ defineExpose({
       <!-- Column 4 (non-Snowflake) / Column 5 (Snowflake): Columns -->
       <div v-if="selectedTable" class="column column-schema">
         <div class="column-header">Columns</div>
-        <div class="column-content">
+        <div
+          ref="columnsContainerRef"
+          class="column-content"
+          :class="{ 'virtual-scroll': useVirtualScroll }"
+          @scroll="handleColumnsScroll"
+        >
           <div v-if="loadingSchema[selectedTable]" class="loading">Retrieving...</div>
+          <!-- Virtual scroll spacer - creates the full scrollable height -->
+          <div v-if="useVirtualScroll" class="virtual-scroll-spacer" :style="{ height: `${columnsTotalHeight}px` }"></div>
+          <!-- Render only visible items when virtualizing -->
           <div
-            v-for="field in (selectedProjectType === 'snowflake' ? column5Items : column4Items)"
+            v-for="field in visibleColumnItems"
             :key="field.name"
             :class="['schema-field', { selected: selectedColumn === field.name }]"
+            :style="useVirtualScroll ? field.style : {}"
             @click="selectedColumn = selectedColumn === field.name ? null : field.name"
-            @mouseenter="hoveredField = field.name"
-            @mouseleave="hoveredField = null"
           >
             <span class="field-info">
               <span class="field-name">{{ field.name }}</span>
               <button
                 v-if="!isUnsupportedType(field.type)"
                 class="analytics-btn"
-                :class="{ visible: hoveredField === field.name }"
                 @click.stop="handleShowAnalytics($event, field)"
                 v-tooltip="'View column analytics'"
               >
@@ -1459,6 +1555,19 @@ defineExpose({
   contain: strict;
 }
 
+/* Virtual scroll container */
+.column-content.virtual-scroll {
+  position: relative;
+}
+
+.virtual-scroll-spacer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+
 .item {
   /* Performance: skip rendering off-screen items */
   content-visibility: auto;
@@ -1569,7 +1678,7 @@ defineExpose({
   background: var(--surface-tertiary);
 }
 
-/* Analytics button in schema fields */
+/* Analytics button in schema fields - uses CSS :hover for performance */
 .field-info .analytics-btn {
   display: flex;
   align-items: center;
@@ -1592,7 +1701,8 @@ defineExpose({
   height: 10px;
 }
 
-.field-info .analytics-btn.visible {
+/* Show analytics button on row hover (CSS-only, no JS state) */
+.schema-field:hover .analytics-btn {
   opacity: 1;
 }
 

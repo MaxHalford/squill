@@ -57,29 +57,41 @@ const isSpaceHeld = ref(false)
 const isDraggingFile = ref(false)
 const dragCounter = ref(0)
 
-// Hybrid zoom: use pure transform during active zooming (fast), CSS zoom when idle (crisp)
+// Hybrid zoom state: smooth transform during zoom, crisp CSS zoom when idle
 const isActivelyZooming = ref(false)
+const committedZoom = ref(1) // The zoom level applied via CSS zoom
 let zoomIdleTimer: ReturnType<typeof setTimeout> | null = null
-const ZOOM_IDLE_DELAY = 150 // ms to wait before switching to crisp mode
+const ZOOM_IDLE_DELAY = 150 // ms to wait before switching to CSS zoom
 
-// Computed style for viewport - hybrid zoom/scale approach
-// Fast mode: pure transform (GPU-accelerated, no layout recalc)
-// Crisp mode: CSS zoom (triggers layout but gives sharp text)
+// Mark zoom as active and schedule the idle transition
+const markZoomActive = () => {
+  isActivelyZooming.value = true
+  if (zoomIdleTimer) clearTimeout(zoomIdleTimer)
+  zoomIdleTimer = setTimeout(() => {
+    // Commit the current zoom to CSS zoom for crisp rendering
+    committedZoom.value = zoom.value
+    isActivelyZooming.value = false
+  }, ZOOM_IDLE_DELAY)
+}
+
+// Hybrid zoom: transform during active zoom (smooth), CSS zoom when idle (crisp)
 const viewportStyle = computed(() => {
+  const currentZoom = zoom.value
+  const baseZoom = committedZoom.value
+
   if (isActivelyZooming.value) {
-    // Fast mode: use only transform, no CSS zoom
-    // transform: translate(pan) scale(zoom) - applied right-to-left
-    // Result: point at (cx, cy) appears at (cx * zoom + pan.x, cy * zoom + pan.y)
+    // During active zooming: use transform scale relative to committed CSS zoom
+    // This keeps zooming at 60fps while maintaining the last crisp state as base
+    const relativeScale = currentZoom / baseZoom
     return {
-      transform: `translate3d(${pan.value.x}px, ${pan.value.y}px, 0) scale(${zoom.value})`
+      zoom: baseZoom,
+      transform: `translate3d(${pan.value.x / baseZoom}px, ${pan.value.y / baseZoom}px, 0) scale(${relativeScale})`
     }
   } else {
-    // Crisp mode: use CSS zoom for sharp text
-    // CSS zoom scales everything including the transform
-    // So we divide pan by zoom to compensate
+    // Idle: use CSS zoom for crisp text, transform only for panning
     return {
-      zoom: zoom.value,
-      transform: `translate3d(${pan.value.x / zoom.value}px, ${pan.value.y / zoom.value}px, 0)`
+      zoom: currentZoom,
+      transform: `translate3d(${pan.value.x / currentZoom}px, ${pan.value.y / currentZoom}px, 0)`
     }
   }
 })
@@ -129,15 +141,6 @@ const fitToView = () => {
   // Cancel any existing animation
   if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
 
-  // Clear any pending crisp commit
-  if (zoomIdleTimer) {
-    clearTimeout(zoomIdleTimer)
-    zoomIdleTimer = null
-  }
-
-  // Use pure transform during animation for smooth performance
-  isActivelyZooming.value = true
-
   const startPan = { ...pan.value }
   const startZoom = zoom.value
   const startTime = performance.now()
@@ -152,13 +155,12 @@ const fitToView = () => {
       y: startPan.y + (targetPan.y - startPan.y) * eased
     }
     zoom.value = startZoom + (targetZoom - startZoom) * eased
+    markZoomActive()
 
     if (progress < 1) {
       animationFrameId = requestAnimationFrame(animate)
     } else {
       animationFrameId = null
-      // Animation complete - switch to crisp mode
-      isActivelyZooming.value = false
     }
   }
 
@@ -267,24 +269,12 @@ const handleWheel = (e: WheelEvent) => {
 
   const newZoom = Math.min(Math.max(zoom.value * (1 - e.deltaY * 0.001), 0.1), 5)
 
-  // Enter fast zoom mode (pure transform, no CSS zoom)
-  isActivelyZooming.value = true
-
-  // Clear any pending crisp commit
-  if (zoomIdleTimer) {
-    clearTimeout(zoomIdleTimer)
-  }
-
-  // Schedule switch to crisp mode after zooming stops
-  zoomIdleTimer = setTimeout(() => {
-    isActivelyZooming.value = false
-  }, ZOOM_IDLE_DELAY)
-
   pan.value = {
     x: mouseX - mouseXInCanvas * newZoom,
     y: mouseY - mouseYInCanvas * newZoom
   }
   zoom.value = newZoom
+  markZoomActive()
 }
 
 const handleMouseDown = (e: MouseEvent) => {

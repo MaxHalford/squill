@@ -208,8 +208,8 @@ onUnmounted(() => {
   border-radius: var(--box-border-radius);
   box-shadow: var(--box-shadow);
   isolation: isolate;
-  /* Improve rendering performance and crisp edges */
-  contain: style;
+  /* Strong containment: isolate layout calculations from parent zoom changes */
+  contain: layout style paint;
   will-change: left, top, width, height;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
@@ -295,8 +295,8 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   cursor: auto;
-  /* Clip content while allowing resize handles to extend outside box */
-  contain: layout;
+  /* Strong containment: isolate content from parent selection/border changes */
+  contain: layout style paint;
 }
 
 /* Resize Handles */

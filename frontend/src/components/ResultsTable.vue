@@ -61,6 +61,12 @@ const resizingColumn = ref<string | null>(null)
 const resizeStartX = ref(0)
 const resizeStartWidth = ref(0)
 
+// Column virtualization state
+const tableContainerRef = ref<HTMLElement | null>(null)
+const scrollLeft = ref(0)
+const containerWidth = ref(800)
+const COLUMN_BUFFER = 2 // Render 2 extra columns on each side
+
 const pageSize = computed(() => settingsStore.paginationSize)
 
 // Get fetch state for this box if available
@@ -132,6 +138,65 @@ const tableStyle = computed(() => {
   const totalColumnWidth = columns.value.reduce((sum, col) => sum + (columnWidths.value[col] || 150), 0)
   return { width: (rowNumberColWidth.value + totalColumnWidth) + 'px' }
 })
+
+// Column virtualization: only render visible columns
+const visibleColumnsData = computed(() => {
+  const cols = columns.value
+  if (cols.length < 20) {
+    // Don't virtualize small column counts
+    return {
+      columns: cols,
+      startIndex: 0,
+      endIndex: cols.length,
+      paddingLeft: 0,
+      paddingRight: 0
+    }
+  }
+
+  // Calculate cumulative widths
+  let cumWidth = 0
+  const positions: number[] = [0]
+  for (const col of cols) {
+    cumWidth += columnWidths.value[col] || 150
+    positions.push(cumWidth)
+  }
+
+  // Find first visible column (accounting for row number column)
+  const viewStart = scrollLeft.value
+  const viewEnd = viewStart + containerWidth.value
+
+  let startIndex = 0
+  let endIndex = cols.length
+
+  // Binary search for start index
+  for (let i = 0; i < cols.length; i++) {
+    if (positions[i + 1] >= viewStart) {
+      startIndex = Math.max(0, i - COLUMN_BUFFER)
+      break
+    }
+  }
+
+  // Binary search for end index
+  for (let i = startIndex; i < cols.length; i++) {
+    if (positions[i] > viewEnd) {
+      endIndex = Math.min(cols.length, i + COLUMN_BUFFER)
+      break
+    }
+  }
+
+  const paddingLeft = positions[startIndex]
+  const paddingRight = cumWidth - positions[endIndex]
+
+  return {
+    columns: cols.slice(startIndex, endIndex),
+    startIndex,
+    endIndex,
+    paddingLeft,
+    paddingRight
+  }
+})
+
+const visibleColumns = computed(() => visibleColumnsData.value.columns)
 
 // Fetch a page of data from DuckDB
 const fetchPage = async () => {
@@ -452,6 +517,28 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
+// Track horizontal scroll for column virtualization
+let scrollRAF: number | null = null
+const handleTableScroll = () => {
+  if (!scrollRAF) {
+    scrollRAF = requestAnimationFrame(() => {
+      if (tableContainerRef.value) {
+        scrollLeft.value = tableContainerRef.value.scrollLeft
+      }
+      scrollRAF = null
+    })
+  }
+}
+
+// Track container width for virtualization
+const updateContainerWidth = () => {
+  if (tableContainerRef.value) {
+    containerWidth.value = tableContainerRef.value.clientWidth
+  }
+}
+
+let resizeObserver: ResizeObserver | null = null
+
 // Copy handler for Google Sheets compatibility (TSV format)
 const handleCopy = (event: ClipboardEvent) => {
   const selection = window.getSelection()
@@ -493,6 +580,17 @@ const handleCopy = (event: ClipboardEvent) => {
 onMounted(() => {
   document.addEventListener('copy', handleCopy)
   document.addEventListener('click', handleClickOutside)
+
+  // Column virtualization: track scroll and container size
+  if (tableContainerRef.value) {
+    tableContainerRef.value.addEventListener('scroll', handleTableScroll, { passive: true })
+    updateContainerWidth()
+
+    resizeObserver = new ResizeObserver(() => {
+      updateContainerWidth()
+    })
+    resizeObserver.observe(tableContainerRef.value)
+  }
 })
 onUnmounted(() => {
   document.removeEventListener('copy', handleCopy)
@@ -500,6 +598,19 @@ onUnmounted(() => {
   // Clean up resize listeners in case component unmounts during resize
   document.removeEventListener('mousemove', handleResize)
   document.removeEventListener('mouseup', stopResize)
+
+  // Clean up scroll listener and resize observer
+  if (tableContainerRef.value) {
+    tableContainerRef.value.removeEventListener('scroll', handleTableScroll)
+  }
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  if (scrollRAF) {
+    cancelAnimationFrame(scrollRAF)
+    scrollRAF = null
+  }
 })
 
 defineExpose({ resetPagination })
@@ -517,17 +628,23 @@ defineExpose({ resetPagination })
       </div>
     </div>
 
-    <div class="table-container" role="region" aria-label="Query results" tabindex="0">
+    <div ref="tableContainerRef" class="table-container" role="region" aria-label="Query results" tabindex="0">
       <table v-if="hasResults && !isBackgroundLoading" ref="tableRef" class="results-table" :style="tableStyle">
         <colgroup>
           <col class="row-number-col" :style="{ width: rowNumberColWidth + 'px' }">
-          <col v-for="column in columns" :key="column" :style="{ width: (columnWidths[column] || 150) + 'px' }">
+          <!-- Padding for virtualized columns before visible range -->
+          <col v-if="visibleColumnsData.paddingLeft > 0" :style="{ width: visibleColumnsData.paddingLeft + 'px' }">
+          <col v-for="column in visibleColumns" :key="column" :style="{ width: (columnWidths[column] || 150) + 'px' }">
+          <!-- Padding for virtualized columns after visible range -->
+          <col v-if="visibleColumnsData.paddingRight > 0" :style="{ width: visibleColumnsData.paddingRight + 'px' }">
         </colgroup>
         <thead>
           <tr>
             <th scope="col" class="row-number-col"></th>
+            <!-- Padding cell for virtualized columns before visible range -->
+            <th v-if="visibleColumnsData.paddingLeft > 0" class="virtual-padding-cell"></th>
             <th
-              v-for="column in columns"
+              v-for="column in visibleColumns"
               :key="column"
               scope="col"
               :class="{
@@ -597,6 +714,8 @@ defineExpose({ resetPagination })
                 @mousedown.stop.prevent="startResize($event, column)"
               />
             </th>
+            <!-- Padding cell for virtualized columns after visible range -->
+            <th v-if="visibleColumnsData.paddingRight > 0" class="virtual-padding-cell"></th>
           </tr>
         </thead>
         <tbody :key="animationKey">
@@ -625,8 +744,10 @@ defineExpose({ resetPagination })
                 </svg>
               </button>
             </th>
+            <!-- Padding cell for virtualized columns before visible range -->
+            <td v-if="visibleColumnsData.paddingLeft > 0" class="virtual-padding-cell"></td>
             <td
-              v-for="column in columns"
+              v-for="column in visibleColumns"
               :key="column"
               :class="{
                 'null-value': row[column] === null,
@@ -635,6 +756,8 @@ defineExpose({ resetPagination })
             >
               {{ formatCellValue(row[column], columnTypes[column] || '') }}
             </td>
+            <!-- Padding cell for virtualized columns after visible range -->
+            <td v-if="visibleColumnsData.paddingRight > 0" class="virtual-padding-cell"></td>
           </tr>
         </tbody>
       </table>
@@ -737,6 +860,8 @@ defineExpose({ resetPagination })
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Strong containment: isolate from parent selection/z-index changes */
+  contain: layout style paint;
 }
 
 .error-banner {
@@ -783,6 +908,8 @@ defineExpose({ resetPagination })
   position: relative;
   scrollbar-width: none;
   background: var(--surface-primary);
+  /* Contain layout to prevent zoom recalc propagation */
+  contain: strict;
 }
 
 .table-container::-webkit-scrollbar {
@@ -798,6 +925,8 @@ defineExpose({ resetPagination })
   color: var(--text-primary);
   text-align: start;
   line-height: 1.3;
+  /* Contain layout to prevent zoom recalc propagation */
+  contain: layout style;
 }
 
 .results-table ::selection {
@@ -930,6 +1059,9 @@ defineExpose({ resetPagination })
 /* Row backgrounds - subtle TUI style */
 .results-table tbody tr {
   background: var(--surface-primary);
+  /* Performance: skip rendering off-screen rows */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 28px;
 }
 
 .results-table tbody tr:nth-child(even) {
@@ -1236,6 +1368,13 @@ defineExpose({ resetPagination })
   height: 100%;
   color: var(--text-secondary);
   font-size: var(--font-size-body);
+}
+
+/* Virtual scrolling padding cells */
+.virtual-padding-cell {
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 
 </style>

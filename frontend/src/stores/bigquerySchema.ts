@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { SchemaStateSchema } from '../utils/storageSchemas'
 
@@ -59,16 +59,12 @@ export const useSchemaStore = defineStore('schema', () => {
   // Load initial state
   loadState()
 
-  // Watch for changes and auto-save
-  watch(bigQuerySchemas, () => {
-    saveState()
-  }, { deep: true })
-
   // Add or update a table schema
   const setTableSchema = (project: string, dataset: string, table: string, columns: Array<{ name: string; type: string }>) => {
     const key = `${project}.${dataset}.${table}`
     bigQuerySchemas.value[key] = columns
     schemaVersion.value++
+    saveState()
   }
 
   // Remove a table schema
@@ -76,12 +72,14 @@ export const useSchemaStore = defineStore('schema', () => {
     const key = `${project}.${dataset}.${table}`
     delete bigQuerySchemas.value[key]
     schemaVersion.value++
+    saveState()
   }
 
   // Clear all schemas
   const clearSchemas = () => {
     bigQuerySchemas.value = {}
     schemaVersion.value++
+    saveState()
   }
 
   // Get all table names for a project.dataset

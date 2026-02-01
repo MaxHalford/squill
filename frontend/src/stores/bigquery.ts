@@ -57,6 +57,37 @@ export interface BigQueryPaginatedQueryResult {
   }
 }
 
+// Convert BigQuery value to proper JS type based on schema
+// BigQuery's JSON API returns all values as strings, but we need proper types for DuckDB
+const convertBigQueryValue = (value: unknown, fieldType: string): unknown => {
+  if (value === null || value === undefined) return null
+  const type = fieldType.toUpperCase()
+
+  // Numeric types
+  if (type === 'INTEGER' || type === 'INT64') {
+    return parseInt(value as string, 10)
+  }
+  if (type === 'FLOAT' || type === 'FLOAT64' || type === 'NUMERIC' || type === 'BIGNUMERIC') {
+    return parseFloat(value as string)
+  }
+
+  // Boolean
+  if (type === 'BOOLEAN' || type === 'BOOL') {
+    return value === 'true' || value === true
+  }
+
+  // Timestamps - convert epoch seconds to ISO string for DuckDB
+  if (type === 'TIMESTAMP' || type === 'DATETIME') {
+    const epoch = parseFloat(value as string)
+    if (!isNaN(epoch)) {
+      return new Date(epoch * 1000).toISOString()
+    }
+  }
+
+  // Everything else (STRING, DATE, TIME, BYTES, etc.)
+  return value
+}
+
 export const useBigQueryStore = defineStore('bigquery', () => {
   // Delegate to connections store
   const connectionsStore = useConnectionsStore()
@@ -499,17 +530,17 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       cacheHit: data.cacheHit || false
     }
 
-    // Transform BigQuery response to table format
+    // Transform BigQuery response with proper types
     if (data.schema && data.rows) {
-      const fieldNames = data.schema.fields.map((f: BigQueryField) => f.name)
+      const fields = data.schema.fields
       const rows = data.rows.map((row: BigQueryRow) => {
         const obj: Record<string, unknown> = {}
-        fieldNames.forEach((name: string, i: number) => {
-          obj[name] = row.f[i].v
+        fields.forEach((field: BigQueryField, i: number) => {
+          obj[field.name] = convertBigQueryValue(row.f[i].v, field.type)
         })
         return obj
       })
-      return { rows, schema: data.schema.fields, stats }
+      return { rows, schema: fields, stats }
     }
 
     return { rows: [], schema: [], stats }
@@ -611,17 +642,17 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     // Check if there are more results
     const hasMore = !!data.pageToken
 
-    // Transform BigQuery response to table format
+    // Transform BigQuery response with proper types
     if (data.schema && data.rows) {
-      const schema = data.schema.fields.map((f: BigQueryField) => ({
+      const fields = data.schema.fields
+      const schema = fields.map((f: BigQueryField) => ({
         name: f.name,
         type: f.type
       }))
-      const fieldNames = data.schema.fields.map((f: BigQueryField) => f.name)
       const rows = data.rows.map((row: BigQueryRow) => {
         const obj: Record<string, unknown> = {}
-        fieldNames.forEach((name: string, i: number) => {
-          obj[name] = row.f[i].v
+        fields.forEach((field: BigQueryField, i: number) => {
+          obj[field.name] = convertBigQueryValue(row.f[i].v, field.type)
         })
         return obj
       })

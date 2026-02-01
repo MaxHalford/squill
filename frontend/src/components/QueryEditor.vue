@@ -652,7 +652,8 @@ defineExpose({
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
-  contain: layout;
+  /* Strong containment: isolate from parent selection changes */
+  contain: layout style paint;
 }
 
 .query-editor {
