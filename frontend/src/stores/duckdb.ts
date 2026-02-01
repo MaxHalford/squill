@@ -4,6 +4,8 @@ import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
 import { loadCsvWithDuckDB } from '../services/csvHandler'
 import { sanitizeTableName } from '../utils/sqlSanitize'
+import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
+import type { DatabaseEngine } from '../types/database'
 
 interface TableMetadata {
   rowCount: number
@@ -171,12 +173,14 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   // Store query results as DuckDB table using JSON import
-  // This lets DuckDB handle type inference automatically
+  // For BigQuery: applies explicit type casts since BigQuery REST API returns strings
+  // For other engines: lets DuckDB infer types (they return properly typed data)
   const storeResults = async (
     boxName: string,
     results: Record<string, any>[],
     boxId: number | null = null,
-    _schema?: ColumnSchema[]  // Kept for API compatibility, but not used
+    schema?: ColumnSchema[],
+    sourceEngine?: DatabaseEngine
   ): Promise<string | null> => {
     if (!isInitialized.value) {
       await initialize()
@@ -196,12 +200,44 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       // Drop existing table if exists
       await conn.value!.query(`DROP TABLE IF EXISTS ${tableName}`)
 
-      // Register JSON data and create table with explicit column order
+      // Register JSON data
       await db.value!.registerFileText(jsonFileName, JSON.stringify(results))
-      const columnList = columns.map(c => `"${c}"`).join(', ')
-      await conn.value!.query(
-        `CREATE TABLE ${tableName} AS SELECT ${columnList} FROM read_json_auto('${jsonFileName}')`
-      )
+
+      // BigQuery-specific: apply explicit type casts
+      // BigQuery REST API returns all values as strings, so we need to cast
+      // timestamps, dates, etc. to proper types for DuckDB
+      if (sourceEngine === 'bigquery' && schema && schema.length > 0) {
+        const schemaMap = new Map(schema.map(s => [s.name, s.type]))
+
+        // Build column definitions with BigQuery-specific type casts
+        const columnDefs = columns.map(col => {
+          const sourceType = schemaMap.get(col)
+          const duckdbType = sourceType ? mapBigQueryTypeToDuckDB(sourceType) : 'VARCHAR'
+          // Cast JSON string values to proper DuckDB types
+          if (duckdbType === 'TIMESTAMP') {
+            return `"${col}"::TIMESTAMP AS "${col}"`
+          } else if (duckdbType === 'DATE') {
+            return `"${col}"::DATE AS "${col}"`
+          } else if (duckdbType === 'TIME') {
+            return `"${col}"::TIME AS "${col}"`
+          } else if (duckdbType === 'JSON') {
+            return `to_json("${col}") AS "${col}"`
+          }
+          return `"${col}"`
+        }).join(', ')
+
+        await conn.value!.query(
+          `CREATE TABLE ${tableName} AS SELECT ${columnDefs} FROM read_json_auto('${jsonFileName}')`
+        )
+      } else {
+        // Other engines (Postgres, Snowflake, etc.): let DuckDB infer types
+        // These databases return properly typed JSON that DuckDB can handle
+        const columnList = columns.map(c => `"${c}"`).join(', ')
+        await conn.value!.query(
+          `CREATE TABLE ${tableName} AS SELECT ${columnList} FROM read_json_auto('${jsonFileName}')`
+        )
+      }
+
       await db.value!.dropFile(jsonFileName)
 
       // Update metadata

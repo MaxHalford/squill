@@ -527,8 +527,8 @@ const runQuery = async () => {
             stats: paginatedResult.stats
           }
 
-          // Store first batch in DuckDB
-          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
+          // Store first batch in DuckDB (BigQuery needs explicit type casts)
+          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns, 'bigquery')
 
           // Initialize fetch state
           // Note: Background loading is disabled - we use lazy loading only
@@ -546,7 +546,7 @@ const runQuery = async () => {
         } else {
           // Non-paginated flow (original behavior)
           result = await bigqueryStore.runQuery(query, abortController.signal, connectionId)
-          await duckdbStore.storeResults(boxName, result.rows as Record<string, unknown>[], props.boxId, result.schema)
+          await duckdbStore.storeResults(boxName, result.rows as Record<string, unknown>[], props.boxId, result.schema, 'bigquery')
           queryResultsStore.initQueryResult(props.boxId, 'bigquery', {
             totalRows: result.rows.length,
             fetchedRows: result.rows.length,

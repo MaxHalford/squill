@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useConnectionsStore } from './connections'
-import type { BigQueryProject, BigQueryDataset, BigQueryTable, BigQueryField, BigQueryQueryResponse, BigQueryRow } from '../types/bigquery'
+import type { BigQueryProject, BigQueryDataset, BigQueryTable, BigQueryField, BigQueryQueryResponse } from '../types/bigquery'
+import { convertBigQueryRows, extractSimpleSchema } from '../utils/bigqueryConversion'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const OAUTH_STATE_KEY = 'squill-oauth-state'
@@ -55,59 +56,6 @@ export interface BigQueryPaginatedQueryResult {
     totalBytesProcessed?: string
     cacheHit?: boolean
   }
-}
-
-// Convert BigQuery value to proper JS type based on schema
-// BigQuery's JSON API returns all values as strings, but we need proper types for DuckDB
-// For RECORD/STRUCT types, it returns nested {f: [{v: ...}]} format that needs conversion
-const convertBigQueryValue = (value: unknown, field: BigQueryField): unknown => {
-  if (value === null || value === undefined) return null
-  const type = field.type.toUpperCase()
-
-  // ARRAY/REPEATED - convert each element first (before checking type)
-  if (field.mode === 'REPEATED' && Array.isArray(value)) {
-    // Create a non-repeated version of the field for element conversion
-    const elementField: BigQueryField = { ...field, mode: undefined }
-    return (value as Array<{ v: unknown }>).map(item => convertBigQueryValue(item.v, elementField))
-  }
-
-  // RECORD/STRUCT - recursively convert nested fields
-  if (type === 'RECORD' || type === 'STRUCT') {
-    const recordValue = value as { f?: Array<{ v: unknown }> }
-    if (!recordValue.f || !field.fields) return value
-
-    const obj: Record<string, unknown> = {}
-    field.fields.forEach((subField, i) => {
-      if (recordValue.f && recordValue.f[i]) {
-        obj[subField.name] = convertBigQueryValue(recordValue.f[i].v, subField)
-      }
-    })
-    return obj
-  }
-
-  // Numeric types
-  if (type === 'INTEGER' || type === 'INT64') {
-    return parseInt(value as string, 10)
-  }
-  if (type === 'FLOAT' || type === 'FLOAT64' || type === 'NUMERIC' || type === 'BIGNUMERIC') {
-    return parseFloat(value as string)
-  }
-
-  // Boolean
-  if (type === 'BOOLEAN' || type === 'BOOL') {
-    return value === 'true' || value === true
-  }
-
-  // Timestamps - convert epoch seconds to ISO string for DuckDB
-  if (type === 'TIMESTAMP' || type === 'DATETIME') {
-    const epoch = parseFloat(value as string)
-    if (!isNaN(epoch)) {
-      return new Date(epoch * 1000).toISOString()
-    }
-  }
-
-  // Everything else (STRING, DATE, TIME, BYTES, etc.)
-  return value
 }
 
 export const useBigQueryStore = defineStore('bigquery', () => {
@@ -554,15 +502,8 @@ export const useBigQueryStore = defineStore('bigquery', () => {
 
     // Transform BigQuery response with proper types
     if (data.schema && data.rows) {
-      const fields = data.schema.fields
-      const rows = data.rows.map((row: BigQueryRow) => {
-        const obj: Record<string, unknown> = {}
-        fields.forEach((field: BigQueryField, i: number) => {
-          obj[field.name] = convertBigQueryValue(row.f[i].v, field)
-        })
-        return obj
-      })
-      return { rows, schema: fields, stats }
+      const rows = convertBigQueryRows(data.rows, data.schema.fields)
+      return { rows, schema: data.schema.fields, stats }
     }
 
     return { rows: [], schema: [], stats }
@@ -666,21 +607,11 @@ export const useBigQueryStore = defineStore('bigquery', () => {
 
     // Transform BigQuery response with proper types
     if (data.schema && data.rows) {
-      const fields = data.schema.fields
-      const schema = fields.map((f: BigQueryField) => ({
-        name: f.name,
-        type: f.type
-      }))
-      const rows = data.rows.map((row: BigQueryRow) => {
-        const obj: Record<string, unknown> = {}
-        fields.forEach((field: BigQueryField, i: number) => {
-          obj[field.name] = convertBigQueryValue(row.f[i].v, field)
-        })
-        return obj
-      })
+      const rows = convertBigQueryRows(data.rows, data.schema.fields)
+      const columns = extractSimpleSchema(data.schema.fields)
       return {
         rows,
-        columns: schema,
+        columns,
         totalRows,
         hasMore,
         pageToken: data.pageToken,

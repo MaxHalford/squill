@@ -335,12 +335,13 @@ const runAnalyticsQuery = async () => {
           connectionId
         )
 
-        // Store first batch in DuckDB
+        // Store first batch in DuckDB (BigQuery needs explicit type casts)
         await duckdbStore.storeResults(
           storageTableName,
           paginatedResult.rows as Record<string, unknown>[],
           props.boxId,
-          paginatedResult.columns
+          paginatedResult.columns,
+          'bigquery'
         )
 
         // Initialize fetch state for pagination
