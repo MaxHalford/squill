@@ -2,6 +2,7 @@ export interface BigQueryField {
   name: string
   type: string
   mode?: string
+  fields?: BigQueryField[]  // Nested fields for RECORD/STRUCT types
 }
 
 export interface BigQuerySchema {

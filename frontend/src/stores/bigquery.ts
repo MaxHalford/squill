@@ -59,9 +59,31 @@ export interface BigQueryPaginatedQueryResult {
 
 // Convert BigQuery value to proper JS type based on schema
 // BigQuery's JSON API returns all values as strings, but we need proper types for DuckDB
-const convertBigQueryValue = (value: unknown, fieldType: string): unknown => {
+// For RECORD/STRUCT types, it returns nested {f: [{v: ...}]} format that needs conversion
+const convertBigQueryValue = (value: unknown, field: BigQueryField): unknown => {
   if (value === null || value === undefined) return null
-  const type = fieldType.toUpperCase()
+  const type = field.type.toUpperCase()
+
+  // ARRAY/REPEATED - convert each element first (before checking type)
+  if (field.mode === 'REPEATED' && Array.isArray(value)) {
+    // Create a non-repeated version of the field for element conversion
+    const elementField: BigQueryField = { ...field, mode: undefined }
+    return (value as Array<{ v: unknown }>).map(item => convertBigQueryValue(item.v, elementField))
+  }
+
+  // RECORD/STRUCT - recursively convert nested fields
+  if (type === 'RECORD' || type === 'STRUCT') {
+    const recordValue = value as { f?: Array<{ v: unknown }> }
+    if (!recordValue.f || !field.fields) return value
+
+    const obj: Record<string, unknown> = {}
+    field.fields.forEach((subField, i) => {
+      if (recordValue.f && recordValue.f[i]) {
+        obj[subField.name] = convertBigQueryValue(recordValue.f[i].v, subField)
+      }
+    })
+    return obj
+  }
 
   // Numeric types
   if (type === 'INTEGER' || type === 'INT64') {
@@ -536,7 +558,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       const rows = data.rows.map((row: BigQueryRow) => {
         const obj: Record<string, unknown> = {}
         fields.forEach((field: BigQueryField, i: number) => {
-          obj[field.name] = convertBigQueryValue(row.f[i].v, field.type)
+          obj[field.name] = convertBigQueryValue(row.f[i].v, field)
         })
         return obj
       })
@@ -652,7 +674,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       const rows = data.rows.map((row: BigQueryRow) => {
         const obj: Record<string, unknown> = {}
         fields.forEach((field: BigQueryField, i: number) => {
-          obj[field.name] = convertBigQueryValue(row.f[i].v, field.type)
+          obj[field.name] = convertBigQueryValue(row.f[i].v, field)
         })
         return obj
       })

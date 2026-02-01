@@ -50,9 +50,38 @@ const fields = computed(() => {
   return Object.entries(rowData.value)
 })
 
+// Try to parse JSON string, return parsed value or original
+const tryParseJson = (value: unknown): unknown => {
+  if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value
+    }
+  }
+  return value
+}
+
 // Check if value is complex (object or array) and should use JsonTree
+// Also handles JSON strings that should be displayed as trees
 const isComplexValue = (value: unknown): boolean => {
-  return value !== null && typeof value === 'object'
+  if (value === null) return false
+  if (typeof value === 'object') return true
+  // Check if it's a JSON string
+  if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
+    try {
+      JSON.parse(value)
+      return true
+    } catch {
+      return false
+    }
+  }
+  return false
+}
+
+// Get the display value (parse JSON strings for tree display)
+const getDisplayValue = (value: unknown): unknown => {
+  return tryParseJson(value)
 }
 
 // Format value for display (handle null, undefined, dates, etc.)
@@ -94,7 +123,7 @@ const formatValue = (value: unknown, columnType?: string): string => {
           <span v-if="columnTypes[field]" class="field-type">{{ simplifyTypeName(columnTypes[field]) }}</span>
         </div>
         <div class="field-value" :class="{ 'null-value': value === null }">
-          <JsonTree v-if="isComplexValue(value)" :data="value" :default-expand-depth="2" />
+          <JsonTree v-if="isComplexValue(value)" :data="getDisplayValue(value)" :default-expand-depth="2" />
           <template v-else>{{ formatValue(value, columnTypes[field]) }}</template>
         </div>
       </div>
