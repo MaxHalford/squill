@@ -5,26 +5,28 @@
  * into clean JavaScript objects suitable for DuckDB storage.
  *
  * WHY THIS EXISTS:
- * BigQuery's REST API returns data in a peculiar format:
- * - All values are strings (even numbers, booleans, timestamps)
- * - STRUCT/RECORD types use nested {f: [{v: ...}]} format
- * - REPEATED (array) types wrap each element in {v: ...}
+ * BigQuery's REST API returns data in a peculiar format that requires conversion:
  *
- * EXAMPLE BigQuery response for a STRUCT column:
- * {
- *   "f": [
- *     {"v": "value1"},
- *     {"v": {"f": [{"v": "nested"}]}}  // nested struct
- *   ]
- * }
+ * 1. ROW FORMAT: Rows use {f: [{v: value1}, {v: value2}]} instead of plain objects
+ *    - Must be unwrapped using the schema to map indices to field names
  *
- * FUTURE: This module should be replaced with Arrow deserialization
- * when migrating to BigQuery Storage Read API, which returns proper
- * typed binary data. The public interface (convertBigQueryRows) should
- * remain stable to minimize migration effort.
+ * 2. VALUE TYPES: Most values are strings that need parsing:
+ *    - Numbers: "123" → 123
+ *    - Booleans: "true" → true
+ *    - Timestamps: "1704067200.123" (epoch float) → "2024-01-01T00:00:00.123Z" (ISO)
  *
- * @see https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/getQueryResults
- * @see https://cloud.google.com/bigquery/docs/reference/storage (Arrow alternative)
+ * 3. STRUCTS: Nested {f: [{v: ...}]} format for RECORD/STRUCT fields
+ *
+ * 4. ARRAYS: REPEATED fields wrap each element in {v: ...}
+ *
+ * NOTE: We request `formatOptions.useInt64Timestamp: false` in API calls to get
+ * float seconds instead of int64 microseconds, which is easier to parse.
+ *
+ * FUTURE: Replace with BigQuery Storage Read API + Arrow format for proper typed
+ * data without manual conversion. See: https://cloud.google.com/bigquery/docs/reference/storage
+ *
+ * @see https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/query
+ * @see https://github.com/googleapis/nodejs-bigquery (official SDK does same conversion)
  */
 
 import type { BigQueryField, BigQueryRow } from '../types/bigquery'
@@ -79,12 +81,12 @@ export const convertBigQueryValue = (value: unknown, field: BigQueryField): unkn
     return value === 'true' || value === true
   }
 
-  // Timestamps - BigQuery returns epoch seconds as string
-  // Convert to ISO string for DuckDB compatibility
+  // Timestamps - BigQuery returns epoch seconds as float string (e.g., "1704067200.123")
+  // Convert to ISO 8601 string which DuckDB can parse when cast to TIMESTAMP
   if (type === 'TIMESTAMP' || type === 'DATETIME') {
-    const epoch = parseFloat(value as string)
-    if (!isNaN(epoch)) {
-      return new Date(epoch * 1000).toISOString()
+    const epochSeconds = parseFloat(value as string)
+    if (!isNaN(epochSeconds)) {
+      return new Date(epochSeconds * 1000).toISOString()
     }
   }
 

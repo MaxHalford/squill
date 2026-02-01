@@ -466,6 +466,11 @@ export const useBigQueryStore = defineStore('bigquery', () => {
           query,
           useLegacySql: false,
           useQueryCache: true,
+          // Request timestamps as float seconds (not int64 microseconds)
+          // We still convert to ISO strings in bigqueryConversion.ts
+          formatOptions: {
+            useInt64Timestamp: false,
+          },
         }),
       }
 
@@ -552,6 +557,11 @@ export const useBigQueryStore = defineStore('bigquery', () => {
         useLegacySql: false,
         useQueryCache: true,
         maxResults,
+        // Request timestamps as float seconds (not int64 microseconds)
+        // We convert to ISO strings in bigqueryConversion.ts for DuckDB
+        formatOptions: {
+          useInt64Timestamp: false,
+        },
       }
 
       // Add pageToken for continuation requests
