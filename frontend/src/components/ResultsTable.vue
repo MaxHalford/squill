@@ -779,7 +779,7 @@ defineExpose({ resetPagination })
         >
           {{ DATABASE_INFO[stats.engine].shortName }}
         </span>
-        <span class="stat">
+        <span class="stat" v-tooltip="`${columns.length} columns`">
           {{ formatRowCount(sourceTotalRows) }}
           <span v-if="isPartialData" class="partial-indicator" v-tooltip="`${formatRowCount(fetchState?.fetchedRows || 0)} loaded`">
             ({{ loadingProgress }}%)
