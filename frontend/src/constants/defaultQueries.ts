@@ -20,7 +20,7 @@ export const DEFAULT_QUERIES: Record<DatabaseEngine, string> = {
 ORDER BY first_appearance_season, character_name`,
 
   bigquery: `SELECT *
-FROM bigquery-public-data.samples.shakespeare`,
+FROM bigquery-public-data.chicago_taxi_trips.taxi_trips`,
 
   postgres: `WITH authors (id, name) AS (
     VALUES

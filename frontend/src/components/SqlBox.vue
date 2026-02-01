@@ -50,7 +50,7 @@ const props = defineProps({
   initialHeight: { type: Number, default: 500 },
   initialZIndex: { type: Number, default: 1 },
   isSelected: { type: Boolean, default: false },
-  initialQuery: { type: String, default: 'SELECT *\nFROM bigquery-public-data.samples.shakespeare' },
+  initialQuery: { type: String, default: 'SELECT *\nFROM bigquery-public-data.chicago_taxi_trips.taxi_trips' },
   initialName: { type: String, default: 'SQL Query' },
   connectionId: { type: String, default: undefined }
 })
