@@ -1,10 +1,23 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@unhead/vue'
 import { DATABASE_ENGINES, DATABASE_INFO, type DatabaseEngine, type DatabaseInfo } from '../types/database'
 
 const router = useRouter()
+
+// Track loaded bird SVGs for fade-in effect
+const loadedBirds = reactive({
+  balcon: false,
+  fromagerie: false,
+  graph: false,
+  selectBar: false,
+  theatre: false,
+  where: false,
+  rolling: false,
+  music: false,
+  stand: false
+})
 
 // Database modal state
 const selectedDatabase = ref<DatabaseInfo | null>(null)
@@ -210,15 +223,15 @@ const toggleFaq = (index: number) => {
       </div>
 
       <!-- Floating bird stickers (decorative) -->
-      <img src="@/assets/birds/balcon.svg" class="hero-decoration deco-bird deco-bird-balcon" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/fromagerie0.svg" class="hero-decoration deco-bird deco-bird-fromagerie" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/graph.svg" class="hero-decoration deco-bird deco-bird-graph" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/select_bar.svg" class="hero-decoration deco-bird deco-bird-select-bar" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/theatre.svg" class="hero-decoration deco-bird deco-bird-theatre" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/where.svg" class="hero-decoration deco-bird deco-bird-where" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/rolling.svg" class="hero-decoration deco-bird deco-bird-rolling" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/music.svg" class="hero-decoration deco-bird deco-bird-music" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/stand.svg" class="hero-decoration deco-bird deco-bird-stand" alt="" aria-hidden="true" />
+      <img src="@/assets/birds/balcon.svg" class="hero-decoration deco-bird deco-bird-balcon" :class="{ 'deco-loaded': loadedBirds.balcon }" @load="loadedBirds.balcon = true" alt="" aria-hidden="true" />
+      <img src="@/assets/birds/fromagerie0.svg" class="hero-decoration deco-bird deco-bird-fromagerie" :class="{ 'deco-loaded': loadedBirds.fromagerie }" @load="loadedBirds.fromagerie = true" alt="" aria-hidden="true" />
+      <img src="@/assets/birds/graph.svg" class="hero-decoration deco-bird deco-bird-graph" :class="{ 'deco-loaded': loadedBirds.graph }" @load="loadedBirds.graph = true" alt="" aria-hidden="true" />
+      <img src="@/assets/birds/select_bar.svg" class="hero-decoration deco-bird deco-bird-select-bar" :class="{ 'deco-loaded': loadedBirds.selectBar }" @load="loadedBirds.selectBar = true" alt="" aria-hidden="true" />
+      <img src="@/assets/birds/theatre.svg" class="hero-decoration deco-bird deco-bird-theatre" :class="{ 'deco-loaded': loadedBirds.theatre }" @load="loadedBirds.theatre = true" alt="" aria-hidden="true" />
+      <img src="@/assets/birds/where.svg" class="hero-decoration deco-bird deco-bird-where" :class="{ 'deco-loaded': loadedBirds.where }" @load="loadedBirds.where = true" alt="" aria-hidden="true" />
+      <img src="@/assets/birds/rolling.svg" class="hero-decoration deco-bird deco-bird-rolling" :class="{ 'deco-loaded': loadedBirds.rolling }" @load="loadedBirds.rolling = true" alt="" aria-hidden="true" />
+      <img src="@/assets/birds/music.svg" class="hero-decoration deco-bird deco-bird-music" :class="{ 'deco-loaded': loadedBirds.music }" @load="loadedBirds.music = true" alt="" aria-hidden="true" />
+      <img src="@/assets/birds/stand.svg" class="hero-decoration deco-bird deco-bird-stand" :class="{ 'deco-loaded': loadedBirds.stand }" @load="loadedBirds.stand = true" alt="" aria-hidden="true" />
 
       <!-- Sticky note decoration -->
       <div class="hero-decoration deco-note">
@@ -693,18 +706,39 @@ const toggleFaq = (index: number) => {
     drop-shadow(-2px -2px 0 white)
     /* Shadow */
     drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
-  animation: float 6s ease-in-out infinite;
+  opacity: 0;
 }
 
-.deco-bird-balcon { bottom: 3%; left: 65%; width: 180px; animation-delay: -0.5s; }
-.deco-bird-select-bar { top: 29%; left: 2%; width: 340px; animation-delay: -1.5s; }
-.deco-bird-graph { top: 50%; right: 15%; width: 210px; animation-delay: -2.5s; }
-.deco-bird-fromagerie { bottom: 2%; left: 30%; width: 345px; animation-delay: -3.5s; }
-.deco-bird-theatre { bottom: 5%; left: 5%; width: 220px; animation-delay: -4.5s; }
-.deco-bird-where { top: 8%; right: 50%; width: 265px; animation-delay: -5.5s; }
-.deco-bird-rolling { top: 20%; right: 2%; width: 340px; animation-delay: -6.5s; }
-.deco-bird-music { top: 2%; right: 22%; width: 340px; animation-delay: -7.5s; }
-.deco-bird-stand { bottom: 12%; right: 5%; width: 280px; animation-delay: -8.5s; }
+/* Fade in + float animation when loaded */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.deco-bird.deco-loaded {
+  animation-name: fadeInUp, float;
+  animation-duration: 0.5s, 6s;
+  animation-timing-function: ease-out, ease-in-out;
+  animation-fill-mode: forwards, none;
+  animation-iteration-count: 1, infinite;
+}
+
+/* Position and stagger entrance animations for each bird */
+.deco-bird-balcon { bottom: 3%; left: 65%; width: 180px; animation-delay: 0s, -0.5s; }
+.deco-bird-select-bar { top: 29%; left: 2%; width: 340px; animation-delay: 0.1s, -1.5s; }
+.deco-bird-graph { top: 50%; right: 15%; width: 210px; animation-delay: 0.2s, -2.5s; }
+.deco-bird-fromagerie { bottom: 2%; left: 30%; width: 345px; animation-delay: 0.3s, -3.5s; }
+.deco-bird-theatre { bottom: 5%; left: 5%; width: 220px; animation-delay: 0.4s, -4.5s; }
+.deco-bird-where { top: 8%; right: 50%; width: 265px; animation-delay: 0.5s, -5.5s; }
+.deco-bird-rolling { top: 20%; right: 2%; width: 340px; animation-delay: 0.6s, -6.5s; }
+.deco-bird-music { top: 2%; right: 22%; width: 340px; animation-delay: 0.7s, -7.5s; }
+.deco-bird-stand { bottom: 12%; right: 5%; width: 280px; animation-delay: 0.8s, -8.5s; }
 
 /* Sticky note decoration */
 .deco-note {
