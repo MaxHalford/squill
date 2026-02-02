@@ -8,7 +8,7 @@ import { z } from 'zod'
 // Settings Schema
 // ============================================
 export const ThemePreferenceSchema = z.enum(['system', 'light', 'dark'])
-export const CanvasPatternSchema = z.enum(['dots', 'grid', 'crosshatch', 'none'])
+export const CanvasPatternSchema = z.enum(['dots', 'grid', 'crosshatch', 'waves', 'none'])
 
 export const SettingsSchema = z.object({
   fetchBatchSize: z.number().positive(),

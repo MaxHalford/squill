@@ -770,12 +770,13 @@ onUnmounted(() => {
                 <span>Canvas pattern</span>
                 <select
                   :value="settingsStore.canvasPattern"
-                  @change="settingsStore.setCanvasPattern(($event.target as HTMLSelectElement).value as 'dots' | 'grid' | 'crosshatch' | 'none')"
+                  @change="settingsStore.setCanvasPattern(($event.target as HTMLSelectElement).value as 'dots' | 'grid' | 'crosshatch' | 'waves' | 'none')"
                   class="setting-select"
                 >
                   <option value="dots">Dots</option>
                   <option value="grid">Grid</option>
                   <option value="crosshatch">Crosshatch</option>
+                  <option value="waves">Waves</option>
                   <option value="none">None</option>
                 </select>
               </label>

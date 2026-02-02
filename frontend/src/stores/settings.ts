@@ -5,7 +5,7 @@ import { SettingsSchema } from '../utils/storageSchemas'
 const STORAGE_KEY = 'squill-settings'
 
 type ThemePreference = 'system' | 'light' | 'dark'
-type CanvasPattern = 'dots' | 'grid' | 'crosshatch' | 'none'
+type CanvasPattern = 'dots' | 'grid' | 'crosshatch' | 'waves' | 'none'
 
 interface Settings {
   // Fetch pagination: rows loaded per batch from source databases

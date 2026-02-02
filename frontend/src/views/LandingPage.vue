@@ -278,7 +278,7 @@ const toggleFaq = (index: number) => {
             <span class="bracket">]</span>
           </div>
           <h3>Smart SQL editor</h3>
-          <p>Auto-completion that knows your schema. Syntax highlighting. Cmd+click to jump to table definitions. Works like you expect.</p>
+          <p>Auto-completion that knows your schema. Syntax highlighting. Cmd+click to jump to table definitions.</p>
         </div>
 
         <div class="feature-card">
@@ -320,7 +320,7 @@ const toggleFaq = (index: number) => {
             </div>
           </div>
           <h3>Click-to-analyze</h3>
-          <p>Run quick analytics on any column in just one click. Get counts, distributions, and summaries instantly.</p>
+          <p>Run quick analytics on any column in just one click. Helps getting familiar with a table and its content.</p>
         </div>
 
         <div class="feature-card">
