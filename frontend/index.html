@@ -6,6 +6,11 @@
     <script>
       (function() {
         try {
+          // Landing page is always light mode
+          if (location.pathname === '/') {
+            document.documentElement.classList.add('light');
+            return;
+          }
           var settings = JSON.parse(localStorage.getItem('squill-settings') || '{}');
           var theme = settings.themePreference || 'system';
           if (theme === 'system') {
