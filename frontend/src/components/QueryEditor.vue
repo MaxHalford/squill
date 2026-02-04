@@ -388,7 +388,7 @@ const editorTheme = EditorView.theme({
   '.cm-content': {
     fontFamily: 'var(--font-family-mono)',
     color: 'var(--text-primary)',
-    paddingTop: '0',
+    paddingTop: '2px',
     paddingBottom: '2px',
   },
   '.cm-scroller': {
