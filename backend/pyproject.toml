@@ -31,6 +31,7 @@ dependencies = [
     "polar-sdk>=0.28.4",
     # CLI tools
     "pyyaml>=6.0",
+    "sqlglot>=26.0",
 ]
 
 [dependency-groups]

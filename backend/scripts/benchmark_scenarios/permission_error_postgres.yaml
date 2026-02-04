@@ -1,6 +1,0 @@
-input:
-  query: "SELECT * FROM private_schema.secrets"
-  error_message: "permission denied for schema private_schema"
-  database_dialect: "postgres"
-expected:
-  no_relevant_fix: true

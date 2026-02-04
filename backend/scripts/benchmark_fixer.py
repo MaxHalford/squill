@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 import dotenv
+import sqlglot
 import yaml
 from services.ai_fixer import FixError, FixResponse, suggest_fix_core
 
@@ -53,19 +54,26 @@ def apply_fix(query: str, result: FixResponse) -> str:
     return "\n".join(lines)
 
 
-def normalize_query(query: str) -> str:
-    """Strip trailing whitespace per line and trailing blank lines."""
-    lines = [line.rstrip() for line in query.split("\n")]
-    # Remove trailing empty lines
-    while lines and not lines[-1]:
-        lines.pop()
-    return "\n".join(lines)
+DIALECT_MAP = {
+    "bigquery": "bigquery",
+    "postgres": "postgres",
+    "duckdb": "duckdb",
+    "snowflake": "snowflake",
+}
+
+
+def normalize_sql(query: str, dialect: str) -> str:
+    """Parse and regenerate SQL via SQLGlot to get a canonical form."""
+    sqlglot_dialect = DIALECT_MAP.get(dialect, dialect)
+    return sqlglot.transpile(
+        query.strip(), read=sqlglot_dialect, write=sqlglot_dialect, pretty=True
+    )[0]
 
 
 def check_expectations(
-    query: str, result: FixResponse, expected: dict
+    query: str, result: FixResponse, expected: dict, dialect: str
 ) -> list[str]:
-    """Compare the corrected query against the expected query. Returns list of failures."""
+    """Compare the corrected query against the expected query using SQLGlot. Returns list of failures."""
     failures: list[str] = []
 
     if expected.get("no_relevant_fix"):
@@ -77,13 +85,21 @@ def check_expectations(
         failures.append("expected a fix, but got no_relevant_fix")
         return failures
 
-    corrected = normalize_query(apply_fix(query, result))
-    expected_query = normalize_query(expected["query"])
+    corrected_raw = apply_fix(query, result)
+    expected_raw = expected["query"]
 
-    if corrected != expected_query:
+    try:
+        corrected_norm = normalize_sql(corrected_raw, dialect)
+        expected_norm = normalize_sql(expected_raw, dialect)
+    except sqlglot.errors.ErrorLevel:
+        # Fall back to plain string comparison if SQLGlot can't parse
+        corrected_norm = corrected_raw.strip()
+        expected_norm = expected_raw.strip()
+
+    if corrected_norm != expected_norm:
         failures.append("corrected query does not match expected")
-        failures.append(f"  expected:\n{expected_query}")
-        failures.append(f"  got:\n{corrected}")
+        failures.append(f"  expected:\n{expected_norm}")
+        failures.append(f"  got:\n{corrected_norm}")
 
     return failures
 
@@ -120,7 +136,9 @@ def run_scenario(
                 metadata={"source": "benchmark"},
                 use_cache=False,
             )
-            failures = check_expectations(inp["query"], result, expected)
+            failures = check_expectations(
+                inp["query"], result, expected, inp["database_dialect"]
+            )
         except FixError as e:
             failures = [f"FixError: {e.message}"]
         except Exception as e:
@@ -209,7 +227,9 @@ def main() -> None:
         print(f"{RED}Error: scenario directory not found: {scenarios_path}{RESET}")
         sys.exit(1)
 
-    all_yaml_files = sorted(scenarios_path.glob("*.yaml")) + sorted(scenarios_path.glob("*.yml"))
+    all_yaml_files = sorted(scenarios_path.glob("*.yaml")) + sorted(
+        scenarios_path.glob("*.yml")
+    )
     if not all_yaml_files:
         print(f"{RED}Error: no .yaml files found in {scenarios_path}{RESET}")
         sys.exit(1)
