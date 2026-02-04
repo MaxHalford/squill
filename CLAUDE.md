@@ -2,40 +2,55 @@
 
 ## Technology stack
 
-- Frontend: Vue.js with TypeScript
-- Build tool: Vite
-- Runtime: bun.js
+- Frontend: Vue.js with TypeScript, Vite, bun.js
+- Backend: Python 3.14, FastAPI, SQLAlchemy, Pydantic
+- Database: PostgreSQL (production), SQLite (local)
+- Pre-commit: prek with ruff + ty
+
+## Project structure
+
+- `/src` - Vue frontend
+- `/backend` - FastAPI backend
+  - `/routers` - API endpoints
+  - `/services` - Business logic
+  - `/models.py` - SQLAlchemy models
+  - `/config.py` - Pydantic settings (reads from .env)
+
+## Commands
+
+```bash
+# Frontend
+bun install          # Install dependencies
+bun run dev          # Start dev server
+bun run type-check   # Type check
+
+# Backend
+cd backend && uv sync        # Install dependencies
+uvicorn main:app --reload    # Start server
+prek run --all-files         # Run linters
+```
 
 ## Features
 
-- This app is a web-based interface for querying and exploring databases.
-- The user can connect to multiple databases.
-- The app is meant to be used by data analysts and data scientists.
-- The main functionality is to query databases using SQL, but also to explore database schemas visually.
+- Web-based interface for querying and exploring databases
+- Multi-database support: DuckDB, PostgreSQL, BigQuery, Snowflake
+- SQL editor with syntax highlighting and error fixing
+- Visual schema exploration
 
 ## UI/UX
 
-- The app is intended to look and feel like an operating system:
-  - There is a menu bar at the top.
-  - The user can move, resize, add, delete windows.
-  - The user can drag around the canvas by maintaining left click and dragging.
-  - The user can write queries into SQL editor windows, and execute them.
-  - We're going for a minimalist retro look, using a limited color palette and simple shapes.
-- Use the semantic design system in style.css for consistent styling.
+- Desktop OS aesthetic: menu bar, movable/resizable windows, canvas dragging
+- Minimalist retro look with limited color palette
+- Use the semantic design system in style.css
 
-## Skills
+## Code style
 
-The following skills are available in `.claude/skills/`:
-
-- **add-database**: Guide for adding support for a new database flavor (MySQL, SQLite, etc.)
-
-## Code style and guidelines
-
-- Don't hesitate to refactor and improve the structure as needed.
-- It's important to keep the code clean, simple, and maintainable.
-- Work smart. When debugging, take a step back and think deeply about what might be going wrong. When something is not working as intended, add logging to check your assumptions.
-- You can use the Playwright MCP for testing
-- The app is expected to be used in a desktop web browser.
-- Always use plan mode, and don't mind asking for clarifications.
-- Use bun.js to run commands, e.g. `bun run type-check` to type-check the code.
+- Keep code clean, simple, and maintainable
+- Refactor when needed to improve structure
+- Add logging when debugging complex issues
 - Use modern CSS features
+
+## Error handling
+
+- Backend: Raise HTTPException with appropriate status codes
+- Frontend: Show user-friendly error messages
