@@ -1,7 +1,8 @@
 """PostgreSQL connection and query endpoints."""
 
+import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -16,6 +17,7 @@ from services.encryption import TokenEncryption
 from services.postgres_pool import PostgresPoolManager
 
 router = APIRouter(prefix="/postgres", tags=["postgres"])
+logger = logging.getLogger(__name__)
 
 encryption = TokenEncryption(settings.token_encryption_key)
 
@@ -221,6 +223,8 @@ async def create_connection(
     db.add(connection)
     await db.commit()
     await db.refresh(connection)
+
+    logger.info(f"Created PostgreSQL connection {connection.id} for user {user.id}")
 
     return ConnectionResponse(
         id=connection.id,
@@ -589,5 +593,7 @@ async def delete_connection(
 
     await db.delete(connection)
     await db.commit()
+
+    logger.info(f"Deleted PostgreSQL connection {connection_id} for user {user.id}")
 
     return {"status": "ok"}

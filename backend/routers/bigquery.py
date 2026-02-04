@@ -1,4 +1,5 @@
 import io
+import logging
 from typing import AsyncGenerator
 
 import pyarrow as pa
@@ -19,6 +20,7 @@ from services.encryption import TokenEncryption
 from services.google_oauth import GoogleOAuthService
 
 router = APIRouter(prefix="/bigquery", tags=["bigquery"])
+logger = logging.getLogger(__name__)
 
 # BigQuery scopes for Arrow mode - requires full access for job insertion
 # Users must grant these scopes via the Arrow mode OAuth flow

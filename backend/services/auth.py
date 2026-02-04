@@ -14,7 +14,6 @@ from models import User
 
 # JWT settings
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_DAYS = 30
 
 security = HTTPBearer()
 
@@ -27,7 +26,7 @@ class TokenPayload(BaseModel):
 
 def create_session_token(user_id: str, email: str) -> str:
     """Create a JWT session token for a user."""
-    expiration = datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRATION_DAYS)
+    expiration = datetime.now(timezone.utc) + timedelta(days=settings.jwt_expiration_days)
     payload = {
         "user_id": user_id,
         "email": email,

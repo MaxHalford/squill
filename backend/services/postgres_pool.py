@@ -1,7 +1,6 @@
 """PostgreSQL connection pool manager using asyncpg."""
 
 import asyncio
-from typing import Optional
 
 import asyncpg
 
@@ -27,7 +26,7 @@ class PostgresPoolManager:
         async with cls._lock:
             if connection_id not in cls._pools:
                 # Build SSL context based on ssl_mode
-                ssl: Optional[bool | str] = None
+                ssl: bool | str | None = None
                 if ssl_mode == "disable":
                     ssl = False
                 elif ssl_mode in ("require", "verify-ca", "verify-full"):
@@ -74,7 +73,7 @@ class PostgresPoolManager:
         ssl_mode: str = "prefer",
     ) -> bool:
         """Test a PostgreSQL connection without creating a pool."""
-        ssl: Optional[bool | str] = None
+        ssl: bool | str | None = None
         if ssl_mode == "disable":
             ssl = False
         elif ssl_mode in ("require", "verify-ca", "verify-full"):

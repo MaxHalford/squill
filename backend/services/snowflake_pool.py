@@ -2,7 +2,7 @@
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Optional
+from typing import Any
 
 import snowflake.connector
 
@@ -24,10 +24,10 @@ class SnowflakeConnectionManager:
         account: str,
         username: str,
         password: str,
-        warehouse: Optional[str] = None,
-        database: Optional[str] = None,
-        schema: Optional[str] = None,
-        role: Optional[str] = None,
+        warehouse: str | None = None,
+        database: str | None = None,
+        schema: str | None = None,
+        role: str | None = None,
     ) -> snowflake.connector.SnowflakeConnection:
         """Create a Snowflake connection synchronously."""
         conn_params: dict[str, Any] = {
@@ -54,10 +54,10 @@ class SnowflakeConnectionManager:
         account: str,
         username: str,
         password: str,
-        warehouse: Optional[str] = None,
-        database: Optional[str] = None,
-        schema: Optional[str] = None,
-        role: Optional[str] = None,
+        warehouse: str | None = None,
+        database: str | None = None,
+        schema: str | None = None,
+        role: str | None = None,
     ) -> snowflake.connector.SnowflakeConnection:
         """Get or create a connection for the given configuration."""
         async with cls._lock:
@@ -65,7 +65,7 @@ class SnowflakeConnectionManager:
                 conn = cls._connections[connection_id]
                 # Check if connection is still valid
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await loop.run_in_executor(
                         cls._executor,
                         lambda: conn.cursor().execute("SELECT 1")
@@ -80,7 +80,7 @@ class SnowflakeConnectionManager:
                     del cls._connections[connection_id]
 
             # Create new connection
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             conn = await loop.run_in_executor(
                 cls._executor,
                 lambda: cls._create_connection_sync(
@@ -103,7 +103,7 @@ class SnowflakeConnectionManager:
             if connection_id in cls._connections:
                 conn = cls._connections[connection_id]
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await loop.run_in_executor(cls._executor, conn.close)
                 except Exception:
                     pass
@@ -115,7 +115,7 @@ class SnowflakeConnectionManager:
         async with cls._lock:
             for conn in cls._connections.values():
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await loop.run_in_executor(cls._executor, conn.close)
                 except Exception:
                     pass
@@ -127,10 +127,10 @@ class SnowflakeConnectionManager:
         account: str,
         username: str,
         password: str,
-        warehouse: Optional[str] = None,
-        database: Optional[str] = None,
-        schema: Optional[str] = None,
-        role: Optional[str] = None,
+        warehouse: str | None = None,
+        database: str | None = None,
+        schema: str | None = None,
+        role: str | None = None,
     ) -> bool:
         """Test a Snowflake connection without caching it."""
         def _test() -> bool:
@@ -151,7 +151,7 @@ class SnowflakeConnectionManager:
             finally:
                 conn.close()
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(cls._executor, _test)
 
     @classmethod
@@ -176,15 +176,50 @@ class SnowflakeConnectionManager:
                 column_names = [col[0] for col in columns]
 
                 # Fetch all rows as dicts
-                rows = []
-                for row in cursor:
-                    rows.append(dict(zip(column_names, row)))
+                rows = [dict(zip(column_names, row)) for row in cursor]
 
                 return rows, schema
             finally:
                 cursor.close()
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(cls._executor, _execute)
+
+    @classmethod
+    async def execute_query_with_params(
+        cls,
+        conn: snowflake.connector.SnowflakeConnection,
+        query: str,
+        params: tuple[Any, ...],
+    ) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
+        """Execute a parameterized query and return (rows, schema).
+
+        Args:
+            conn: Snowflake connection
+            query: SQL query with %s placeholders
+            params: Tuple of parameter values
+
+        Returns:
+            Tuple of (rows as list of dicts, schema as list of (name, type) tuples)
+        """
+        def _execute() -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(query, params)
+
+                # Get column descriptions
+                columns = cursor.description or []
+                schema = [(col[0], cls._map_snowflake_type(col[1])) for col in columns]
+                column_names = [col[0] for col in columns]
+
+                # Fetch all rows as dicts
+                rows = [dict(zip(column_names, row)) for row in cursor]
+
+                return rows, schema
+            finally:
+                cursor.close()
+
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(cls._executor, _execute)
 
     @classmethod
@@ -226,9 +261,7 @@ class SnowflakeConnectionManager:
                 column_names = [col[0] for col in columns]
 
                 # Fetch all rows as dicts
-                rows = []
-                for row in cursor:
-                    rows.append(dict(zip(column_names, row)))
+                rows = [dict(zip(column_names, row)) for row in cursor]
 
                 rows_fetched = len(rows)
                 next_offset = offset + rows_fetched
@@ -243,7 +276,7 @@ class SnowflakeConnectionManager:
             finally:
                 cursor.close()
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(cls._executor, _execute)
 
     @staticmethod

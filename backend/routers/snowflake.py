@@ -1,7 +1,8 @@
 """Snowflake connection and query endpoints."""
 
+import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -16,8 +17,24 @@ from services.encryption import TokenEncryption
 from services.snowflake_pool import SnowflakeConnectionManager
 
 router = APIRouter(prefix="/snowflake", tags=["snowflake"])
+logger = logging.getLogger(__name__)
 
 encryption = TokenEncryption(settings.token_encryption_key)
+
+
+# Security helpers
+
+
+def quote_identifier(identifier: str) -> str:
+    """Quote a Snowflake identifier to prevent SQL injection.
+
+    Snowflake identifiers are quoted with double quotes, and embedded
+    double quotes are escaped by doubling them.
+    """
+    if not identifier or len(identifier) > 255:
+        raise ValueError(f"Invalid identifier: {identifier}")
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
 
 
 # Request/Response Models
@@ -28,10 +45,10 @@ class CreateConnectionRequest(BaseModel):
     account: str
     username: str
     password: str
-    warehouse: Optional[str] = None
-    database: Optional[str] = None
-    schema_name: Optional[str] = None
-    role: Optional[str] = None
+    warehouse: str | None = None
+    database: str | None = None
+    schema_name: str | None = None
+    role: str | None = None
 
 
 class ConnectionResponse(BaseModel):
@@ -39,20 +56,20 @@ class ConnectionResponse(BaseModel):
     name: str
     account: str
     username: str
-    warehouse: Optional[str]
-    database: Optional[str]
-    schema_name: Optional[str]
-    role: Optional[str]
+    warehouse: str | None
+    database: str | None
+    schema_name: str | None
+    role: str | None
 
 
 class CredentialsResponse(BaseModel):
     account: str
     username: str
     password: str
-    warehouse: Optional[str]
-    database: Optional[str]
-    schema_name: Optional[str]
-    role: Optional[str]
+    warehouse: str | None
+    database: str | None
+    schema_name: str | None
+    role: str | None
 
 
 class QueryRequest(BaseModel):
@@ -86,10 +103,10 @@ class TestConnectionRequest(BaseModel):
     account: str
     username: str
     password: str
-    warehouse: Optional[str] = None
-    database: Optional[str] = None
-    schema_name: Optional[str] = None
-    role: Optional[str] = None
+    warehouse: str | None = None
+    database: str | None = None
+    schema_name: str | None = None
+    role: str | None = None
 
 
 class TestConnectionResponse(BaseModel):
@@ -244,6 +261,8 @@ async def create_connection(
     db.add(connection)
     await db.commit()
     await db.refresh(connection)
+
+    logger.info(f"Created Snowflake connection {connection.id} for user {user.id}")
 
     return ConnectionResponse(
         id=connection.id,
@@ -452,8 +471,9 @@ async def get_schemas(
         )
 
     try:
+        safe_db = quote_identifier(database_name)
         rows, _schema = await SnowflakeConnectionManager.execute_query(
-            conn, f"SHOW SCHEMAS IN DATABASE {database_name}"
+            conn, f"SHOW SCHEMAS IN DATABASE {safe_db}"
         )
     except Exception as e:
         raise HTTPException(
@@ -508,9 +528,10 @@ async def get_tables(
                 continue
 
             try:
-                # Get tables in this database
+                # Get tables in this database (safely quoted)
+                safe_db = quote_identifier(db_name)
                 table_rows, _schema = await SnowflakeConnectionManager.execute_query(
-                    conn, f"SHOW TABLES IN DATABASE \"{db_name}\""
+                    conn, f"SHOW TABLES IN DATABASE {safe_db}"
                 )
                 for row in table_rows:
                     if row.get("name"):
@@ -568,13 +589,18 @@ async def get_columns(
         )
 
     try:
+        # Use quoted identifier for database name in FROM clause,
+        # and parameterized query for WHERE clause values
+        safe_db = quote_identifier(database_name)
         query = f"""
             SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
-            FROM {database_name}.INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = '{schema_name}' AND TABLE_NAME = '{table_name}'
+            FROM {safe_db}.INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
             ORDER BY ORDINAL_POSITION
         """
-        rows, _schema = await SnowflakeConnectionManager.execute_query(conn, query)
+        rows, _schema = await SnowflakeConnectionManager.execute_query_with_params(
+            conn, query, (schema_name, table_name)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -635,6 +661,7 @@ async def get_all_columns(
                 continue
 
             try:
+                safe_db = quote_identifier(db_name)
                 query = f"""
                     SELECT
                         TABLE_CATALOG as database_name,
@@ -643,7 +670,7 @@ async def get_all_columns(
                         COLUMN_NAME as column_name,
                         DATA_TYPE as data_type,
                         IS_NULLABLE as is_nullable
-                    FROM "{db_name}".INFORMATION_SCHEMA.COLUMNS
+                    FROM {safe_db}.INFORMATION_SCHEMA.COLUMNS
                     WHERE TABLE_SCHEMA NOT IN ('INFORMATION_SCHEMA')
                     ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
                 """
@@ -700,5 +727,7 @@ async def delete_connection(
 
     await db.delete(connection)
     await db.commit()
+
+    logger.info(f"Deleted Snowflake connection {connection_id} for user {user.id}")
 
     return {"status": "ok"}

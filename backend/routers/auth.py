@@ -12,13 +12,9 @@ from services.google_oauth import GoogleOAuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Hardcoded VIP emails (always treated as VIP regardless of database value)
-VIP_EMAILS = {"maxhalford25@gmail.com"}
-
-
 def is_vip_email(email: str) -> bool:
     """Check if an email should always be treated as VIP."""
-    return email.lower() in VIP_EMAILS
+    return email.lower() in settings.vip_emails
 
 
 # Initialize services

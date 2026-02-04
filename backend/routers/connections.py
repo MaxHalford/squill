@@ -4,6 +4,8 @@ Connections are derived from existing BigQueryConnection and PostgresConnection 
 No separate connections table needed - we just query the credential tables.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -14,6 +16,7 @@ from models import BigQueryConnection, PostgresConnection, SnowflakeConnection, 
 from services.auth import get_current_user
 
 router = APIRouter(prefix="/connections", tags=["connections"])
+logger = logging.getLogger(__name__)
 
 
 class ConnectionResponse(BaseModel):
@@ -93,4 +96,5 @@ async def list_connections(
             database=sf_conn.database,
         ))
 
+    logger.info(f"Listed {len(connections)} connections for user {user.id}")
     return ConnectionListResponse(connections=connections)

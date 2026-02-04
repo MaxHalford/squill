@@ -12,8 +12,9 @@ class Settings(BaseSettings):
     # Encryption key for refresh tokens (32-byte base64-encoded)
     token_encryption_key: str
 
-    # JWT secret for session tokens (use a strong random string)
+    # JWT
     jwt_secret: str
+    jwt_expiration_days: int = 30
 
     # OpenAI
     openai_api_key: str
@@ -24,6 +25,16 @@ class Settings(BaseSettings):
     polar_product_id: str  # Product/price ID for Pro subscription
     polar_server: str = "sandbox"  # "sandbox" or "production"
     frontend_url: str  # For redirect URLs
+
+    # CORS
+    cors_origins: list[str] = [
+        "https://www.squill.dev",
+        "https://squill.dev",
+        "http://localhost:5173",
+    ]
+
+    # VIP emails (always treated as VIP regardless of database value)
+    vip_emails: set[str] = {"maxhalford25@gmail.com"}
 
     class Config:
         env_file = ".env"
