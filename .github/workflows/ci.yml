@@ -87,4 +87,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy ${{ matrix.name }} to Railway
-        run: railway up --service=${{ matrix.service_id }}
+        run: railway up --service=${{ matrix.service_id }} --detach
