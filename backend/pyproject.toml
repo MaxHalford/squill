@@ -33,9 +33,3 @@ dependencies = [
     "pyyaml>=6.0",
     "sqlglot>=26.0",
 ]
-
-[dependency-groups]
-dev = [
-    "duckdb>=1.4.3",
-    "pandas>=2.3.3",
-]
