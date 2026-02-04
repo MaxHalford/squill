@@ -229,6 +229,8 @@ def suggest_fix_core(
 
         response = client.responses.parse(**kwargs)
         fix = response.output_parsed
+        if fix is None:
+            raise FixError("Failed to parse AI response", 500)
 
         # Handle no-relevant-fix
         if fix.no_relevant_fix:

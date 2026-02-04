@@ -1,0 +1,22 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff linter
+        entry: uv run --project backend ruff check --fix
+        language: system
+        types: [python]
+        files: ^backend/
+      - id: ruff-format
+        name: ruff formatter
+        entry: uv run --project backend ruff format
+        language: system
+        types: [python]
+        files: ^backend/
+      - id: ty
+        name: ty type checker
+        entry: uv run --project backend ty check backend
+        language: system
+        types: [python]
+        files: ^backend/
+        pass_filenames: false

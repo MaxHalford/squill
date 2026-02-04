@@ -12,6 +12,7 @@ from services.google_oauth import GoogleOAuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+
 def is_vip_email(email: str) -> bool:
     """Check if an email should always be treated as VIP."""
     return email.lower() in settings.vip_emails
@@ -19,7 +20,9 @@ def is_vip_email(email: str) -> bool:
 
 # Initialize services
 encryption = TokenEncryption(settings.token_encryption_key)
-google_oauth = GoogleOAuthService(settings.google_client_id, settings.google_client_secret)
+google_oauth = GoogleOAuthService(
+    settings.google_client_id, settings.google_client_secret
+)
 
 
 class GoogleCallbackRequest(BaseModel):
@@ -36,12 +39,14 @@ class GoogleCallbackResponse(BaseModel):
 
 class GoogleLoginRequest(BaseModel):
     """Request for login-only OAuth flow (no BigQuery connection)."""
+
     code: str
     redirect_uri: str
 
 
 class GoogleLoginResponse(BaseModel):
     """Response for login-only OAuth flow."""
+
     session_token: str
     user: dict
 
@@ -122,7 +127,9 @@ async def google_login(request: GoogleLoginRequest, db: AsyncSession = Depends(g
 
 
 @router.post("/google/callback", response_model=GoogleCallbackResponse)
-async def google_callback(request: GoogleCallbackRequest, db: AsyncSession = Depends(get_db)):
+async def google_callback(
+    request: GoogleCallbackRequest, db: AsyncSession = Depends(get_db)
+):
     """
     Exchange authorization code for tokens, create/update user account,
     and store BigQuery connection with refresh token.
@@ -170,8 +177,7 @@ async def google_callback(request: GoogleCallbackRequest, db: AsyncSession = Dep
     # Check for existing BigQuery connection
     existing_conn = await db.execute(
         select(BigQueryConnection).where(
-            BigQueryConnection.user_id == user.id,
-            BigQueryConnection.email == email
+            BigQueryConnection.user_id == user.id, BigQueryConnection.email == email
         )
     )
     bq_connection = existing_conn.scalar_one_or_none()
@@ -231,7 +237,10 @@ async def refresh_token(request: RefreshRequest, db: AsyncSession = Depends(get_
     if not bq_connection:
         raise HTTPException(
             status_code=401,
-            detail={"error": "no_refresh_token", "message": "No BigQuery connection found. Please re-authenticate."},
+            detail={
+                "error": "no_refresh_token",
+                "message": "No BigQuery connection found. Please re-authenticate.",
+            },
         )
 
     # Decrypt refresh token
@@ -242,7 +251,10 @@ async def refresh_token(request: RefreshRequest, db: AsyncSession = Depends(get_
     except Exception:
         raise HTTPException(
             status_code=401,
-            detail={"error": "decrypt_failed", "message": "Failed to decrypt refresh token."},
+            detail={
+                "error": "decrypt_failed",
+                "message": "Failed to decrypt refresh token.",
+            },
         )
 
     # Get new access token from Google
@@ -251,7 +263,10 @@ async def refresh_token(request: RefreshRequest, db: AsyncSession = Depends(get_
     except Exception as e:
         raise HTTPException(
             status_code=401,
-            detail={"error": "refresh_failed", "message": f"Failed to refresh token: {e}"},
+            detail={
+                "error": "refresh_failed",
+                "message": f"Failed to refresh token: {e}",
+            },
         )
 
     return RefreshResponse(

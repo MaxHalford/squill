@@ -207,10 +207,14 @@ async def test_connection(
         # Clean up common Snowflake error messages
         if "incorrect username or password" in error_message.lower():
             error_message = "Authentication failed: invalid username or password"
-        elif "account" in error_message.lower() and "not found" in error_message.lower():
+        elif (
+            "account" in error_message.lower() and "not found" in error_message.lower()
+        ):
             error_message = f"Account '{request.account}' not found"
         elif "warehouse" in error_message.lower():
-            error_message = f"Warehouse '{request.warehouse}' not found or not accessible"
+            error_message = (
+                f"Warehouse '{request.warehouse}' not found or not accessible"
+            )
 
         return TestConnectionResponse(
             success=False,
@@ -276,7 +280,9 @@ async def create_connection(
     )
 
 
-@router.get("/connections/{connection_id}/credentials", response_model=CredentialsResponse)
+@router.get(
+    "/connections/{connection_id}/credentials", response_model=CredentialsResponse
+)
 async def get_credentials(
     connection_id: str,
     user: User = Depends(get_current_user),
@@ -303,7 +309,9 @@ async def execute_query(
     db: AsyncSession = Depends(get_db),
 ):
     """Execute a SQL query on a Snowflake connection."""
-    connection, password = await get_connection_credentials(request.connection_id, db, user.id)
+    connection, password = await get_connection_credentials(
+        request.connection_id, db, user.id
+    )
 
     try:
         conn = await SnowflakeConnectionManager.get_connection(
@@ -325,7 +333,9 @@ async def execute_query(
     start_time = time.time()
 
     try:
-        rows, _schema = await SnowflakeConnectionManager.execute_query(conn, request.query)
+        rows, _schema = await SnowflakeConnectionManager.execute_query(
+            conn, request.query
+        )
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -350,7 +360,9 @@ async def execute_paginated_query(
     db: AsyncSession = Depends(get_db),
 ):
     """Execute a SQL query with pagination support."""
-    connection, password = await get_connection_credentials(request.connection_id, db, user.id)
+    connection, password = await get_connection_credentials(
+        request.connection_id, db, user.id
+    )
 
     try:
         conn = await SnowflakeConnectionManager.get_connection(
@@ -372,7 +384,13 @@ async def execute_paginated_query(
     start_time = time.time()
 
     try:
-        rows, schema, total_rows, has_more, next_offset = await SnowflakeConnectionManager.execute_query_paginated(
+        (
+            rows,
+            schema,
+            total_rows,
+            has_more,
+            next_offset,
+        ) = await SnowflakeConnectionManager.execute_query_paginated(
             conn,
             request.query,
             request.batch_size,
@@ -387,7 +405,9 @@ async def execute_paginated_query(
 
     execution_time_ms = (time.time() - start_time) * 1000
 
-    schema_info = [ColumnInfo(name=name, type=type_, nullable=True) for name, type_ in schema]
+    schema_info = [
+        ColumnInfo(name=name, type=type_, nullable=True) for name, type_ in schema
+    ]
 
     return PaginatedQueryResponse(
         rows=rows,
@@ -438,12 +458,16 @@ async def get_databases(
             detail=f"Failed to fetch databases: {e}",
         )
 
-    databases = [DatabaseInfo(name=row.get("name", "")) for row in rows if row.get("name")]
+    databases = [
+        DatabaseInfo(name=row.get("name", "")) for row in rows if row.get("name")
+    ]
 
     return DatabasesResponse(databases=databases)
 
 
-@router.get("/schema/{connection_id}/schemas/{database_name}", response_model=SchemasResponse)
+@router.get(
+    "/schema/{connection_id}/schemas/{database_name}", response_model=SchemasResponse
+)
 async def get_schemas(
     connection_id: str,
     database_name: str,
@@ -691,7 +715,10 @@ async def get_all_columns(
                         ColumnInfo(
                             name=row.get("COLUMN_NAME", row.get("column_name", "")),
                             type=row.get("DATA_TYPE", row.get("data_type", "")),
-                            nullable=row.get("IS_NULLABLE", row.get("is_nullable", "YES")) == "YES",
+                            nullable=row.get(
+                                "IS_NULLABLE", row.get("is_nullable", "YES")
+                            )
+                            == "YES",
                         )
                     )
             except Exception:

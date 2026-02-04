@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Initialize Polar client
 polar = Polar(
     access_token=settings.polar_access_token,
-    server=settings.polar_server,  # type: ignore
+    server=settings.polar_server,  # type: ignore[arg-type]
 )
 
 
@@ -45,7 +45,7 @@ async def cancel_polar_subscription(subscription_id: str) -> bool:
         )
         logger.info(f"Canceled Polar subscription {subscription_id} (at period end)")
         return True
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error canceling subscription {subscription_id}")
         return False
 
@@ -108,7 +108,7 @@ async def resubscribe(user: User = Depends(get_current_user)):
         )
         logger.info(f"Resubscribed user {user.email}")
         return {"status": "ok"}
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error resubscribing user {user.email}")
         raise HTTPException(status_code=500, detail="Failed to resubscribe")
 

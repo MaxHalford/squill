@@ -237,7 +237,9 @@ async def create_connection(
     )
 
 
-@router.get("/connections/{connection_id}/credentials", response_model=CredentialsResponse)
+@router.get(
+    "/connections/{connection_id}/credentials", response_model=CredentialsResponse
+)
 async def get_credentials(
     connection_id: str,
     user: User = Depends(get_current_user),
@@ -263,7 +265,9 @@ async def execute_query(
     db: AsyncSession = Depends(get_db),
 ):
     """Execute a SQL query on a PostgreSQL connection."""
-    connection, password = await get_connection_credentials(request.connection_id, db, user.id)
+    connection, password = await get_connection_credentials(
+        request.connection_id, db, user.id
+    )
 
     try:
         pool = await PostgresPoolManager.get_pool(
@@ -316,7 +320,9 @@ async def execute_paginated_query(
     - First request (offset=0, include_count=True): Returns total row count
     - Subsequent requests: Fetch additional batches using offset
     """
-    connection, password = await get_connection_credentials(request.connection_id, db, user.id)
+    connection, password = await get_connection_credentials(
+        request.connection_id, db, user.id
+    )
 
     try:
         pool = await PostgresPoolManager.get_pool(

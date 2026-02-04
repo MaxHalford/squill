@@ -67,8 +67,7 @@ class SnowflakeConnectionManager:
                 try:
                     loop = asyncio.get_running_loop()
                     await loop.run_in_executor(
-                        cls._executor,
-                        lambda: conn.cursor().execute("SELECT 1")
+                        cls._executor, lambda: conn.cursor().execute("SELECT 1")
                     )
                     return conn
                 except Exception:
@@ -91,7 +90,7 @@ class SnowflakeConnectionManager:
                     database=database,
                     schema=schema,
                     role=role,
-                )
+                ),
             )
             cls._connections[connection_id] = conn
             return conn
@@ -133,6 +132,7 @@ class SnowflakeConnectionManager:
         role: str | None = None,
     ) -> bool:
         """Test a Snowflake connection without caching it."""
+
         def _test() -> bool:
             conn = cls._create_connection_sync(
                 account=account,
@@ -165,6 +165,7 @@ class SnowflakeConnectionManager:
         Returns:
             Tuple of (rows as list of dicts, schema as list of (name, type) tuples)
         """
+
         def _execute() -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
             cursor = conn.cursor()
             try:
@@ -202,6 +203,7 @@ class SnowflakeConnectionManager:
         Returns:
             Tuple of (rows as list of dicts, schema as list of (name, type) tuples)
         """
+
         def _execute() -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
             cursor = conn.cursor()
             try:
@@ -236,7 +238,10 @@ class SnowflakeConnectionManager:
         Returns:
             Tuple of (rows, schema, total_rows, has_more, next_offset)
         """
-        def _execute() -> tuple[list[dict[str, Any]], list[tuple[str, str]], int | None, bool, int]:
+
+        def _execute() -> tuple[
+            list[dict[str, Any]], list[tuple[str, str]], int | None, bool, int
+        ]:
             cursor = conn.cursor()
             try:
                 total_rows: int | None = None

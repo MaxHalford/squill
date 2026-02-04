@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ConnectionResponse(BaseModel):
     """Response for a single connection."""
+
     id: str
     flavor: str
     name: str
@@ -31,6 +32,7 @@ class ConnectionResponse(BaseModel):
 
 class ConnectionListResponse(BaseModel):
     """Response for listing connections."""
+
     connections: list[ConnectionResponse]
 
 
@@ -38,8 +40,7 @@ def check_pro_or_vip(user: User) -> None:
     """Raise 403 if user is not Pro or VIP."""
     if user.plan != "pro" and not user.is_vip:
         raise HTTPException(
-            status_code=403,
-            detail="Connection sync is only available for Pro users"
+            status_code=403, detail="Connection sync is only available for Pro users"
         )
 
 
@@ -63,38 +64,46 @@ async def list_connections(
     )
     for bq_conn in bq_result.scalars().all():
         # Generate the same ID format as frontend
-        conn_id = f"bigquery-{bq_conn.email}-{int(bq_conn.created_at.timestamp() * 1000)}"
-        connections.append(ConnectionResponse(
-            id=conn_id,
-            flavor="bigquery",
-            name=bq_conn.email,  # Use email as name
-            email=bq_conn.email,
-            project_id=None,  # BigQuery connections don't store project_id in this table
-        ))
+        conn_id = (
+            f"bigquery-{bq_conn.email}-{int(bq_conn.created_at.timestamp() * 1000)}"
+        )
+        connections.append(
+            ConnectionResponse(
+                id=conn_id,
+                flavor="bigquery",
+                name=bq_conn.email,  # Use email as name
+                email=bq_conn.email,
+                project_id=None,  # BigQuery connections don't store project_id in this table
+            )
+        )
 
     # Fetch PostgreSQL connections
     pg_result = await db.execute(
         select(PostgresConnection).where(PostgresConnection.user_id == user.id)
     )
     for pg_conn in pg_result.scalars().all():
-        connections.append(ConnectionResponse(
-            id=pg_conn.id,
-            flavor="postgres",
-            name=pg_conn.name,
-            database=pg_conn.database,
-        ))
+        connections.append(
+            ConnectionResponse(
+                id=pg_conn.id,
+                flavor="postgres",
+                name=pg_conn.name,
+                database=pg_conn.database,
+            )
+        )
 
     # Fetch Snowflake connections
     sf_result = await db.execute(
         select(SnowflakeConnection).where(SnowflakeConnection.user_id == user.id)
     )
     for sf_conn in sf_result.scalars().all():
-        connections.append(ConnectionResponse(
-            id=sf_conn.id,
-            flavor="snowflake",
-            name=sf_conn.name,
-            database=sf_conn.database,
-        ))
+        connections.append(
+            ConnectionResponse(
+                id=sf_conn.id,
+                flavor="snowflake",
+                name=sf_conn.name,
+                database=sf_conn.database,
+            )
+        )
 
     logger.info(f"Listed {len(connections)} connections for user {user.id}")
     return ConnectionListResponse(connections=connections)

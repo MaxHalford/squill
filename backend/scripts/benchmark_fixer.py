@@ -91,7 +91,7 @@ def check_expectations(
     try:
         corrected_norm = normalize_sql(corrected_raw, dialect)
         expected_norm = normalize_sql(expected_raw, dialect)
-    except sqlglot.errors.ErrorLevel:
+    except Exception:
         # Fall back to plain string comparison if SQLGlot can't parse
         corrected_norm = corrected_raw.strip()
         expected_norm = expected_raw.strip()

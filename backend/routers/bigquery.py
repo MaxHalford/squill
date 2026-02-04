@@ -31,7 +31,9 @@ BIGQUERY_SCOPES = [
 
 # Initialize services
 encryption = TokenEncryption(settings.token_encryption_key)
-google_oauth = GoogleOAuthService(settings.google_client_id, settings.google_client_secret)
+google_oauth = GoogleOAuthService(
+    settings.google_client_id, settings.google_client_secret
+)
 
 
 class QueryRequest(BaseModel):
@@ -186,8 +188,7 @@ async def execute_query_json(
 
         # Get schema
         schema = [
-            {"name": field.name, "type": field.field_type}
-            for field in results.schema
+            {"name": field.name, "type": field.field_type} for field in results.schema
         ]
 
         return {

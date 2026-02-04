@@ -32,4 +32,14 @@ dependencies = [
     # CLI tools
     "pyyaml>=6.0",
     "sqlglot>=26.0",
+    "dotenv>=0.9.9",
 ]
+
+[dependency-groups]
+dev = [
+    "ty>=0.0.1a11",
+    "ruff>=0.11.4",
+]
+
+[tool.ty.environment]
+python-version = "3.14"

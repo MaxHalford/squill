@@ -26,7 +26,9 @@ class TokenPayload(BaseModel):
 
 def create_session_token(user_id: str, email: str) -> str:
     """Create a JWT session token for a user."""
-    expiration = datetime.now(timezone.utc) + timedelta(days=settings.jwt_expiration_days)
+    expiration = datetime.now(timezone.utc) + timedelta(
+        days=settings.jwt_expiration_days
+    )
     payload = {
         "user_id": user_id,
         "email": email,
