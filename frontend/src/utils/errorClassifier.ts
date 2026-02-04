@@ -47,6 +47,8 @@ const NON_FIXABLE_PATTERNS = [
   /no tables specified/i,
   // TypeScript errors
   /Cannot read properties of undefined/i,
+  // Quack quack
+  /Failed to store results in DuckDB/i
 ]
 
 /**

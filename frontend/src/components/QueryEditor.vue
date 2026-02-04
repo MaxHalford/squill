@@ -15,6 +15,7 @@ import { boostedSqlKeywords, filterExactMatches } from '../utils/sqlKeywordCompl
 import { useSettingsStore } from '../stores/settings'
 import { useBigQueryStore, type DryRunResult } from '../stores/bigquery'
 import { createTableLinkExtension } from '../utils/tableLinkExtension'
+import { attachTooltip } from '../directives/tooltip'
 import type { TableReferenceWithPosition } from '../utils/queryAnalyzer'
 
 // Types for error suggestions
@@ -139,6 +140,8 @@ const setSuggestions = StateEffect.define<LineSuggestion | null>()
 
 // Widget to display the suggested fix below the error line
 class SuggestionWidget extends WidgetType {
+  private cleanups: (() => void)[] = []
+
   constructor(readonly suggestion: LineSuggestion) {
     super()
   }
@@ -163,12 +166,12 @@ class SuggestionWidget extends WidgetType {
 
     const acceptBtn = document.createElement('button')
     acceptBtn.className = 'cm-suggestion-btn accept'
-    acceptBtn.title = 'Accept fix (Ctrl+Enter)'
     acceptBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
     acceptBtn.onclick = (e) => {
       e.stopPropagation()
       wrapper.dispatchEvent(new CustomEvent('suggestion-accept', { bubbles: true }))
     }
+    this.cleanups.push(attachTooltip(acceptBtn, { text: 'Accept fix (⌘⏎)', position: 'bottom' }))
 
     const dismissBtn = document.createElement('button')
     dismissBtn.className = 'cm-suggestion-btn dismiss'
@@ -178,6 +181,7 @@ class SuggestionWidget extends WidgetType {
       e.stopPropagation()
       wrapper.dispatchEvent(new CustomEvent('suggestion-dismiss', { bubbles: true }))
     }
+    this.cleanups.push(attachTooltip(dismissBtn, { text: 'Dismiss (Esc)', position: 'bottom' }))
 
     actions.appendChild(acceptBtn)
     actions.appendChild(dismissBtn)
@@ -192,6 +196,11 @@ class SuggestionWidget extends WidgetType {
       other.suggestion.line === this.suggestion.line &&
       other.suggestion.suggestion === this.suggestion.suggestion
     )
+  }
+
+  destroy() {
+    this.cleanups.forEach(fn => fn())
+    this.cleanups = []
   }
 
   ignoreEvent() {

@@ -138,6 +138,29 @@ const handlers = new WeakMap<HTMLElement, {
   blur: () => void
 }>()
 
+/**
+ * Attach tooltip behavior to a raw DOM element (for use outside Vue templates).
+ * Returns a cleanup function to remove listeners.
+ */
+export const attachTooltip = (el: HTMLElement, value: TooltipValue): (() => void) => {
+  currentValues.set(el, value)
+
+  const h = {
+    mouseenter: () => showTooltip(el),
+    mouseleave: hideTooltip,
+  }
+
+  el.addEventListener('mouseenter', h.mouseenter)
+  el.addEventListener('mouseleave', h.mouseleave)
+
+  return () => {
+    el.removeEventListener('mouseenter', h.mouseenter)
+    el.removeEventListener('mouseleave', h.mouseleave)
+    currentValues.delete(el)
+    if (currentTarget === el) hideTooltip()
+  }
+}
+
 export const vTooltip: Directive<HTMLElement, TooltipValue> = {
   mounted(el, binding: DirectiveBinding<TooltipValue>) {
     if (!binding.value) return
