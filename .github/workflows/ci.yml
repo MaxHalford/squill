@@ -69,3 +69,19 @@ jobs:
 
       - name: Run tests
         run: cd frontend && bun run test:run
+
+  deploy:
+    needs: [lint, backend-tests, frontend-tests]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    container: ghcr.io/railwayapp/cli:latest
+    env:
+      BACKEND_SVC_ID: f6001fcc-4b46-45e6-9a74-73f5fbca10e2
+      FRONTEND_SVC_ID: 7293644f-9a89-49fb-be39-6fe80c8ae97b
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy backend to Railway
+        run: railway up --service=${{ env.BACKEND_SVC_ID }}
+      - name: Deploy frontend to Railway
+        run: railway up --service=${{ env.FRONTEND_SVC_ID }}

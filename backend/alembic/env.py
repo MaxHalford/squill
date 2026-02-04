@@ -8,25 +8,29 @@ from alembic import context
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import settings
+from config import get_settings
 from models import Base
 
 # this is the Alembic Config object
 config = context.config
 
-# Set database URL from settings
-# Convert async URL to sync for Alembic
-db_url = settings.database_url.replace("sqlite+aiosqlite", "sqlite").replace(
-    "postgresql+asyncpg", "postgresql"
-)
-
 target_metadata = Base.metadata
+
+
+def get_db_url() -> str:
+    """Get sync database URL from settings."""
+    # Convert async URL to sync for Alembic
+    return (
+        get_settings()
+        .database_url.replace("sqlite+aiosqlite", "sqlite")
+        .replace("postgresql+asyncpg", "postgresql")
+    )
 
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     context.configure(
-        url=db_url,
+        url=get_db_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -38,7 +42,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    connectable = create_engine(db_url, poolclass=pool.NullPool)
+    connectable = create_engine(get_db_url(), poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)

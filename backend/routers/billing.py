@@ -1,13 +1,14 @@
 import logging
+from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from polar_sdk import Polar
-from polar_sdk.webhooks import validate_event, WebhookVerificationError
+from polar_sdk.webhooks import WebhookVerificationError, validate_event
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
+from config import get_settings
 from database import get_db
 from models import User
 from services.auth import get_current_user
@@ -15,11 +16,15 @@ from services.auth import get_current_user
 router = APIRouter(prefix="/billing", tags=["billing"])
 logger = logging.getLogger(__name__)
 
-# Initialize Polar client
-polar = Polar(
-    access_token=settings.polar_access_token,
-    server=settings.polar_server,  # type: ignore[arg-type]
-)
+
+@lru_cache
+def get_polar() -> Polar:
+    """Get cached Polar client."""
+    settings = get_settings()
+    return Polar(
+        access_token=settings.polar_access_token,
+        server=settings.polar_server,  # type: ignore[arg-type]
+    )
 
 
 # Response Models
@@ -39,7 +44,7 @@ async def cancel_polar_subscription(subscription_id: str) -> bool:
 
     try:
         # Use update with cancel_at_period_end to allow access until period ends
-        polar.subscriptions.update(
+        get_polar().subscriptions.update(
             id=subscription_id,
             subscription_update={"cancel_at_period_end": True},
         )
@@ -59,8 +64,9 @@ async def create_checkout_session(user: User = Depends(get_current_user)):
     if user.plan == "pro":
         raise HTTPException(status_code=400, detail="Already subscribed to Pro")
 
+    settings = get_settings()
     try:
-        checkout = polar.checkouts.create(
+        checkout = get_polar().checkouts.create(
             request={
                 "products": [settings.polar_product_id],
                 "success_url": f"{settings.frontend_url}/account?checkout=success&checkout_id={{CHECKOUT_ID}}",
@@ -102,7 +108,7 @@ async def resubscribe(user: User = Depends(get_current_user)):
 
     try:
         # Uncancel the subscription
-        polar.subscriptions.update(
+        get_polar().subscriptions.update(
             id=user.polar_subscription_id,
             subscription_update={"cancel_at_period_end": False},
         )
@@ -120,7 +126,7 @@ async def polar_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     headers = dict(request.headers)
 
     try:
-        event = validate_event(payload, headers, settings.polar_webhook_secret)
+        event = validate_event(payload, headers, get_settings().polar_webhook_secret)
     except WebhookVerificationError as e:
         logger.error(f"Webhook verification failed: {e}")
         raise HTTPException(status_code=400, detail="Invalid signature")

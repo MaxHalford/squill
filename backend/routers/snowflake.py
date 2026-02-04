@@ -9,7 +9,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
+from functools import lru_cache
+
+from config import get_settings
 from database import get_db
 from models import SnowflakeConnection, User
 from services.auth import get_current_user
@@ -19,7 +21,11 @@ from services.snowflake_pool import SnowflakeConnectionManager
 router = APIRouter(prefix="/snowflake", tags=["snowflake"])
 logger = logging.getLogger(__name__)
 
-encryption = TokenEncryption(settings.token_encryption_key)
+
+@lru_cache
+def get_encryption() -> TokenEncryption:
+    """Get cached encryption service."""
+    return TokenEncryption(get_settings().token_encryption_key)
 
 
 # Security helpers
@@ -171,7 +177,7 @@ async def get_connection_credentials(
         raise HTTPException(status_code=404, detail="Connection not found")
 
     try:
-        password = encryption.decrypt(
+        password = get_encryption().decrypt(
             connection.password_encrypted, connection.encryption_iv
         )
     except Exception:
@@ -247,7 +253,7 @@ async def create_connection(
         )
 
     # Encrypt password
-    encrypted_password, iv = encryption.encrypt(request.password)
+    encrypted_password, iv = get_encryption().encrypt(request.password)
 
     # Create connection
     connection = SnowflakeConnection(

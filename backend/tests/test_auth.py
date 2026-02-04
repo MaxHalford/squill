@@ -17,8 +17,8 @@ class MockSettings:
 
 @pytest.fixture(autouse=True)
 def mock_settings():
-    """Mock settings for all tests in this module."""
-    with patch("services.auth.settings", MockSettings()):
+    """Mock get_settings for all tests in this module."""
+    with patch("services.auth.get_settings", return_value=MockSettings()):
         yield
 
 

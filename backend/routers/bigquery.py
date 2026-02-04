@@ -12,7 +12,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
+from functools import lru_cache
+
+from config import get_settings
 from database import get_db
 from models import BigQueryConnection, User
 from services.auth import get_current_user
@@ -29,11 +31,18 @@ BIGQUERY_SCOPES = [
     "https://www.googleapis.com/auth/cloud-platform.read-only",
 ]
 
-# Initialize services
-encryption = TokenEncryption(settings.token_encryption_key)
-google_oauth = GoogleOAuthService(
-    settings.google_client_id, settings.google_client_secret
-)
+
+@lru_cache
+def get_encryption() -> TokenEncryption:
+    """Get cached encryption service."""
+    return TokenEncryption(get_settings().token_encryption_key)
+
+
+@lru_cache
+def get_google_oauth() -> GoogleOAuthService:
+    """Get cached Google OAuth service."""
+    settings = get_settings()
+    return GoogleOAuthService(settings.google_client_id, settings.google_client_secret)
 
 
 class QueryRequest(BaseModel):
@@ -63,7 +72,7 @@ async def get_bigquery_access_token(user: User, db: AsyncSession) -> str:
 
     # Decrypt refresh token
     try:
-        refresh_token = encryption.decrypt(
+        refresh_token = get_encryption().decrypt(
             bq_connection.refresh_token_encrypted, bq_connection.encryption_iv
         )
     except Exception:
@@ -74,7 +83,7 @@ async def get_bigquery_access_token(user: User, db: AsyncSession) -> str:
 
     # Get fresh access token
     try:
-        tokens = await google_oauth.refresh_access_token(refresh_token)
+        tokens = await get_google_oauth().refresh_access_token(refresh_token)
         return tokens["access_token"]
     except Exception as e:
         raise HTTPException(

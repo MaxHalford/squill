@@ -7,7 +7,7 @@ from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import settings
+from config import get_settings
 from routers.ai import router as ai_router
 from routers.auth import router as auth_router
 from routers.bigquery import router as bigquery_router
@@ -55,14 +55,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,  # type: ignore[arg-type]
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["*"],
-)
+
+# CORS - configured at startup
+@app.on_event("startup")
+def configure_cors():
+    app.add_middleware(
+        CORSMiddleware,  # type: ignore[arg-type]
+        allow_origins=get_settings().cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["*"],
+    )
+
 
 # Routers
 app.include_router(ai_router)

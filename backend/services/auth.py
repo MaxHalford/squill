@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
+from config import get_settings
 from database import get_db
 from models import User
 
@@ -26,6 +26,7 @@ class TokenPayload(BaseModel):
 
 def create_session_token(user_id: str, email: str) -> str:
     """Create a JWT session token for a user."""
+    settings = get_settings()
     expiration = datetime.now(timezone.utc) + timedelta(
         days=settings.jwt_expiration_days
     )
@@ -39,6 +40,7 @@ def create_session_token(user_id: str, email: str) -> str:
 
 def verify_session_token(token: str) -> TokenPayload:
     """Verify and decode a JWT session token."""
+    settings = get_settings()
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[JWT_ALGORITHM])
         return TokenPayload(

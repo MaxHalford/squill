@@ -1,9 +1,11 @@
+from functools import lru_cache
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
+from config import get_settings
 from database import get_db
 from models import BigQueryConnection, User
 from services.auth import create_session_token
@@ -15,14 +17,20 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 def is_vip_email(email: str) -> bool:
     """Check if an email should always be treated as VIP."""
-    return email.lower() in settings.vip_emails
+    return email.lower() in get_settings().vip_emails
 
 
-# Initialize services
-encryption = TokenEncryption(settings.token_encryption_key)
-google_oauth = GoogleOAuthService(
-    settings.google_client_id, settings.google_client_secret
-)
+@lru_cache
+def get_encryption() -> TokenEncryption:
+    """Get cached encryption service."""
+    return TokenEncryption(get_settings().token_encryption_key)
+
+
+@lru_cache
+def get_google_oauth() -> GoogleOAuthService:
+    """Get cached Google OAuth service."""
+    settings = get_settings()
+    return GoogleOAuthService(settings.google_client_id, settings.google_client_secret)
 
 
 class GoogleCallbackRequest(BaseModel):
@@ -77,6 +85,8 @@ async def google_login(request: GoogleLoginRequest, db: AsyncSession = Depends(g
     This endpoint is for incremental authorization - it only handles the email scope.
     BigQuery permissions are requested separately when adding a BigQuery connection.
     """
+    google_oauth = get_google_oauth()
+
     try:
         # Exchange code for tokens
         tokens = await google_oauth.exchange_code(request.code, request.redirect_uri)
@@ -138,6 +148,9 @@ async def google_callback(
     1. Creates a user account (identified by email)
     2. Stores BigQuery connection credentials for the user
     """
+    google_oauth = get_google_oauth()
+    encryption = get_encryption()
+
     try:
         # Exchange code for tokens
         tokens = await google_oauth.exchange_code(request.code, request.redirect_uri)
@@ -228,6 +241,9 @@ async def google_callback(
 @router.post("/refresh", response_model=RefreshResponse)
 async def refresh_token(request: RefreshRequest, db: AsyncSession = Depends(get_db)):
     """Get new access token using stored refresh token from BigQuery connection."""
+    google_oauth = get_google_oauth()
+    encryption = get_encryption()
+
     # Find BigQuery connection by email
     result = await db.execute(
         select(BigQueryConnection).where(BigQueryConnection.email == request.email)
@@ -295,6 +311,9 @@ async def get_user(email: str, db: AsyncSession = Depends(get_db)):
 @router.post("/logout")
 async def logout(request: LogoutRequest, db: AsyncSession = Depends(get_db)):
     """Revoke refresh token and remove BigQuery connection."""
+    google_oauth = get_google_oauth()
+    encryption = get_encryption()
+
     result = await db.execute(
         select(BigQueryConnection).where(BigQueryConnection.email == request.email)
     )
