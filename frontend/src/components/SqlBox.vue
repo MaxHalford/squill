@@ -140,11 +140,13 @@ const currentDialect = computed((): 'bigquery' | 'duckdb' | 'postgres' => {
   return engine
 })
 
-// Disable query execution while DuckDB is initializing or connection is missing
+// Disable query execution while DuckDB is initializing, failed, or connection is missing
 const isEngineLoading = computed(() => {
   // Check if DuckDB is still initializing - all SQL boxes depend on DuckDB
   // since even remote queries store results in DuckDB for cross-query analysis
   if (duckdbStore.isInitializing) return true
+  // Also disable if DuckDB initialization failed
+  if (!duckdbStore.isInitialized && duckdbStore.initError) return true
   // Also disable if the connection is missing
   if (isConnectionMissing.value) return true
   return false

@@ -186,12 +186,42 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       await initialize()
     }
 
+    const tableName = sanitizeTableName(boxName)
+
+    // Handle empty results: create an empty table with schema if available
     if (!results || results.length === 0) {
-      console.log('No results to store')
-      return null
+      try {
+        await conn.value!.query(`DROP TABLE IF EXISTS ${tableName}`)
+
+        if (schema && schema.length > 0) {
+          // Create empty table with proper column types from schema
+          const columnDefs = schema.map(col => {
+            const duckdbType = sourceEngine === 'bigquery'
+              ? mapBigQueryTypeToDuckDB(col.type)
+              : 'VARCHAR'
+            return `"${col.name}" ${duckdbType}`
+          }).join(', ')
+          await conn.value!.query(`CREATE TABLE ${tableName} (${columnDefs})`)
+        } else {
+          // No schema available - create a minimal empty table
+          await conn.value!.query(`CREATE TABLE ${tableName} (_empty VARCHAR)`)
+        }
+
+        tables.value[tableName] = {
+          rowCount: 0,
+          columns: schema?.map(c => c.name) || [],
+          lastUpdated: Date.now(),
+          originalBoxName: boxName,
+          boxId: boxId
+        }
+
+        return tableName
+      } catch (err: unknown) {
+        console.error(`Failed to create empty table for ${boxName}:`, err)
+        throw new Error(`Failed to store results in DuckDB: ${getErrorMessage(err)}`)
+      }
     }
 
-    const tableName = sanitizeTableName(boxName)
     const jsonFileName = `${tableName}.json`
     // Preserve original column order from the first result row
     const columns = Object.keys(results[0])

@@ -20,6 +20,12 @@ export interface BigQueryQueryResponse {
   cacheHit?: boolean
   totalRows?: string  // BigQuery returns this as a string
   pageToken?: string  // Token for pagination
+  jobComplete?: boolean  // false when query is still running
+  jobReference?: {
+    projectId: string
+    jobId: string
+    location: string
+  }
 }
 
 export interface BigQueryProject {

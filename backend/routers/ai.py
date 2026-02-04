@@ -16,9 +16,9 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 OPENAI_CLIENT = openai.OpenAI(api_key=settings.openai_api_key)
 OPENAI_MODEL = "gpt-4o-mini"
 
-# In-memory cache for fix suggestions (LRU-style, max 10k entries)
+# In-memory cache for fix suggestions (LRU-style)
 _fix_cache: dict[str, "FixResponse"] = {}
-_CACHE_MAX_SIZE = 10000
+_CACHE_MAX_SIZE = 5_000
 
 
 def _get_cache_key(query: str, error_message: str, database_flavor: str) -> str:
@@ -32,6 +32,7 @@ class QueryLineFix(BaseModel):
 
     line_number: int = 0  # 0 if no relevant fix
     suggestion: str = ""  # Empty if no relevant fix
+    action: str = "replace"  # "replace" to swap a line, "insert" to add a new line
     no_relevant_fix: bool = False  # True if no relevant fix can be suggested
 
 
@@ -51,6 +52,7 @@ class FixResponse(BaseModel):
     line_number: int
     original: str
     suggestion: str
+    action: str = "replace"  # "replace" or "insert"
     message: Optional[str] = None
     no_relevant_fix: bool = False
 
@@ -89,13 +91,12 @@ async def suggest_fix(
 
         # Add schema context if provided
         if fix_request.schema_context:
-            user_prompt_parts.insert(0, f"SCHEMA:\n{fix_request.schema_context}")
+            user_prompt_parts.append(f"SCHEMA:\n{fix_request.schema_context}")
 
         # Add sample queries if provided
         if fix_request.sample_queries:
-            user_prompt_parts.insert(
-                1 if fix_request.schema_context else 0,
-                f"EXAMPLES:\n{fix_request.sample_queries}",
+            user_prompt_parts.append(
+                f"Here are some recent queries that ran successfully:\n\n{fix_request.sample_queries}",
             )
 
         user_prompt = "\n\n".join(user_prompt_parts)
@@ -104,10 +105,44 @@ async def suggest_fix(
 
         # Build system prompt
         system_content = (
-            f"You are an expert in {fix_request.database_flavor.title()} SQL. The following query has an issue. Suggest a fix by providing the line number and the replacement line."
-            " Only fix the specific line causing the error. If you cannot determine a relevant fix (e.g., the error is about permissions, missing tables/columns that you don't have information about, or is otherwise unfixable by changing the query syntax), set no_relevant_fix to true."
-            " Whatever you do, the suggestion must be a single line replacement for the indicated line number, and it result in valid SQL syntax."
+            f"You are an expert in {fix_request.database_flavor.title()} SQL. The user wrote and executed a SQL query that has an issue. You are tasked with suggesting a single-line fix."
+            " You have two actions available:"
+            ' "replace" — replace an existing line with your suggestion;'
+            ' "insert" — insert a new line at the given position, pushing subsequent lines down.'
+            " If you cannot determine a relevant fix (e.g., the error is about permissions, missing tables/columns that you don't have information about, or is otherwise unfixable by changing the query syntax), set no_relevant_fix to true."
+            " The query as a whole must make sense after applying your fix."
         )
+        system_content += """\n\nExamples:
+
+Example 1 — replacing a line:
+
+QUERY:
+1: SELECT
+2:   key,
+3:   CUNT(*)
+4: FROM table
+5: GROUP BY key
+
+ERROR:
+Function not found: CUNT
+
+Response:
+{"line_number": 3, "suggestion": "  COUNT(*)", "action": "replace", "no_relevant_fix": false}
+
+Example 2 — inserting a new line:
+
+QUERY:
+1: SELECT
+2:   key,
+3:   COUNT(*)
+4: FROM table
+
+ERROR:
+SELECT list expression references column key which is neither grouped nor aggregated at [2:4]
+
+Response:
+{"line_number": 5, "suggestion": "GROUP BY key", "action": "insert", "no_relevant_fix": false}
+"""
 
         response = OPENAI_CLIENT.responses.parse(
             model=OPENAI_MODEL,
@@ -140,17 +175,20 @@ async def suggest_fix(
         else:
             # Extract original line
             lines = fix_request.query.split("\n")
-            if fix.line_number < 1 or fix.line_number > len(lines):
+            if fix.line_number < 1:
                 raise HTTPException(
                     status_code=422, detail="Invalid line number in suggestion"
                 )
 
-            original = lines[fix.line_number - 1]
+            original = (
+                lines[fix.line_number - 1] if fix.line_number <= len(lines) else ""
+            )
 
             fix_response = FixResponse(
                 line_number=fix.line_number,
                 original=original,
                 suggestion=fix.suggestion,
+                action=fix.action,
                 message=f"Suggested fix for line {fix.line_number}",
             )
 

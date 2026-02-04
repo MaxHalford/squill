@@ -1,11 +1,13 @@
 import logging
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from routers.ai import router as ai_router
 from routers.auth import router as auth_router
 from routers.bigquery import router as bigquery_router
@@ -61,6 +63,24 @@ app.include_router(connections_router)
 app.include_router(postgres_router)
 app.include_router(snowflake_router)
 app.include_router(user_router)
+
+
+logger = logging.getLogger(__name__)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Log full traceback for unhandled exceptions and return details in dev."""
+    logger.error(
+        "Unhandled exception on %s %s:\n%s",
+        request.method,
+        request.url.path,
+        traceback.format_exc(),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {exc}"},
+    )
 
 
 @app.get("/")

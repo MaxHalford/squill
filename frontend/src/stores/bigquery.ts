@@ -58,6 +58,58 @@ export interface BigQueryPaginatedQueryResult {
   }
 }
 
+// Poll BigQuery for query results when jobComplete is false
+// Uses getQueryResults endpoint with exponential backoff
+const pollQueryResults = async (
+  projectId: string,
+  jobId: string,
+  token: string,
+  signal: AbortSignal | null,
+  maxResults?: number
+): Promise<BigQueryQueryResponse> => {
+  const baseDelay = 500
+  const maxDelay = 5000
+  let attempt = 0
+
+  while (true) {
+    if (signal?.aborted) {
+      throw new DOMException('The operation was aborted.', 'AbortError')
+    }
+
+    const delay = Math.min(baseDelay * Math.pow(1.5, attempt), maxDelay)
+    await new Promise(resolve => setTimeout(resolve, delay))
+    attempt++
+
+    const params = new URLSearchParams({ timeoutMs: '10000' })
+    if (maxResults !== undefined) {
+      params.set('maxResults', String(maxResults))
+    }
+
+    const fetchOptions: RequestInit = {
+      headers: { 'Authorization': `Bearer ${token}` },
+    }
+    if (signal) {
+      fetchOptions.signal = signal
+    }
+
+    const response = await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries/${jobId}?${params}`,
+      fetchOptions
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error?.message || 'Failed to poll query results')
+    }
+
+    const data: BigQueryQueryResponse = await response.json()
+
+    if (data.jobComplete !== false) {
+      return data
+    }
+  }
+}
+
 export const useBigQueryStore = defineStore('bigquery', () => {
   // Delegate to connections store
   const connectionsStore = useConnectionsStore()
@@ -497,7 +549,17 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       throw new Error(errorData.error?.message || 'Query execution failed')
     }
 
-    const data: BigQueryQueryResponse = await response.json()
+    let data: BigQueryQueryResponse = await response.json()
+
+    // Poll if query is still running (long-running queries return jobComplete: false)
+    if (data.jobComplete === false && data.jobReference) {
+      data = await pollQueryResults(
+        targetProjectId,
+        data.jobReference.jobId,
+        token,
+        signal
+      )
+    }
 
     // Extract statistics from BigQuery response
     const stats = {
@@ -601,7 +663,18 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       throw new Error(errorData.error?.message || 'Query execution failed')
     }
 
-    const data: BigQueryQueryResponse = await response.json()
+    let data: BigQueryQueryResponse = await response.json()
+
+    // Poll if query is still running (long-running queries return jobComplete: false)
+    if (data.jobComplete === false && data.jobReference) {
+      data = await pollQueryResults(
+        targetProjectId,
+        data.jobReference.jobId,
+        token,
+        signal,
+        maxResults
+      )
+    }
 
     // Extract statistics from BigQuery response
     const stats = {

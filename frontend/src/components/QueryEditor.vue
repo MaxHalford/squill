@@ -22,6 +22,7 @@ interface LineSuggestion {
   line: number // 1-indexed line number
   original: string
   suggestion: string
+  action?: 'replace' | 'insert'
   message?: string
 }
 
@@ -144,14 +145,18 @@ class SuggestionWidget extends WidgetType {
 
   toDOM() {
     const wrapper = document.createElement('div')
-    wrapper.className = 'cm-suggestion-line'
+    const isInsert = this.suggestion.action === 'insert'
+    wrapper.className = isInsert ? 'cm-suggestion-line cm-suggestion-insert' : 'cm-suggestion-line'
 
-    // Extract leading whitespace from the original line to preserve indentation
-    const leadingWhitespace = this.suggestion.original.match(/^(\s*)/)?.[1] || ''
+    // For replace: preserve indentation from original line
+    // For insert: use the suggestion as-is
+    const displayText = isInsert
+      ? this.suggestion.suggestion
+      : (this.suggestion.original.match(/^(\s*)/)?.[1] || '') + this.suggestion.suggestion.trimStart()
 
     const content = document.createElement('span')
     content.className = 'cm-suggestion-content'
-    content.textContent = leadingWhitespace + this.suggestion.suggestion.trimStart()
+    content.textContent = displayText
 
     const actions = document.createElement('span')
     actions.className = 'cm-suggestion-actions'
@@ -212,7 +217,34 @@ const suggestionField = StateField.define<{
 
         const decorations: { from: number; to: number; decoration: Decoration }[] = []
         const lineNum = suggestion.line
-        if (lineNum >= 1 && lineNum <= tr.state.doc.lines) {
+        const isInsert = suggestion.action === 'insert'
+        const totalLines = tr.state.doc.lines
+
+        if (isInsert) {
+          // Insert: show widget at the insertion point, no error highlight
+          let anchorPos: number
+          if (lineNum <= 1) {
+            // Insert at the very beginning
+            anchorPos = 0
+          } else if (lineNum <= totalLines) {
+            // Insert before lineNum → attach after the previous line
+            anchorPos = tr.state.doc.line(lineNum - 1).to
+          } else {
+            // Insert at end of document
+            anchorPos = tr.state.doc.length
+          }
+
+          decorations.push({
+            from: anchorPos,
+            to: anchorPos,
+            decoration: Decoration.widget({
+              widget: new SuggestionWidget(suggestion),
+              block: true,
+              side: 1,
+            }),
+          })
+        } else if (lineNum >= 1 && lineNum <= totalLines) {
+          // Replace: highlight the existing line and show widget after it
           const line = tr.state.doc.line(lineNum)
 
           // Error line decoration (red background)
@@ -262,6 +294,10 @@ const suggestionTheme = EditorView.theme({
     flex: '1',
     color: 'var(--color-success)',
     paddingLeft: '6px',
+  },
+  '.cm-suggestion-insert .cm-suggestion-content::before': {
+    content: '"+ "',
+    opacity: '0.6',
   },
   '.cm-suggestion-actions': {
     display: 'flex',
@@ -465,12 +501,11 @@ watch(() => props.suggestion, (newSuggestion) => {
     // Scroll to center the suggestion line
     if (newSuggestion && newSuggestion.line >= 1) {
       const doc = editorView.value.state.doc
-      if (newSuggestion.line <= doc.lines) {
-        const line = doc.line(newSuggestion.line)
-        editorView.value.dispatch({
-          effects: EditorView.scrollIntoView(line.from, { y: 'center' })
-        })
-      }
+      const targetLine = Math.min(newSuggestion.line, doc.lines)
+      const line = doc.line(targetLine)
+      editorView.value.dispatch({
+        effects: EditorView.scrollIntoView(line.from, { y: 'center' })
+      })
     }
   }
 })
@@ -586,28 +621,51 @@ onUnmounted(() => {
   if (dryRunDebounceTimer) clearTimeout(dryRunDebounceTimer)
 })
 
-// Accept the current suggestion by replacing the line content
+// Accept the current suggestion by replacing or inserting a line
 const acceptSuggestion = () => {
   if (!editorView.value || !props.suggestion) return
 
   const doc = editorView.value.state.doc
   const lineNum = props.suggestion.line
-  if (lineNum < 1 || lineNum > doc.lines) return
+  const isInsert = props.suggestion.action === 'insert'
 
-  const line = doc.line(lineNum)
+  if (lineNum < 1) return
 
-  // Extract leading whitespace from the original line to preserve indentation
-  const leadingWhitespace = props.suggestion.original.match(/^(\s*)/)?.[1] || ''
+  if (isInsert) {
+    // Insert a new line at the given position
+    let insertText: string
+    let insertPos: number
 
-  // Replace the line content and clear the suggestion
-  editorView.value.dispatch({
-    changes: {
-      from: line.from,
-      to: line.to,
-      insert: leadingWhitespace + props.suggestion.suggestion.trimStart(),
-    },
-    effects: setSuggestions.of(null),
-  })
+    if (lineNum <= doc.lines) {
+      // Insert before existing line — add text + newline at line start
+      insertPos = doc.line(lineNum).from
+      insertText = props.suggestion.suggestion + '\n'
+    } else {
+      // Insert at end of document
+      insertPos = doc.length
+      insertText = '\n' + props.suggestion.suggestion
+    }
+
+    editorView.value.dispatch({
+      changes: { from: insertPos, to: insertPos, insert: insertText },
+      effects: setSuggestions.of(null),
+    })
+  } else {
+    // Replace: swap existing line content
+    if (lineNum > doc.lines) return
+
+    const line = doc.line(lineNum)
+    const leadingWhitespace = props.suggestion.original.match(/^(\s*)/)?.[1] || ''
+
+    editorView.value.dispatch({
+      changes: {
+        from: line.from,
+        to: line.to,
+        insert: leadingWhitespace + props.suggestion.suggestion.trimStart(),
+      },
+      effects: setSuggestions.of(null),
+    })
+  }
 }
 
 defineExpose({

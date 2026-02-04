@@ -16,6 +16,7 @@ export interface LineSuggestion {
   line: number // 1-indexed, 0 if no relevant fix
   original: string
   suggestion: string
+  action?: 'replace' | 'insert' // "replace" swaps a line, "insert" adds a new line
   message?: string
   noRelevantFix?: boolean
 }
@@ -120,6 +121,7 @@ export async function suggestFix(
       line: data.line_number,
       original: data.original,
       suggestion: data.suggestion,
+      action: data.action || 'replace',
       message: data.message,
       noRelevantFix: data.no_relevant_fix,
     }
