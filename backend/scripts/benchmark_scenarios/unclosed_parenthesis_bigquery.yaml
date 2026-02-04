@@ -1,0 +1,14 @@
+input:
+  query: |
+    SELECT
+      user_id,
+      CONCAT(first_name, ' ', last_name AS full_name
+    FROM users
+  error_message: "Syntax error: Expected \")\" but got keyword AS at [3:38]"
+  database_dialect: "bigquery"
+expected:
+  query: |
+    SELECT
+      user_id,
+      CONCAT(first_name, ' ', last_name) AS full_name
+    FROM users

@@ -1,0 +1,12 @@
+input:
+  query: |
+    SELECT *
+    FROM products
+    WHERE status = "active"
+  error_message: 'column "active" does not exist'
+  database_dialect: "postgres"
+expected:
+  query: |
+    SELECT *
+    FROM products
+    WHERE status = 'active'

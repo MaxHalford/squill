@@ -1,0 +1,12 @@
+input:
+  query: |
+    SELECT *
+    FROM subscriptions
+    WHERE expires_at > CURRENT_DATE + INTERVAL 7 DAY
+  error_message: "Syntax error: Expected end of input but got integer literal \"7\" at [3:47]"
+  database_dialect: "bigquery"
+expected:
+  query: |
+    SELECT *
+    FROM subscriptions
+    WHERE expires_at > CURRENT_DATE + INTERVAL '7' DAY

@@ -1,0 +1,12 @@
+input:
+  query: |
+    SELECT c.name, o.total
+    FROM customers c
+    LEFFT JOIN orders o ON c.id = o.customer_id
+  error_message: "SQL compilation error: syntax error unexpected 'JOIN'"
+  database_dialect: "snowflake"
+expected:
+  query: |
+    SELECT c.name, o.total
+    FROM customers c
+    LEFT JOIN orders o ON c.id = o.customer_id

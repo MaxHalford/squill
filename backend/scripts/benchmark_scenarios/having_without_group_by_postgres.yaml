@@ -1,0 +1,17 @@
+input:
+  query: |
+    SELECT
+      department,
+      AVG(salary)
+    FROM employees
+    HAVING AVG(salary) > 50000
+  error_message: 'column "department" must appear in the GROUP BY clause or be used in an aggregate function'
+  database_dialect: "postgres"
+expected:
+  query: |
+    SELECT
+      department,
+      AVG(salary)
+    FROM employees
+    GROUP BY department
+    HAVING AVG(salary) > 50000

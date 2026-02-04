@@ -167,13 +167,15 @@ def format_latency_stats(latencies: list[float]) -> str:
     p95_idx = min(int(n * 0.95), n - 1)
 
     lines = [
-        f"  min    {sorted_l[0]:.2f}s",
-        f"  max    {sorted_l[-1]:.2f}s",
-        f"  mean   {statistics.mean(sorted_l):.2f}s",
-        f"  median {statistics.median(sorted_l):.2f}s",
+        f"  min     {sorted_l[0]:.2f}s",
+        f"  max     {sorted_l[-1]:.2f}s",
+        f"  mean    {statistics.mean(sorted_l):.2f}s",
+        f"  median  {statistics.median(sorted_l):.2f}s",
     ]
     if n >= 3:
-        lines.append(f"  p95    {sorted_l[p95_idx]:.2f}s")
+        lines.append(f"  p95     {sorted_l[p95_idx]:.2f}s")
+
+    lines.append(f"  total   {sum(sorted_l):.2f}s")
 
     return "\n".join(lines)
 
@@ -259,7 +261,7 @@ def main() -> None:
     from services.ai_fixer import DEFAULT_MODEL
 
     model_display = args.model or DEFAULT_MODEL
-    print(f"\n{BOLD}=== AI Fixer Benchmark ==={RESET}")
+    print(f"\n{BOLD}=== AI fixer benchmark ==={RESET}")
     print(f"Model: {model_display}")
     print(f"Running {len(scenarios)} scenario{'s' if len(scenarios) != 1 else ''}...\n")
 
@@ -267,7 +269,6 @@ def main() -> None:
     passed = 0
     failed = 0
     latencies: list[float] = []
-    total_t0 = time.perf_counter()
 
     for scenario in scenarios:
         name = scenario["name"]
@@ -288,10 +289,8 @@ def main() -> None:
         if args.verbose and result:
             print(f"    {DIM}{result.model_dump_json(indent=2)}{RESET}")
 
-    total_elapsed = time.perf_counter() - total_t0
-
     # Summary
-    print(f"\n{BOLD}Results:{RESET} ", end="")
+    print(f"\n{BOLD}Accuracy:{RESET} ", end="")
     if failed == 0:
         print(f"{GREEN}{passed}/{passed + failed} passed{RESET}")
     else:
@@ -300,8 +299,6 @@ def main() -> None:
     # Latency stats
     print(f"\n{BOLD}Latency:{RESET}")
     print(format_latency_stats(latencies))
-
-    print(f"\nTotal time: {total_elapsed:.2f}s\n")
 
     sys.exit(0 if failed == 0 else 1)
 

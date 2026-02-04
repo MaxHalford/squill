@@ -1,0 +1,12 @@
+input:
+  query: |
+    SELECT *
+    FROM orders
+    WHERE shipped_at = NULL
+  error_message: "Warning: comparison with NULL will always return false, use IS NULL instead"
+  database_dialect: "postgres"
+expected:
+  query: |
+    SELECT *
+    FROM orders
+    WHERE shipped_at IS NULL
