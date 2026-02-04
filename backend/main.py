@@ -55,18 +55,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-
-# CORS - configured at startup
-@app.on_event("startup")
-def configure_cors():
-    app.add_middleware(
-        CORSMiddleware,  # type: ignore[arg-type]
-        allow_origins=get_settings().cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["*"],
-    )
-
+# CORS - must be added at module level for OPTIONS preflight to work
+app.add_middleware(
+    CORSMiddleware,  # type: ignore[arg-type]
+    allow_origins=get_settings().cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # Routers
 app.include_router(ai_router)
