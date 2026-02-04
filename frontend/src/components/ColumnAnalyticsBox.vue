@@ -13,6 +13,7 @@ import { useSettingsStore } from '../stores/settings'
 import { buildAnalyticsQuery, type TypeCategory } from '../utils/analyticsQueryBuilder'
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 import { formatDateValue } from '../utils/typeUtils'
+import { getConnectionDisplayName } from '../utils/connectionHelpers'
 
 interface AnalyticsData {
   tableName: string
@@ -60,8 +61,7 @@ const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
 const queryResultsStore = useQueryResultsStore()
 const settingsStore = useSettingsStore()
-// Note: connectionsStore is imported but used indirectly via bigqueryStore/postgresStore/snowflakeStore
-void useConnectionsStore() // Ensure connections store is initialized
+const connectionsStore = useConnectionsStore()
 
 // Core state
 const isLoading = ref(false)
@@ -88,6 +88,16 @@ const analyticsData = computed<AnalyticsData | null>(() => {
   } catch {
     return null
   }
+})
+
+// Get connection for display name
+const connection = computed(() => {
+  if (!analyticsData.value?.connectionId) return null
+  return connectionsStore.connections.find(c => c.id === analyticsData.value!.connectionId) || null
+})
+
+const connectionName = computed(() => {
+  return getConnectionDisplayName(connection.value)
 })
 
 // Save current state to parent for persistence
@@ -702,6 +712,8 @@ onUnmounted(() => {
             :table-name="analyticsTableName"
             :box-name="initialName"
             :box-id="boxId"
+            :stats="analyticsData?.sourceEngine ? { engine: analyticsData.sourceEngine } : undefined"
+            :connection-name="connectionName"
             :show-row-detail="false"
             :show-analytics="false"
             @request-more-data="handleRequestMoreData"
@@ -716,18 +728,23 @@ onUnmounted(() => {
 
       <!-- Footer with engine badge and group by controls -->
       <footer class="analytics-footer">
-        <!-- Engine badge -->
-        <span
-          v-if="analyticsData?.sourceEngine"
-          class="engine-badge"
-          :style="{
-            background: DATABASE_INFO[analyticsData.sourceEngine].color,
-            color: DATABASE_INFO[analyticsData.sourceEngine].textColor
-          }"
-          :title="`Analytics run on ${DATABASE_INFO[analyticsData.sourceEngine].name}`"
-        >
-          {{ DATABASE_INFO[analyticsData.sourceEngine].shortName }}
-        </span>
+        <!-- Engine badge + row count (only for stats grid, ResultsTable has its own footer) -->
+        <div v-if="showStatsGrid" class="results-meta">
+          <span
+            v-if="analyticsData?.sourceEngine"
+            class="engine-badge"
+            :style="{
+              background: DATABASE_INFO[analyticsData.sourceEngine].color,
+              color: DATABASE_INFO[analyticsData.sourceEngine].textColor
+            }"
+            v-tooltip="connectionName || DATABASE_INFO[analyticsData.sourceEngine].name"
+          >
+            {{ DATABASE_INFO[analyticsData.sourceEngine].shortName }}
+          </span>
+          <span v-if="numericStats" class="stat">
+            {{ formatNumber(numericStats.count) }} rows
+          </span>
+        </div>
 
         <!-- Copy query button -->
         <CopyButton
@@ -898,6 +915,19 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* Results meta (matches ResultsTable footer) */
+.results-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 /* Engine badge uses global .engine-badge from style.css */

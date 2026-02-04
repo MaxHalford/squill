@@ -240,7 +240,7 @@ const screenToCanvas = (screenX: number, screenY: number): Point => {
   }
 }
 
-defineExpose({ fitToView, getViewportCenter, panToBox, screenToCanvas })
+defineExpose({ fitToView, getViewportCenter, panToBox, screenToCanvas, zoom })
 
 const isOverBox = (element: HTMLElement | null): boolean => {
   let current = element

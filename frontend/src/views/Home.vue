@@ -309,17 +309,17 @@ const handleMaximize = (id: number) => {
   if (!center) return
 
   // Calculate viewport size in canvas coordinates
-  const zoom = canvasRef.value?.zoom || 1
-  const viewportWidth = window.innerWidth / zoom
-  const viewportHeight = window.innerHeight / zoom
+  const currentZoom = canvasRef.value?.zoom ?? 1
+  const viewportWidth = window.innerWidth / currentZoom
+  const viewportHeight = window.innerHeight / currentZoom
 
-  // Use 80% of viewport for the box size
-  const targetWidth = viewportWidth * 0.8
-  const targetHeight = viewportHeight * 0.8
+  // Use 90% of viewport for the box size (5% padding on each side)
+  const targetWidth = viewportWidth * 0.9
+  const targetHeight = viewportHeight * 0.9
 
-  // Position box centered horizontally, with 10% margin at top (and 10% at bottom)
+  // Position box centered in the viewport
   const newX = center.x - targetWidth / 2
-  const newY = center.y - viewportHeight * 0.4
+  const newY = center.y - targetHeight / 2
 
   canvasStore.updateBoxPosition(id, { x: newX, y: newY })
   canvasStore.updateBoxSize(id, { width: targetWidth, height: targetHeight })
