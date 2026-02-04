@@ -1137,6 +1137,7 @@ const toggleFaq = (index: number) => {
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body);
   font-weight: 600;
+  color: var(--text-primary);
 }
 
 .database-badge {
