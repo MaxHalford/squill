@@ -17,12 +17,9 @@ import sys
 import time
 from pathlib import Path
 
-import dotenv
 import sqlglot
 import yaml
 from services.ai_fixer import FixError, FixResponse, suggest_fix_core
-
-dotenv.load_dotenv()
 
 # ---------------------------------------------------------------------------
 # ANSI colours

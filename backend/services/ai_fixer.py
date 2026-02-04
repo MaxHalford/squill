@@ -5,12 +5,12 @@ endpoint and the CLI benchmark without any web-framework dependencies.
 """
 
 import hashlib
-import os
 from typing import Optional
 
-import dotenv
 import openai
 from pydantic import BaseModel
+
+from config import get_settings
 
 # ---------------------------------------------------------------------------
 # Models
@@ -73,10 +73,7 @@ _client: openai.OpenAI | None = None
 def _get_client() -> openai.OpenAI:
     global _client
     if _client is None:
-        dotenv.load_dotenv()
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        if not api_key:
-            raise FixError("OPENAI_API_KEY environment variable is not set", 503)
+        api_key = get_settings().openai_api_key
         _client = openai.OpenAI(api_key=api_key)
     return _client
 
