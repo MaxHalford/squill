@@ -17,6 +17,7 @@ const HistoryBox = defineAsyncComponent(() => import('../components/HistoryBox.v
 
 // Lazy-load modals - only loaded when opened
 const PostgresConnectionModal = defineAsyncComponent(() => import('../components/PostgresConnectionModal.vue'))
+const SnowflakeConnectionModal = defineAsyncComponent(() => import('../components/SnowflakeConnectionModal.vue'))
 const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/KeyboardShortcutsModal.vue'))
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
@@ -41,6 +42,7 @@ const csvFileInputRef = ref<HTMLInputElement | null>(null)
 const isStoresReady = ref(false)
 const onboardingDismissed = ref(false)
 const showPostgresModal = ref(false)
+const showSnowflakeModal = ref(false)
 const showShortcutsModal = ref(false)
 
 // CSV upload progress state
@@ -139,6 +141,21 @@ const handleSelectCsv = () => {
 // Handle PostgreSQL selection from onboarding - show credentials modal
 const handleSelectPostgres = () => {
   showPostgresModal.value = true
+}
+
+// Handle Snowflake selection from onboarding - show credentials modal
+const handleSelectSnowflake = () => {
+  showSnowflakeModal.value = true
+}
+
+// Handle successful Snowflake connection from onboarding
+const handleSnowflakeConnected = (connectionId: string) => {
+  console.log('Snowflake connected:', connectionId)
+
+  // Create default boxes if canvas is empty
+  if (canvasStore.boxes.length === 0) {
+    createDefaultBoxes('snowflake', connectionId)
+  }
 }
 
 // Handle successful PostgreSQL connection
@@ -950,6 +967,7 @@ onUnmounted(() => {
       @select-duckdb="handleSelectDuckdb"
       @select-csv="handleSelectCsv"
       @select-postgres="handleSelectPostgres"
+      @select-snowflake="handleSelectSnowflake"
     />
 
     <!-- PostgreSQL Connection Modal -->
@@ -958,6 +976,14 @@ onUnmounted(() => {
       :user-email="connectionsStore.activeConnection?.email || 'anonymous'"
       @close="showPostgresModal = false"
       @connected="handlePostgresConnected"
+    />
+
+    <!-- Snowflake Connection Modal -->
+    <SnowflakeConnectionModal
+      :show="showSnowflakeModal"
+      :user-email="connectionsStore.activeConnection?.email || 'anonymous'"
+      @close="showSnowflakeModal = false"
+      @connected="handleSnowflakeConnected"
     />
 
     <!-- Hidden file input for CSV picker -->

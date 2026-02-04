@@ -12,6 +12,7 @@ const emit = defineEmits<{
   selectDuckdb: []
   selectCsv: []
   selectPostgres: []
+  selectSnowflake: []
 }>()
 
 // Prevent body scroll when modal is open
@@ -112,7 +113,7 @@ onUnmounted(() => {
             <button
               class="option-card"
               aria-label="Connect to Snowflake"
-              @click="emit('close')"
+              @click="emit('selectSnowflake')"
             >
               <img
                 :src="DATABASE_INFO.snowflake.logo"
