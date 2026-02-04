@@ -27,4 +27,3 @@ repos:
         files: ^frontend/
         types_or: [ts, vue]
         pass_filenames: false
-        stages: [pre-push]
