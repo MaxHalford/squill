@@ -20,14 +20,15 @@
 
 ```bash
 # Frontend
-bun install          # Install dependencies
-bun run dev          # Start dev server
-bun run type-check   # Type check
+bun install
+bun run dev
 
 # Backend
-cd backend && uv sync        # Install dependencies
-uvicorn main:app --reload    # Start server
-prek run --all-files         # Run linters
+cd backend && uv sync
+uv run uvicorn main:app --reload
+
+# Code quality
+prek run --all-files
 ```
 
 ## Features
