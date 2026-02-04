@@ -65,14 +65,12 @@ const tableLinkField = StateField.define<{
 // Theme for table link styling - dashed underline using app accent color
 const tableLinkTheme = EditorView.theme({
   '.cm-table-link': {
-    textDecoration: 'underline dashed var(--color-accent)',
-    textDecorationThickness: '2px',
-    textUnderlineOffset: '3px',
+    borderBottom: '2px dashed var(--color-accent)',
+    borderRadius: '2px',
     cursor: 'pointer',
   },
   '.cm-table-link:hover': {
     background: 'color-mix(in srgb, var(--color-accent) 25%, transparent)',
-    borderRadius: '2px',
   }
 })
 
