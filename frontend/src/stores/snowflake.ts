@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useConnectionsStore } from './connections'
+import { useUserStore } from './user'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -68,6 +69,7 @@ export interface TestConnectionResult {
 
 export const useSnowflakeStore = defineStore('snowflake', () => {
   const connectionsStore = useConnectionsStore()
+  const userStore = useUserStore()
 
   // In-memory credentials cache (NOT persisted)
   const credentialsCache = ref<Map<string, SnowflakeCredentials>>(new Map())
@@ -106,7 +108,7 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     try {
       const response = await fetch(`${BACKEND_URL}/snowflake/test-connection`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
         body: JSON.stringify({
           account,
           username,
@@ -153,15 +155,14 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     warehouse: string | null,
     database: string | null,
     schemaName: string | null,
-    role: string | null,
-    userEmail: string
+    role: string | null
   ): Promise<string> => {
     isConnecting.value = true
 
     try {
       const response = await fetch(`${BACKEND_URL}/snowflake/connections`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
         body: JSON.stringify({
           name,
           account,
@@ -170,8 +171,7 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
           warehouse: warehouse || undefined,
           database: database || undefined,
           schema_name: schemaName || undefined,
-          role: role || undefined,
-          user_email: userEmail
+          role: role || undefined
         })
       })
 
@@ -215,7 +215,8 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
 
     // Fetch from backend
     const response = await fetch(
-      `${BACKEND_URL}/snowflake/connections/${connectionId}/credentials`
+      `${BACKEND_URL}/snowflake/connections/${connectionId}/credentials`,
+      { headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {
@@ -251,7 +252,7 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     try {
       const response = await fetch(`${BACKEND_URL}/snowflake/query`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
         body: JSON.stringify({
           connection_id: connectionId,
           query
@@ -293,7 +294,7 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     try {
       const response = await fetch(`${BACKEND_URL}/snowflake/query/paginated`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
         body: JSON.stringify({
           connection_id: connectionId,
           query,
@@ -343,7 +344,8 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     }
 
     const response = await fetch(
-      `${BACKEND_URL}/snowflake/schema/${connectionId}/databases`
+      `${BACKEND_URL}/snowflake/schema/${connectionId}/databases`,
+      { headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {
@@ -375,7 +377,8 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     }
 
     const response = await fetch(
-      `${BACKEND_URL}/snowflake/schema/${connectionId}/schemas/${encodeURIComponent(databaseName)}`
+      `${BACKEND_URL}/snowflake/schema/${connectionId}/schemas/${encodeURIComponent(databaseName)}`,
+      { headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {
@@ -435,7 +438,8 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     }
 
     const response = await fetch(
-      `${BACKEND_URL}/snowflake/schema/${connectionId}/tables`
+      `${BACKEND_URL}/snowflake/schema/${connectionId}/tables`,
+      { headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {
@@ -477,7 +481,8 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     }
 
     const response = await fetch(
-      `${BACKEND_URL}/snowflake/schema/${connectionId}/columns/${databaseName}/${schemaName}/${tableName}`
+      `${BACKEND_URL}/snowflake/schema/${connectionId}/columns/${databaseName}/${schemaName}/${tableName}`,
+      { headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {
@@ -509,7 +514,8 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
       }
 
       const response = await fetch(
-        `${BACKEND_URL}/snowflake/schema/${connectionId}/all-columns`
+        `${BACKEND_URL}/snowflake/schema/${connectionId}/all-columns`,
+        { headers: userStore.getAuthHeaders() }
       )
 
       if (!response.ok) {
@@ -544,7 +550,7 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
   const deleteConnection = async (connectionId: string): Promise<void> => {
     const response = await fetch(
       `${BACKEND_URL}/snowflake/connections/${connectionId}`,
-      { method: 'DELETE' }
+      { method: 'DELETE', headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {

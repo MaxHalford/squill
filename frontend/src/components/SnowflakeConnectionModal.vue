@@ -5,7 +5,6 @@ import { DATABASE_INFO } from '../types/database'
 
 const props = defineProps<{
   show: boolean
-  userEmail: string
 }>()
 
 const emit = defineEmits<{
@@ -111,8 +110,7 @@ const handleSubmit = async () => {
       form.value.warehouse || null,
       form.value.database || null,
       form.value.schemaName || null,
-      form.value.role || null,
-      props.userEmail
+      form.value.role || null
     )
     emit('connected', connectionId)
     emit('close')

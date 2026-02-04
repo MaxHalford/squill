@@ -10,6 +10,7 @@ import { useSnowflakeStore } from '../stores/snowflake'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import type { BoxType } from '../types/canvas'
+import type { ConnectionType } from '../types/connection'
 import { DATABASE_INFO } from '../types/database'
 import {
   getConnectionDisplayName,
@@ -230,6 +231,12 @@ const handleProjectSelect = async (projectId: string) => {
 const handleAddDatabase = async (databaseType: string) => {
   addDatabaseMenuOpen.value = false
   activeDropdown.value = null
+
+  // Require login for auth-requiring connection types
+  if (connectionRequiresAuth(databaseType as ConnectionType) && !userStore.isLoggedIn) {
+    await userStore.loginWithGoogle()
+    if (!userStore.isLoggedIn) return // User cancelled login
+  }
 
   if (databaseType === 'bigquery') {
     try {
@@ -901,7 +908,6 @@ onUnmounted(() => {
   <!-- PostgreSQL Connection Modal -->
   <PostgresConnectionModal
     :show="showPostgresModal"
-    :user-email="userStore.user?.email || connectionsStore.activeConnection?.email || 'anonymous'"
     @close="showPostgresModal = false"
     @connected="handlePostgresConnected"
   />
@@ -909,7 +915,6 @@ onUnmounted(() => {
   <!-- Snowflake Connection Modal -->
   <SnowflakeConnectionModal
     :show="showSnowflakeModal"
-    :user-email="userStore.user?.email || connectionsStore.activeConnection?.email || 'anonymous'"
     @close="showSnowflakeModal = false"
     @connected="handleSnowflakeConnected"
   />

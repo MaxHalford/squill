@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useConnectionsStore } from './connections'
+import { useUserStore } from './user'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -58,6 +59,7 @@ export interface TestConnectionResult {
 
 export const usePostgresStore = defineStore('postgres', () => {
   const connectionsStore = useConnectionsStore()
+  const userStore = useUserStore()
 
   // In-memory credentials cache (NOT persisted)
   const credentialsCache = ref<Map<string, PostgresCredentials>>(new Map())
@@ -93,7 +95,7 @@ export const usePostgresStore = defineStore('postgres', () => {
     try {
       const response = await fetch(`${BACKEND_URL}/postgres/test-connection`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
         body: JSON.stringify({
           host,
           port,
@@ -138,15 +140,14 @@ export const usePostgresStore = defineStore('postgres', () => {
     database: string,
     username: string,
     password: string,
-    sslMode: string,
-    userEmail: string
+    sslMode: string
   ): Promise<string> => {
     isConnecting.value = true
 
     try {
       const response = await fetch(`${BACKEND_URL}/postgres/connections`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
         body: JSON.stringify({
           name,
           host,
@@ -154,8 +155,7 @@ export const usePostgresStore = defineStore('postgres', () => {
           database,
           username,
           password,
-          ssl_mode: sslMode,
-          user_email: userEmail
+          ssl_mode: sslMode
         })
       })
 
@@ -198,7 +198,8 @@ export const usePostgresStore = defineStore('postgres', () => {
 
     // Fetch from backend
     const response = await fetch(
-      `${BACKEND_URL}/postgres/connections/${connectionId}/credentials`
+      `${BACKEND_URL}/postgres/connections/${connectionId}/credentials`,
+      { headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {
@@ -233,7 +234,7 @@ export const usePostgresStore = defineStore('postgres', () => {
     try {
       const response = await fetch(`${BACKEND_URL}/postgres/query`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
         body: JSON.stringify({
           connection_id: connectionId,
           query
@@ -281,7 +282,7 @@ export const usePostgresStore = defineStore('postgres', () => {
     try {
       const response = await fetch(`${BACKEND_URL}/postgres/query/paginated`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
         body: JSON.stringify({
           connection_id: connectionId,
           query,
@@ -331,7 +332,8 @@ export const usePostgresStore = defineStore('postgres', () => {
     }
 
     const response = await fetch(
-      `${BACKEND_URL}/postgres/schema/${connectionId}/tables`
+      `${BACKEND_URL}/postgres/schema/${connectionId}/tables`,
+      { headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {
@@ -366,7 +368,8 @@ export const usePostgresStore = defineStore('postgres', () => {
     }
 
     const response = await fetch(
-      `${BACKEND_URL}/postgres/schema/${connectionId}/columns/${schemaName}/${tableName}`
+      `${BACKEND_URL}/postgres/schema/${connectionId}/columns/${schemaName}/${tableName}`,
+      { headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {
@@ -398,7 +401,8 @@ export const usePostgresStore = defineStore('postgres', () => {
       }
 
       const response = await fetch(
-        `${BACKEND_URL}/postgres/schema/${connectionId}/all-columns`
+        `${BACKEND_URL}/postgres/schema/${connectionId}/all-columns`,
+        { headers: userStore.getAuthHeaders() }
       )
 
       if (!response.ok) {
@@ -433,7 +437,7 @@ export const usePostgresStore = defineStore('postgres', () => {
   const deleteConnection = async (connectionId: string): Promise<void> => {
     const response = await fetch(
       `${BACKEND_URL}/postgres/connections/${connectionId}`,
-      { method: 'DELETE' }
+      { method: 'DELETE', headers: userStore.getAuthHeaders() }
     )
 
     if (!response.ok) {

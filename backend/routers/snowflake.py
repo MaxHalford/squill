@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import settings
 from database import get_db
 from models import SnowflakeConnection, User
-from routers.auth import is_vip_email
+from services.auth import get_current_user
 from services.encryption import TokenEncryption
 from services.snowflake_pool import SnowflakeConnectionManager
 
@@ -32,7 +32,6 @@ class CreateConnectionRequest(BaseModel):
     database: Optional[str] = None
     schema_name: Optional[str] = None
     role: Optional[str] = None
-    user_email: str
 
 
 class ConnectionResponse(BaseModel):
@@ -143,15 +142,15 @@ class SchemasResponse(BaseModel):
 
 
 async def get_connection_credentials(
-    connection_id: str, db: AsyncSession
+    connection_id: str, db: AsyncSession, user_id: str
 ) -> tuple[SnowflakeConnection, str]:
-    """Get connection and decrypt password."""
+    """Get connection and decrypt password. Verifies user ownership."""
     result = await db.execute(
         select(SnowflakeConnection).where(SnowflakeConnection.id == connection_id)
     )
     connection = result.scalar_one_or_none()
 
-    if not connection:
+    if not connection or connection.user_id != user_id:
         raise HTTPException(status_code=404, detail="Connection not found")
 
     try:
@@ -168,7 +167,9 @@ async def get_connection_credentials(
 
 
 @router.post("/test-connection", response_model=TestConnectionResponse)
-async def test_connection(request: TestConnectionRequest):
+async def test_connection(
+    request: TestConnectionRequest, user: User = Depends(get_current_user)
+):
     """Test a Snowflake connection without saving it."""
     try:
         await SnowflakeConnectionManager.test_connection(
@@ -202,7 +203,9 @@ async def test_connection(request: TestConnectionRequest):
 
 @router.post("/connections", response_model=ConnectionResponse)
 async def create_connection(
-    request: CreateConnectionRequest, db: AsyncSession = Depends(get_db)
+    request: CreateConnectionRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a new Snowflake connection with encrypted credentials."""
     # Test the connection first
@@ -221,17 +224,6 @@ async def create_connection(
             status_code=400,
             detail=f"Failed to connect to Snowflake: {e}",
         )
-
-    # Find or create user
-    result = await db.execute(select(User).where(User.email == request.user_email))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        user = User(email=request.user_email, plan="free", is_vip=is_vip_email(request.user_email))
-        db.add(user)
-        await db.flush()
-    elif is_vip_email(request.user_email) and not user.is_vip:
-        user.is_vip = True
 
     # Encrypt password
     encrypted_password, iv = encryption.encrypt(request.password)
@@ -266,9 +258,13 @@ async def create_connection(
 
 
 @router.get("/connections/{connection_id}/credentials", response_model=CredentialsResponse)
-async def get_credentials(connection_id: str, db: AsyncSession = Depends(get_db)):
+async def get_credentials(
+    connection_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Get decrypted credentials for a connection (frontend caches in memory)."""
-    connection, password = await get_connection_credentials(connection_id, db)
+    connection, password = await get_connection_credentials(connection_id, db, user.id)
 
     return CredentialsResponse(
         account=connection.account,
@@ -282,9 +278,13 @@ async def get_credentials(connection_id: str, db: AsyncSession = Depends(get_db)
 
 
 @router.post("/query", response_model=QueryResponse)
-async def execute_query(request: QueryRequest, db: AsyncSession = Depends(get_db)):
+async def execute_query(
+    request: QueryRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Execute a SQL query on a Snowflake connection."""
-    connection, password = await get_connection_credentials(request.connection_id, db)
+    connection, password = await get_connection_credentials(request.connection_id, db, user.id)
 
     try:
         conn = await SnowflakeConnectionManager.get_connection(
@@ -326,10 +326,12 @@ async def execute_query(request: QueryRequest, db: AsyncSession = Depends(get_db
 
 @router.post("/query/paginated", response_model=PaginatedQueryResponse)
 async def execute_paginated_query(
-    request: PaginatedQueryRequest, db: AsyncSession = Depends(get_db)
+    request: PaginatedQueryRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Execute a SQL query with pagination support."""
-    connection, password = await get_connection_credentials(request.connection_id, db)
+    connection, password = await get_connection_credentials(request.connection_id, db, user.id)
 
     try:
         conn = await SnowflakeConnectionManager.get_connection(
@@ -382,9 +384,13 @@ async def execute_paginated_query(
 
 
 @router.get("/schema/{connection_id}/databases", response_model=DatabasesResponse)
-async def get_databases(connection_id: str, db: AsyncSession = Depends(get_db)):
+async def get_databases(
+    connection_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """List all databases accessible to the connection."""
-    connection, password = await get_connection_credentials(connection_id, db)
+    connection, password = await get_connection_credentials(connection_id, db, user.id)
 
     try:
         conn = await SnowflakeConnectionManager.get_connection(
@@ -420,10 +426,13 @@ async def get_databases(connection_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/schema/{connection_id}/schemas/{database_name}", response_model=SchemasResponse)
 async def get_schemas(
-    connection_id: str, database_name: str, db: AsyncSession = Depends(get_db)
+    connection_id: str,
+    database_name: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """List all schemas in a database."""
-    connection, password = await get_connection_credentials(connection_id, db)
+    connection, password = await get_connection_credentials(connection_id, db, user.id)
 
     try:
         conn = await SnowflakeConnectionManager.get_connection(
@@ -458,9 +467,13 @@ async def get_schemas(
 
 
 @router.get("/schema/{connection_id}/tables", response_model=TablesResponse)
-async def get_tables(connection_id: str, db: AsyncSession = Depends(get_db)):
+async def get_tables(
+    connection_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """List all tables and views in the current database/schema context."""
-    connection, password = await get_connection_credentials(connection_id, db)
+    connection, password = await get_connection_credentials(connection_id, db, user.id)
 
     try:
         conn = await SnowflakeConnectionManager.get_connection(
@@ -531,10 +544,11 @@ async def get_columns(
     database_name: str,
     schema_name: str,
     table_name: str,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List all columns for a specific table."""
-    connection, password = await get_connection_credentials(connection_id, db)
+    connection, password = await get_connection_credentials(connection_id, db, user.id)
 
     try:
         conn = await SnowflakeConnectionManager.get_connection(
@@ -580,9 +594,13 @@ async def get_columns(
 
 
 @router.get("/schema/{connection_id}/all-columns", response_model=AllColumnsResponse)
-async def get_all_columns(connection_id: str, db: AsyncSession = Depends(get_db)):
+async def get_all_columns(
+    connection_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Fetch all columns for all tables across all accessible databases."""
-    connection, password = await get_connection_credentials(connection_id, db)
+    connection, password = await get_connection_credentials(connection_id, db, user.id)
 
     try:
         conn = await SnowflakeConnectionManager.get_connection(
@@ -663,14 +681,18 @@ async def get_all_columns(connection_id: str, db: AsyncSession = Depends(get_db)
 
 
 @router.delete("/connections/{connection_id}")
-async def delete_connection(connection_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_connection(
+    connection_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Delete a Snowflake connection."""
     result = await db.execute(
         select(SnowflakeConnection).where(SnowflakeConnection.id == connection_id)
     )
     connection = result.scalar_one_or_none()
 
-    if not connection:
+    if not connection or connection.user_id != user.id:
         raise HTTPException(status_code=404, detail="Connection not found")
 
     # Close any active connection
