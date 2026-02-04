@@ -50,6 +50,19 @@ uv run uvicorn main:app --reload
 
 The API will be available at [http://localhost:8000](http://localhost:8000)
 
+## Testing
+
+```bash
+# Backend tests
+cd backend && uv run pytest
+
+# Frontend tests
+cd frontend && bun run test:run
+
+# Watch mode (frontend)
+cd frontend && bun run test
+```
+
 ## LLM benchmarks
 
 There are benchmark scripts to test AI code-fixing performance.

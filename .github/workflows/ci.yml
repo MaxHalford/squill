@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Install backend dependencies
+        run: cd backend && uv sync
+
+      - name: Install frontend dependencies
+        run: cd frontend && bun install --frozen-lockfile
+
+      - name: Install prek
+        run: uv tool install prek
+
+      - name: Run prek
+        run: prek run --all-files
+
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: cd backend && uv sync
+
+      - name: Run tests
+        run: cd backend && uv run pytest -v
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: cd frontend && bun install --frozen-lockfile
+
+      - name: Type check
+        run: cd frontend && bun run type-check
+
+      - name: Run tests
+        run: cd frontend && bun run test:run
