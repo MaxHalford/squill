@@ -722,8 +722,8 @@ const runQuery = async () => {
       suggestion.value = null
       // Map snowflake to postgres for AI autofix since syntax is similar
       const engine = currentEngine.value
-      const databaseFlavor: 'bigquery' | 'postgres' | 'duckdb' = engine === 'snowflake' ? 'postgres' : engine
-      if (settingsStore.autofixEnabled && userStore.isPro && userStore.sessionToken && isFixableError(errorMessage, databaseFlavor)) {
+      const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = engine === 'snowflake' ? 'postgres' : engine
+      if (settingsStore.autofixEnabled && userStore.isPro && userStore.sessionToken && isFixableError(errorMessage, databaseDialect)) {
         isFetchingFix.value = true
         try {
           const query = editorRef.value?.getQuery() || queryText.value
@@ -738,7 +738,7 @@ const runQuery = async () => {
           const fix = await suggestFix({
             query,
             error_message: errorMessage,
-            database_flavor: databaseFlavor,
+            database_dialect: databaseDialect,
           }, userStore.sessionToken, fixContext)
           suggestion.value = fix
         } catch (fixErr) {

@@ -21,9 +21,9 @@ _fix_cache: dict[str, "FixResponse"] = {}
 _CACHE_MAX_SIZE = 5_000
 
 
-def _get_cache_key(query: str, error_message: str, database_flavor: str) -> str:
+def _get_cache_key(query: str, error_message: str, database_dialect: str) -> str:
     """Generate a cache key from the request parameters."""
-    content = f"{query}|{error_message}|{database_flavor}"
+    content = f"{query}|{error_message}|{database_dialect}"
     return hashlib.sha256(content.encode()).hexdigest()
 
 
@@ -41,7 +41,7 @@ class FixRequest(BaseModel):
 
     query: str
     error_message: str
-    database_flavor: str  # 'bigquery', 'postgres', 'duckdb'
+    database_dialect: str  # 'bigquery', 'postgres', 'duckdb'
     schema_context: Optional[str] = None  # Relevant schema information
     sample_queries: Optional[str] = None  # Successful query examples
 
@@ -77,7 +77,7 @@ async def suggest_fix(
     """
     # Check cache first
     cache_key = _get_cache_key(
-        fix_request.query, fix_request.error_message, fix_request.database_flavor
+        fix_request.query, fix_request.error_message, fix_request.database_dialect
     )
     if cache_key in _fix_cache:
         return _fix_cache[cache_key]
@@ -105,7 +105,7 @@ async def suggest_fix(
 
         # Build system prompt
         system_content = (
-            f"You are an expert in {fix_request.database_flavor.title()} SQL. The user wrote and executed a SQL query that has an issue. You are tasked with suggesting a single-line fix."
+            f"You are an expert in {fix_request.database_dialect.title()} SQL. The user wrote and executed a SQL query that has an issue. You are tasked with suggesting a single-line fix."
             " You have two actions available:"
             ' "replace" — replace an existing line with your suggestion;'
             ' "insert" — insert a new line at the given position, pushing subsequent lines down.'
@@ -158,7 +158,11 @@ Response:
             ],
             text_format=QueryLineFix,
             temperature=0.2,
-            metadata={"user_id": user.id, "host": host},
+            metadata={
+                "user_id": user.id,
+                "host": host,
+                "dialect": fix_request.database_dialect,
+            },
         )
 
         fix = response.output_parsed

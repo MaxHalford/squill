@@ -24,7 +24,7 @@ export interface LineSuggestion {
 export interface FixRequest {
   query: string
   error_message: string
-  database_flavor: 'bigquery' | 'postgres' | 'duckdb'
+  database_dialect: 'bigquery' | 'postgres' | 'duckdb'
 }
 
 export interface FixContext {
@@ -105,7 +105,7 @@ export async function suggestFix(
       body: JSON.stringify({
         query: request.query,
         error_message: request.error_message,
-        database_flavor: request.database_flavor,
+        database_dialect: request.database_dialect,
         schema_context: schemaContext || undefined,
         sample_queries: sampleQueriesContext || undefined,
       }),
