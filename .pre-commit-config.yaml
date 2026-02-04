@@ -20,3 +20,11 @@ repos:
         types: [python]
         files: ^backend/
         pass_filenames: false
+      - id: frontend-typecheck
+        name: frontend type check
+        entry: bun run --cwd frontend type-check
+        language: system
+        files: ^frontend/
+        types_or: [ts, vue]
+        pass_filenames: false
+        stages: [pre-push]

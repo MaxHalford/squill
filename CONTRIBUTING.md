@@ -12,38 +12,21 @@ First off, thank you for considering contributing to Squill!
 
 ## Setup
 
-### 1. Clone the repository
-
 ```bash
-git clone https://github.com/your-org/squill.git
+# Clone the repo
+git clone https://github.com/MaxHalford/squill
 cd squill
-```
 
-### 2. Install frontend dependencies
+# Frontend dependencies
+cd frontend && bun install && cd ..
 
-```bash
-cd frontend
-bun install
-```
+# Backend dependencies
+cd backend && uv sync && cd ..
 
-### 3. Install backend dependencies
+# Environment variables
+cp backend/.env.example backend/.env  # then edit with your config
 
-```bash
-cd backend
-uv sync
-cd ..
-```
-
-### 4. Set up environment variables
-
-```bash
-cp backend/.env.example backend/.env
-# Edit backend/.env with your configuration
-```
-
-### 5. Install pre-commit hooks
-
-```bash
+# Install pre-commit hooks
 prek install
 ```
 
@@ -56,7 +39,7 @@ cd frontend
 bun run dev
 ```
 
-The frontend will be available at http://localhost:5173
+The frontend will be available at [http://localhost:5173](http://localhost:5173)
 
 ### Backend
 
@@ -65,25 +48,7 @@ cd backend
 uv run uvicorn main:app --reload
 ```
 
-The API will be available at http://localhost:8000
-
-## Code quality
-
-We use automated tools to maintain code quality:
-
-- **ruff** - Python linting and formatting
-- **ty** - Python type checking
-- **TypeScript** - Frontend type checking
-
-### Run linters manually
-
-```bash
-# Backend (from project root)
-prek run --all-files
-
-# Frontend
-bun run type-check
-```
+The API will be available at [http://localhost:8000](http://localhost:8000)
 
 ## LLM benchmarks
 
