@@ -101,7 +101,7 @@ const triggerDryRun = () => {
 
 // Computed tooltip for run button
 const runButtonTooltip = computed(() => {
-  const base = 'Run query (⌘Enter)'
+  const base = 'Run query (⌘⏎)'
 
   if (props.disabled) return 'Loading database...'
   if (props.isRunning) return 'Stop query'
