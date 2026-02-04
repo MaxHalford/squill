@@ -1,0 +1,18 @@
+input:
+  query: |
+    SELECT
+      id,
+      name
+      email,
+      created_at
+    FROM users
+  error_message: 'syntax error at or near "email"'
+  database_dialect: "postgres"
+expected:
+  query: |
+    SELECT
+      id,
+      name,
+      email,
+      created_at
+    FROM users

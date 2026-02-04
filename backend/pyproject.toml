@@ -29,6 +29,8 @@ dependencies = [
     # Snowflake
     "snowflake-connector-python>=3.0.0",
     "polar-sdk>=0.28.4",
+    # CLI tools
+    "pyyaml>=6.0",
 ]
 
 [dependency-groups]

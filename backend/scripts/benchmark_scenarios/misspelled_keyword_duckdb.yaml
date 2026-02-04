@@ -1,0 +1,12 @@
+input:
+  query: |
+    SELECT id, name
+    FRON users
+    WHERE active = true
+  error_message: 'Parser Error: syntax error at or near "FRON"'
+  database_dialect: "duckdb"
+expected:
+  query: |
+    SELECT id, name
+    FROM users
+    WHERE active = true

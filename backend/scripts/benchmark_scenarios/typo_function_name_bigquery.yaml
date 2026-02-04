@@ -1,0 +1,16 @@
+input:
+  query: |
+    SELECT
+      key,
+      CUNT(*)
+    FROM table
+    GROUP BY key
+  error_message: "Function not found: CUNT"
+  database_dialect: "bigquery"
+expected:
+  query: |
+    SELECT
+      key,
+      COUNT(*)
+    FROM table
+    GROUP BY key

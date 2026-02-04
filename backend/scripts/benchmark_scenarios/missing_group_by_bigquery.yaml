@@ -1,0 +1,15 @@
+input:
+  query: |
+    SELECT
+      category,
+      COUNT(*)
+    FROM sales
+  error_message: "SELECT list expression references column category which is neither grouped nor aggregated at [2:3]"
+  database_dialect: "bigquery"
+expected:
+  query: |
+    SELECT
+      category,
+      COUNT(*)
+    FROM sales
+    GROUP BY category
