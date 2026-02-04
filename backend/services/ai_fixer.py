@@ -8,13 +8,14 @@ import hashlib
 import os
 from typing import Optional
 
+import dotenv
 import openai
 from pydantic import BaseModel
-
 
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+
 
 class QueryLineFix(BaseModel):
     """Structured response for a single line fix."""
@@ -50,6 +51,7 @@ class FixResponse(BaseModel):
 # Errors
 # ---------------------------------------------------------------------------
 
+
 class FixError(Exception):
     """Framework-agnostic error raised by the fix logic."""
 
@@ -71,6 +73,7 @@ _client: openai.OpenAI | None = None
 def _get_client() -> openai.OpenAI:
     global _client
     if _client is None:
+        dotenv.load_dotenv()
         api_key = os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
             raise FixError("OPENAI_API_KEY environment variable is not set", 503)
@@ -94,6 +97,7 @@ def _get_cache_key(query: str, error_message: str, database_dialect: str) -> str
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def prepend_line_numbers(query: str) -> str:
     """Add line numbers to query for AI context."""
@@ -167,6 +171,7 @@ def _build_user_prompt(
 # Core fix function
 # ---------------------------------------------------------------------------
 
+
 def suggest_fix_core(
     query: str,
     error_message: str,
@@ -239,7 +244,9 @@ def suggest_fix_core(
             if fix.line_number < 1:
                 raise FixError("Invalid line number in suggestion", 422)
 
-            original = lines[fix.line_number - 1] if fix.line_number <= len(lines) else ""
+            original = (
+                lines[fix.line_number - 1] if fix.line_number <= len(lines) else ""
+            )
 
             fix_response = FixResponse(
                 line_number=fix.line_number,
