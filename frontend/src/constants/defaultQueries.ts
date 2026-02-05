@@ -60,4 +60,6 @@ export const getDefaultQuery = (engine?: DatabaseEngine | null): string => {
   return DEFAULT_QUERIES[engine || 'bigquery']
 }
 
-export const DEFAULT_NOTE_CONTENT = 'Hello there.'
+export const DEFAULT_NOTE_CONTENT = `Hello there.`
+
+export const DEFAULT_ADD_HINT_CONTENT = `Press **Add** in the menu bar.`

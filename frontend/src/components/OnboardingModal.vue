@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { watch, onMounted, onUnmounted } from 'vue'
+import { watch, onMounted, onUnmounted, computed } from 'vue'
 import { DATABASE_INFO } from '../types/database'
+import { useUserStore } from '../stores/user'
+import { useSettingsStore } from '../stores/settings'
 
 const props = defineProps<{
   show: boolean
 }>()
+
+const userStore = useUserStore()
+const settingsStore = useSettingsStore()
+
+// Use dark mode logo for DuckDB when in dark mode
+const duckdbLogo = computed(() =>
+  settingsStore.resolvedTheme === 'dark'
+    ? '/logos/duckdb-darkmode.svg'
+    : DATABASE_INFO.duckdb.logo
+)
 
 const emit = defineEmits<{
   close: []
@@ -28,6 +40,23 @@ watch(() => props.show, (isShowing) => {
 const handleEscape = (e: KeyboardEvent) => {
   if (e.key === 'Escape' && props.show) {
     emit('close')
+  }
+}
+
+// Handle clicks on credential-based connections
+const handleSnowflakeClick = () => {
+  if (userStore.isLoggedIn) {
+    emit('selectSnowflake')
+  } else {
+    userStore.loginWithGoogle()
+  }
+}
+
+const handlePostgresClick = () => {
+  if (userStore.isLoggedIn) {
+    emit('selectPostgres')
+  } else {
+    userStore.loginWithGoogle()
   }
 }
 
@@ -73,7 +102,7 @@ onUnmounted(() => {
                 class="option-icon"
               />
               <h2>{{ DATABASE_INFO.bigquery.name }}</h2>
-              <p>{{ DATABASE_INFO.bigquery.shortDescription }}</p>
+              <p>Queries run directly from your browser via OAuth</p>
               <span class="option-badge">{{ DATABASE_INFO.bigquery.badge }}</span>
             </button>
 
@@ -84,12 +113,12 @@ onUnmounted(() => {
               @click="emit('selectDuckdb')"
             >
               <img
-                :src="DATABASE_INFO.duckdb.logo"
+                :src="duckdbLogo"
                 :alt="DATABASE_INFO.duckdb.name"
                 class="option-icon"
               />
               <h2>{{ DATABASE_INFO.duckdb.name }}</h2>
-              <p>{{ DATABASE_INFO.duckdb.shortDescription }}</p>
+              <p>Runs in your browser, data never leaves your device</p>
               <span class="option-badge">{{ DATABASE_INFO.duckdb.badge }}</span>
             </button>
 
@@ -102,43 +131,47 @@ onUnmounted(() => {
               <img
                 src="https://www.iconpacks.net/icons/2/free-csv-icon-1471-thumb.png"
                 alt="CSV"
-                class="option-icon"
+                :class="['option-icon', { 'option-icon-invert': settingsStore.resolvedTheme === 'dark' }]"
               />
               <h2>Import CSV</h2>
-              <p>Drag & drop CSV files or click to upload directly</p>
+              <p>Loaded into a local DuckDB database in your browser</p>
               <span class="option-badge">Quick start</span>
             </button>
 
             <!-- Snowflake Card -->
             <button
-              class="option-card"
+              :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
               aria-label="Connect to Snowflake"
-              @click="emit('selectSnowflake')"
+              @click="handleSnowflakeClick"
             >
               <img
                 :src="DATABASE_INFO.snowflake.logo"
                 :alt="DATABASE_INFO.snowflake.name"
-                class="option-icon"
+                :class="['option-icon', { 'option-icon-disabled': !userStore.isLoggedIn }]"
               />
               <h2>{{ DATABASE_INFO.snowflake.name }}</h2>
-              <p>{{ DATABASE_INFO.snowflake.shortDescription }}</p>
-              <span class="option-badge">{{ DATABASE_INFO.snowflake.badge }}</span>
+              <p>Queries proxied through our server, credentials encrypted</p>
+              <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
+                {{ userStore.isLoggedIn ? DATABASE_INFO.snowflake.badge : 'Sign in required' }}
+              </span>
             </button>
 
             <!-- PostgreSQL Card -->
             <button
-              class="option-card"
+              :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
               aria-label="Connect to PostgreSQL database"
-              @click="emit('selectPostgres')"
+              @click="handlePostgresClick"
             >
               <img
                 :src="DATABASE_INFO.postgres.logo"
                 :alt="DATABASE_INFO.postgres.name"
-                class="option-icon"
+                :class="['option-icon', { 'option-icon-disabled': !userStore.isLoggedIn }]"
               />
               <h2>{{ DATABASE_INFO.postgres.name }}</h2>
-              <p>{{ DATABASE_INFO.postgres.shortDescription }}</p>
-              <span class="option-badge">{{ DATABASE_INFO.postgres.badge }}</span>
+              <p>Queries proxied through our server, credentials encrypted</p>
+              <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
+                {{ userStore.isLoggedIn ? DATABASE_INFO.postgres.badge : 'Sign in required' }}
+              </span>
             </button>
           </div>
 
@@ -235,6 +268,10 @@ onUnmounted(() => {
 .option-icon-disabled {
   filter: grayscale(100%);
   opacity: 0.5;
+}
+
+.option-icon-invert {
+  filter: invert(1);
 }
 
 .option-card-disabled {

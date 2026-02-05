@@ -150,7 +150,7 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
   padding: var(--space-3);
   background: var(--sticky-note-bg);
   /* Enable container queries for responsive font sizing */

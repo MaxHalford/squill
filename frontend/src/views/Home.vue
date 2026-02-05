@@ -26,8 +26,7 @@ import { useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
 import { usePostgresStore } from '../stores/postgres'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
-import { DEFAULT_NOTE_CONTENT } from '../constants/defaultQueries'
-import type { DatabaseEngine } from '../types/database'
+import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
 
 const canvasStore = useCanvasStore()
 const settingsStore = useSettingsStore()
@@ -102,13 +101,7 @@ const selectedSqlBox = computed(() => {
 const handleSelectBigquery = async () => {
   try {
     await bigqueryStore.signInWithGoogle()
-    // Modal will auto-close when connection is added
-
-    // Create default boxes if canvas is empty
-    const connectionId = connectionsStore.activeConnectionId
-    if (connectionId && canvasStore.boxes.length === 0) {
-      createDefaultBoxes('bigquery', connectionId)
-    }
+    // Note: signInWithGoogle() redirects to Google OAuth, code below never runs
   } catch (error) {
     console.error('BigQuery connection failed:', error)
     alert('Failed to connect to BigQuery. Please try again.')
@@ -121,11 +114,11 @@ const handleSelectDuckdb = async () => {
     // Initialize DuckDB
     await duckdbStore.initialize()
     // Create DuckDB connection entry so modal won't reappear
-    const connectionId = connectionsStore.addDuckDBConnection()
+    connectionsStore.addDuckDBConnection()
 
     // Create default boxes if canvas is empty
     if (canvasStore.boxes.length === 0) {
-      createDefaultBoxes('duckdb', connectionId)
+      createDefaultBoxes()
     }
   } catch (error) {
     console.error('DuckDB initialization failed:', error)
@@ -154,7 +147,7 @@ const handleSnowflakeConnected = (connectionId: string) => {
 
   // Create default boxes if canvas is empty
   if (canvasStore.boxes.length === 0) {
-    createDefaultBoxes('snowflake', connectionId)
+    createDefaultBoxes()
   }
 }
 
@@ -165,31 +158,29 @@ const handlePostgresConnected = (connectionId: string) => {
 
   // Create default boxes if canvas is empty
   if (canvasStore.boxes.length === 0) {
-    createDefaultBoxes('postgres', connectionId)
+    createDefaultBoxes()
   }
 }
 
-// Create default boxes when a connection is added on an empty canvas
-const createDefaultBoxes = (engine: DatabaseEngine, connectionId: string) => {
+// Create welcome post-it notes when a connection is added on an empty canvas
+const createDefaultBoxes = () => {
   const center = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
 
-  // Note box is 400px wide, SQL box is 600px wide
-  // Position them with a gap between (note on left, SQL on right)
-  const gap = 160
+  // Two post-its side by side
+  const gap = 80
   const noteWidth = 400
-  const sqlWidth = 600
 
-  // Create sticky note to the left
-  const noteX = center.x - gap / 2 - noteWidth / 2
-  const noteId = canvasStore.addBox('note', { x: noteX, y: center.y })
-  canvasStore.updateBoxQuery(noteId, DEFAULT_NOTE_CONTENT)
-  canvasStore.updateBoxName(noteId, 'welcome')
+  // Welcome note on the left
+  const welcomeX = center.x - gap / 2 - noteWidth / 2
+  const welcomeId = canvasStore.addBox('note', { x: welcomeX, y: center.y })
+  canvasStore.updateBoxQuery(welcomeId, DEFAULT_NOTE_CONTENT)
+  canvasStore.updateBoxName(welcomeId, 'welcome')
 
-  // Create SQL editor to the right
-  const sqlX = center.x + gap / 2 + sqlWidth / 2
-  canvasStore.addBox('sql', { x: sqlX, y: center.y }, engine, connectionId)
-
-  // Don't select either box - let user choose what to focus on
+  // Add button hint on the right
+  const hintX = center.x + gap / 2 + noteWidth / 2
+  const hintId = canvasStore.addBox('note', { x: hintX, y: center.y })
+  canvasStore.updateBoxQuery(hintId, DEFAULT_ADD_HINT_CONTENT)
+  canvasStore.updateBoxName(hintId, 'getting-started')
 }
 
 // Handle box created from MenuBar
@@ -198,10 +189,10 @@ const handleBoxCreated = (boxId: number) => {
 }
 
 // Handle connection added from MenuBar
-const handleConnectionAdded = (type: 'bigquery' | 'postgres' | 'snowflake', connectionId: string) => {
+const handleConnectionAdded = () => {
   // Create default boxes if canvas is empty
   if (canvasStore.boxes.length === 0) {
-    createDefaultBoxes(type, connectionId)
+    createDefaultBoxes()
   }
 }
 
@@ -973,7 +964,6 @@ onUnmounted(() => {
     <!-- PostgreSQL Connection Modal -->
     <PostgresConnectionModal
       :show="showPostgresModal"
-      :user-email="connectionsStore.activeConnection?.email || 'anonymous'"
       @close="showPostgresModal = false"
       @connected="handlePostgresConnected"
     />
@@ -981,7 +971,6 @@ onUnmounted(() => {
     <!-- Snowflake Connection Modal -->
     <SnowflakeConnectionModal
       :show="showSnowflakeModal"
-      :user-email="connectionsStore.activeConnection?.email || 'anonymous'"
       @close="showSnowflakeModal = false"
       @connected="handleSnowflakeConnected"
     />
