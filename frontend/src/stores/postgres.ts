@@ -177,7 +177,13 @@ export const usePostgresStore = defineStore('postgres', () => {
       })
 
       // Add to connections store
-      connectionsStore.addPostgresConnection(data.id, name, database)
+      connectionsStore.upsertConnection({
+        id: data.id,
+        type: 'postgres',
+        name,
+        database,
+        createdAt: Date.now()
+      })
 
       return data.id
     } finally {

@@ -194,7 +194,13 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
       })
 
       // Add to connections store
-      connectionsStore.addSnowflakeConnection(data.id, name, database)
+      connectionsStore.upsertConnection({
+        id: data.id,
+        type: 'snowflake',
+        name,
+        database: database || undefined,
+        createdAt: Date.now()
+      })
 
       return data.id
     } finally {

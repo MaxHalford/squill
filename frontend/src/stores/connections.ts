@@ -65,6 +65,16 @@ export const useConnectionsStore = defineStore('connections', () => {
     return Date.now() > tokenEntry.expiresAt
   })
 
+  // Deduplicate connections by ID (keep first occurrence)
+  const deduplicateConnections = (conns: Connection[]): Connection[] => {
+    const seen = new Set<string>()
+    return conns.filter(c => {
+      if (seen.has(c.id)) return false
+      seen.add(c.id)
+      return true
+    })
+  }
+
   // Load state from localStorage
   const loadState = () => {
     try {
@@ -79,13 +89,13 @@ export const useConnectionsStore = defineStore('connections', () => {
       const result = ConnectionsStateSchema.safeParse(parsed)
 
       if (result.success) {
-        connections.value = result.data.connections
+        connections.value = deduplicateConnections(result.data.connections)
         activeConnectionId.value = result.data.activeConnectionId
       } else {
         console.warn('Invalid connections state, attempting recovery:', result.error.issues)
         // Fallback: try lenient parsing
         const state = parsed as ConnectionsState
-        connections.value = state.connections || []
+        connections.value = deduplicateConnections(state.connections || [])
         activeConnectionId.value = state.activeConnectionId || null
       }
     } catch (error) {
@@ -184,109 +194,57 @@ export const useConnectionsStore = defineStore('connections', () => {
     return data.access_token
   }
 
+  // Add or activate a connection. If a connection with the same ID already
+  // exists it is activated without creating a duplicate.
+  const upsertConnection = (connection: Connection): string => {
+    const existing = connections.value.find(c => c.id === connection.id)
+    if (!existing) {
+      connections.value = [...connections.value, connection]
+    }
+    activeConnectionId.value = connection.id
+    saveState()
+    return connection.id
+  }
+
   // Add or update BigQuery connection (called from AuthCallback after OAuth)
   const addBigQueryConnection = (
     email: string,
     accessToken: string,
     expiresIn: number
   ): string => {
-    // Check if a connection for this email already exists
+    // BigQuery deduplicates by email rather than ID, since the ID
+    // is generated client-side and may differ across sessions.
     const existing = connections.value.find(
       c => c.type === 'bigquery' && c.email === email
     )
 
     if (existing) {
-      // Update existing connection - just refresh the token
       activeConnectionId.value = existing.id
       setAccessToken(existing.id, accessToken, expiresIn)
       saveState()
       return existing.id
     }
 
-    // Create new connection
-    const connectionId = `bigquery-${email}-${Date.now()}`
-    const connection: Connection = {
-      id: connectionId,
+    const connectionId = upsertConnection({
+      id: `bigquery-${email}-${Date.now()}`,
       type: 'bigquery',
-      email: email,
+      email,
       name: email,
       createdAt: Date.now()
-    }
+    })
 
-    // Store session info (persisted)
-    connections.value = [...connections.value, connection]
-    activeConnectionId.value = connectionId
-    saveState()
-
-    // Store access token (in-memory only)
     setAccessToken(connectionId, accessToken, expiresIn)
-
     return connectionId
   }
 
   // Add DuckDB connection (no OAuth required)
   const addDuckDBConnection = (): string => {
-    const connectionId = 'duckdb-local'
-
-    // Check if already exists
-    const existing = connections.value.find(c => c.id === connectionId)
-    if (existing) {
-      activeConnectionId.value = connectionId
-      saveState()
-      return connectionId
-    }
-
-    const connection: Connection = {
-      id: connectionId,
+    return upsertConnection({
+      id: 'duckdb-local',
       type: 'duckdb',
       name: 'DuckDB Local',
       createdAt: Date.now()
-    }
-
-    // Use spread to ensure Vue reactivity triggers
-    connections.value = [...connections.value, connection]
-    activeConnectionId.value = connectionId
-    saveState()
-
-    return connectionId
-  }
-
-  // Add PostgreSQL connection (after backend creates it)
-  const addPostgresConnection = (
-    connectionId: string,
-    name: string,
-    database: string
-  ): void => {
-    const connection: Connection = {
-      id: connectionId,
-      type: 'postgres',
-      name: name,
-      database: database,
-      createdAt: Date.now()
-    }
-
-    connections.value = [...connections.value, connection]
-    activeConnectionId.value = connectionId
-    saveState()
-  }
-
-  // Add Snowflake connection (after backend creates it)
-  const addSnowflakeConnection = (
-    connectionId: string,
-    name: string,
-    database: string | null
-  ): void => {
-    const connection: Connection = {
-      id: connectionId,
-      type: 'snowflake',
-      name: name,
-      database: database || undefined,
-      createdAt: Date.now()
-    }
-
-    connections.value = [...connections.value, connection]
-    activeConnectionId.value = connectionId
-    saveState()
+    })
   }
 
   // Set active connection
@@ -435,10 +393,9 @@ export const useConnectionsStore = defineStore('connections', () => {
     getAccessToken,
     getConnectionEmail,
     refreshAccessToken,
+    upsertConnection,
     addBigQueryConnection,
     addDuckDBConnection,
-    addPostgresConnection,
-    addSnowflakeConnection,
     setActiveConnection,
     removeConnection,
     setConnectionProjectId,
