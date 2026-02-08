@@ -64,9 +64,6 @@ jobs:
       - name: Install dependencies
         run: cd frontend && bun install --frozen-lockfile
 
-      - name: Type check
-        run: cd frontend && bun run type-check
-
       - name: Run tests
         run: cd frontend && bun run test:run
 

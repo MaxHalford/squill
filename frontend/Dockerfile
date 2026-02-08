@@ -1,5 +1,5 @@
 # Use bun base image
-FROM oven/bun:latest AS base
+FROM oven/bun:1.3.9 AS base
 
 # Build arguments for Vite environment variables
 ARG VITE_BACKEND_URL
@@ -25,7 +25,7 @@ COPY . .
 RUN bun run build
 
 # Production stage
-FROM nginx:alpine AS production
+FROM nginx:1.28.2-alpine AS production
 
 # Copy built assets from build stage
 COPY --from=base /app/dist /usr/share/nginx/html

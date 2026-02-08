@@ -27,3 +27,10 @@ repos:
         files: ^frontend/
         types_or: [ts, vue]
         pass_filenames: false
+      - id: frontend-lint
+        name: frontend lint
+        entry: bun run --cwd frontend lint
+        language: system
+        files: ^frontend/
+        types_or: [ts, vue]
+        pass_filenames: false
