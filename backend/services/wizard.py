@@ -238,12 +238,17 @@ async def stream_agent_response(
                         isinstance(item, ResponseFunctionToolCall)
                         for item in event.response.output
                     )
-                    yield _sse_json(
-                        {
-                            "type": "finish",
-                            "reason": "tool_calls" if has_tool_calls else "stop",
+                    finish_data: dict = {
+                        "type": "finish",
+                        "reason": "tool_calls" if has_tool_calls else "stop",
+                    }
+                    if usage := event.response.usage:
+                        finish_data["usage"] = {
+                            "input_tokens": usage.input_tokens,
+                            "output_tokens": usage.output_tokens,
+                            "total_tokens": usage.total_tokens,
                         }
-                    )
+                    yield _sse_json(finish_data)
 
                 elif isinstance(event, ResponseFailedEvent):
                     err = event.response.error

@@ -2,29 +2,24 @@
  * Tool execution logic for the chat agent.
  *
  * Handles list_schemas, list_tables, and run_query tools by dispatching
- * to the appropriate Pinia stores. Also manages scratchpad state
- * (query text, results, errors) for the ChatBox's right panel.
+ * to the appropriate Pinia stores. Query execution is delegated to the
+ * caller-provided onRunQuery callback (which calls QueryPanel.runQuery).
  */
 
-import { ref, computed, type Ref } from 'vue'
-import type { DatabaseEngine } from '../types/database'
+import { computed, type Ref } from 'vue'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useConnectionsStore } from '../stores/connections'
 import { collectSchemaForConnection, type ConnectionType } from '../utils/schemaAdapter'
-import { useQueryExecution } from './useQueryExecution'
 import type { ToolCall } from './useChat'
+import type { QueryCompleteEvent } from '../components/QueryPanel.vue'
 
-export function useChatTools(connectionId: Ref<string | undefined>) {
+export interface ChatToolsOptions {
+  onRunQuery: (query: string) => Promise<QueryCompleteEvent>
+}
+
+export function useChatTools(connectionId: Ref<string | undefined>, options: ChatToolsOptions) {
   const duckdbStore = useDuckDBStore()
   const connectionsStore = useConnectionsStore()
-  const { executeQuery } = useQueryExecution()
-
-  // Scratchpad state
-  const scratchpadQuery = ref('')
-  const scratchpadTableName = ref<string | null>(null)
-  const scratchpadStats = ref<{ executionTimeMs: number; rowCount?: number; engine: DatabaseEngine } | null>(null)
-  const scratchpadError = ref<string | null>(null)
-  const scratchpadIsRunning = ref(false)
 
   // Resolve connection object
   const connection = computed(() => {
@@ -43,16 +38,15 @@ export function useChatTools(connectionId: Ref<string | undefined>) {
   async function executeListSchemas(): Promise<string> {
     const schema = collectSchemaForConnection(connectionType.value, connectionId.value)
 
-    // Extract unique schema/dataset names
     const schemas = new Set<string>()
     for (const item of schema) {
       const parts = item.tableName.split('.')
       if (connectionType.value === 'bigquery' && parts.length === 3) {
-        schemas.add(parts[1]) // project.dataset.table → dataset
+        schemas.add(parts[1])
       } else if (connectionType.value === 'snowflake' && parts.length === 3) {
-        schemas.add(`${parts[0]}.${parts[1]}`) // database.schema.table → database.schema
+        schemas.add(`${parts[0]}.${parts[1]}`)
       } else if ((connectionType.value === 'postgres') && parts.length === 2) {
-        schemas.add(parts[0]) // schema.table → schema
+        schemas.add(parts[0])
       } else {
         schemas.add('default')
       }
@@ -68,7 +62,6 @@ export function useChatTools(connectionId: Ref<string | undefined>) {
   async function executeListTables(schemaName: string): Promise<string> {
     const schema = collectSchemaForConnection(connectionType.value, connectionId.value)
 
-    // Filter tables matching the requested schema
     const tables = schema
       .filter(item => {
         const parts = item.tableName.split('.')
@@ -79,7 +72,7 @@ export function useChatTools(connectionId: Ref<string | undefined>) {
         } else if (connectionType.value === 'postgres' && parts.length === 2) {
           return parts[0] === schemaName
         }
-        return true // DuckDB: return all tables
+        return true
       })
       .map(item => ({
         name: item.tableName,
@@ -90,33 +83,17 @@ export function useChatTools(connectionId: Ref<string | undefined>) {
   }
 
   // ---------------------------------------------------------------------------
-  // Tool: run_query
+  // Tool: run_query — delegates to QueryPanel via callback
   // ---------------------------------------------------------------------------
 
   async function executeRunQuery(query: string): Promise<string> {
-    scratchpadQuery.value = query
-    scratchpadError.value = null
-    scratchpadStats.value = null
-    scratchpadTableName.value = null
-    scratchpadIsRunning.value = true
-
     try {
-      const tableName = `_chat_result_${Date.now()}`
-      const result = await executeQuery(query, tableName, connection.value?.type, connection.value?.id)
-
-      // Update scratchpad
-      scratchpadTableName.value = result.tableName
-      scratchpadStats.value = {
-        executionTimeMs: result.executionTimeMs,
-        rowCount: result.rowCount,
-        engine: result.engine,
-      }
-      scratchpadIsRunning.value = false
+      const result = await options.onRunQuery(query)
 
       // Get preview rows for the agent (first 5 rows)
       let preview: Record<string, unknown>[] = []
       try {
-        const previewResult = await duckdbStore.runQuery(`SELECT * FROM ${tableName} LIMIT 5`)
+        const previewResult = await duckdbStore.runQuery(`SELECT * FROM "${result.tableName}" LIMIT 5`)
         preview = previewResult.rows as Record<string, unknown>[]
       } catch {
         // Preview failed, that's ok
@@ -128,12 +105,8 @@ export function useChatTools(connectionId: Ref<string | undefined>) {
         columns: result.columns,
         preview,
       })
-
     } catch (err: unknown) {
       const errorMessage = (err as Error).message || 'Query execution failed'
-      scratchpadError.value = errorMessage
-      scratchpadIsRunning.value = false
-
       return JSON.stringify({
         success: false,
         error: errorMessage,
@@ -181,12 +154,5 @@ export function useChatTools(connectionId: Ref<string | undefined>) {
     handleToolCall,
     dialect,
     connectionInfo,
-    scratchpadState: {
-      query: scratchpadQuery,
-      tableName: scratchpadTableName,
-      stats: scratchpadStats,
-      error: scratchpadError,
-      isRunning: scratchpadIsRunning,
-    },
   }
 }

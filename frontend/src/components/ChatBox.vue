@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref, inject, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import BaseBox from './BaseBox.vue'
-import QueryEditor from './QueryEditor.vue'
-import ResultsTable from './ResultsTable.vue'
-import { useChat, type ChatMessage } from '../composables/useChat'
+import QueryPanel, { type QueryCompleteEvent } from './QueryPanel.vue'
+import { useChat, type ChatMessage, type TokenUsage } from '../composables/useChat'
 import { useChatTools } from '../composables/useChatTools'
 import { useUserStore } from '../stores/user'
 import { marked } from 'marked'
@@ -36,36 +35,76 @@ const emit = defineEmits([
   'maximize', 'update:name', 'update:query', 'drag-start', 'drag-end',
 ])
 
-// Connection
-const connectionIdRef = computed(() => props.connectionId)
+// ---------------------------------------------------------------------------
+// Persisted state
+// ---------------------------------------------------------------------------
 
-// Chat tools
-const { handleToolCall, dialect, connectionInfo, scratchpadState } = useChatTools(connectionIdRef)
+interface ChatStats {
+  totalExecutionTimeMs: number
+  totalBytesProcessed: number
+  totalQueries: number
+}
 
-// Restore persisted state (messages + query)
-function parsePersistedState(): { messages: ChatMessage[]; query: string } {
-  if (!props.initialQuery) return { messages: [], query: '' }
+function parsePersistedState(): {
+  messages: ChatMessage[]
+  query: string
+  chatStats: ChatStats
+  tokenUsage: TokenUsage
+} {
+  const defaults = {
+    messages: [] as ChatMessage[],
+    query: '',
+    chatStats: { totalExecutionTimeMs: 0, totalBytesProcessed: 0, totalQueries: 0 },
+    tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+  }
+  if (!props.initialQuery) return defaults
   try {
     const parsed = JSON.parse(props.initialQuery)
     if (parsed && !Array.isArray(parsed) && Array.isArray(parsed.messages)) {
-      return { messages: parsed.messages, query: parsed.query || '' }
+      return {
+        messages: parsed.messages,
+        query: parsed.query || '',
+        chatStats: parsed.chatStats || defaults.chatStats,
+        tokenUsage: parsed.tokenUsage || defaults.tokenUsage,
+      }
     }
     // Legacy format: plain array of messages
-    if (Array.isArray(parsed)) return { messages: parsed, query: '' }
+    if (Array.isArray(parsed)) return { ...defaults, messages: parsed }
   } catch {
     // Not valid JSON, ignore
   }
-  return { messages: [], query: '' }
+  return defaults
 }
 
 const persisted = parsePersistedState()
 
+// ---------------------------------------------------------------------------
+// QueryPanel
+// ---------------------------------------------------------------------------
+
+const queryPanelRef = ref<InstanceType<typeof QueryPanel> | null>(null)
+const currentQuery = ref(persisted.query)
+
+// ---------------------------------------------------------------------------
+// Chat tools
+// ---------------------------------------------------------------------------
+
+const connectionIdRef = computed(() => props.connectionId)
+
+const { handleToolCall, dialect, connectionInfo } = useChatTools(connectionIdRef, {
+  onRunQuery: (query) => queryPanelRef.value!.runQuery(query),
+})
+
+// ---------------------------------------------------------------------------
 // Chat composable
+// ---------------------------------------------------------------------------
+
 const {
   messages,
   isStreaming,
   streamingText,
   error: chatError,
+  tokenUsage,
   sendMessage,
   stop,
 } = useChat({
@@ -73,45 +112,56 @@ const {
   sessionToken: computed(() => userStore.sessionToken),
   dialect,
   connectionInfo,
-  currentQuery: scratchpadState.query,
+  currentQuery,
   onToolCall: handleToolCall,
   initialMessages: persisted.messages,
+  initialTokenUsage: persisted.tokenUsage,
 })
 
+// ---------------------------------------------------------------------------
+// Cumulative stats
+// ---------------------------------------------------------------------------
+
+const chatStats = ref<ChatStats>({ ...persisted.chatStats })
+
+function handleQueryComplete(result: QueryCompleteEvent) {
+  chatStats.value.totalQueries++
+  chatStats.value.totalExecutionTimeMs += result.executionTimeMs
+  if (result.stats?.totalBytesProcessed) {
+    chatStats.value.totalBytesProcessed += parseInt(result.stats.totalBytesProcessed, 10)
+  }
+}
+
+const totalCost = computed(() => {
+  const bytes = chatStats.value.totalBytesProcessed
+  if (bytes === 0) return null
+  const TB = 1024 ** 4
+  const cost = (bytes / TB) * 5
+  if (cost < 0.01) return '<$0.01'
+  return `$${cost.toFixed(2)}`
+})
+
+function formatTime(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+function formatTokens(count: number): string {
+  if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}K`
+  return String(count)
+}
+
+const hasStats = computed(() =>
+  chatStats.value.totalQueries > 0 || tokenUsage.value.totalTokens > 0,
+)
+
+// ---------------------------------------------------------------------------
 // Chat input
+// ---------------------------------------------------------------------------
+
 const inputText = ref('')
 const messagesContainerRef = ref<HTMLElement | null>(null)
-
-// Vertical splitter (between chat and scratchpad)
-const isDraggingVerticalSplitter = ref(false)
-const chatPanelWidth = ref(450)
-const verticalDragStart = ref({ x: 0 })
-
-// Horizontal splitter (between editor and results in scratchpad)
-const isDraggingHorizontalSplitter = ref(false)
-const editorHeight = ref(150)
-const horizontalDragStart = ref({ y: 0 })
-
-const HEADER_HEIGHT = 32
-const MIN_CHAT_WIDTH = 200
-const MIN_SCRATCHPAD_WIDTH = 200
-const MIN_EDITOR_HEIGHT = 80
-
-// Box dimensions tracking
-const boxWidth = ref(props.initialWidth)
-const boxHeight = ref(props.initialHeight)
-
-// SQL dialect for QueryEditor
-const currentDialect = computed((): 'bigquery' | 'duckdb' | 'postgres' => {
-  const d = dialect.value
-  if (d === 'snowflake') return 'postgres'
-  if (d === 'bigquery' || d === 'duckdb' || d === 'postgres') return d
-  return 'duckdb'
-})
-
-// ---------------------------------------------------------------------------
-// Chat
-// ---------------------------------------------------------------------------
 
 function handleSend() {
   const text = inputText.value.trim()
@@ -138,23 +188,29 @@ watch(
   },
 )
 
-// Persist messages + scratchpad query to localStorage (debounced)
+// ---------------------------------------------------------------------------
+// Persistence
+// ---------------------------------------------------------------------------
+
 function persistState() {
   if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = setTimeout(() => {
-    // Only persist user and assistant messages (skip tool messages — they're ephemeral)
     const msgs = messages.value.filter(
       m => m.role === 'user' || (m.role === 'assistant' && m.content),
     )
     emit('update:query', JSON.stringify({
       messages: msgs,
-      query: scratchpadState.query.value,
+      query: currentQuery.value,
+      chatStats: chatStats.value,
+      tokenUsage: tokenUsage.value,
     }))
   }, 500)
 }
 
 watch(() => messages.value.length, persistState)
-watch(scratchpadState.query, persistState)
+watch(currentQuery, persistState)
+watch(chatStats, persistState, { deep: true })
+watch(tokenUsage, persistState, { deep: true })
 
 // ---------------------------------------------------------------------------
 // Render markdown
@@ -179,16 +235,24 @@ function toolCallLabel(name: string): string {
 }
 
 function isToolCallPending(msg: ChatMessage, toolCall: { id: string }): boolean {
-  // A tool call is pending if there's no subsequent tool message with this ID
   const msgIndex = messages.value.indexOf(msg)
   return !messages.value.slice(msgIndex + 1).some(
-    m => m.role === 'tool' && m.toolCallId === toolCall.id
+    m => m.role === 'tool' && m.toolCallId === toolCall.id,
   )
 }
 
 // ---------------------------------------------------------------------------
-// Vertical splitter (chat ↔ scratchpad)
+// Vertical splitter (chat <-> QueryPanel)
 // ---------------------------------------------------------------------------
+
+const isDraggingVerticalSplitter = ref(false)
+const chatPanelWidth = ref(450)
+const verticalDragStart = ref({ x: 0 })
+
+const MIN_CHAT_WIDTH = 200
+const MIN_SCRATCHPAD_WIDTH = 200
+
+const boxWidth = ref(props.initialWidth)
 
 function handleVerticalSplitterMouseDown(e: MouseEvent) {
   e.stopPropagation()
@@ -199,53 +263,23 @@ function handleVerticalSplitterMouseDown(e: MouseEvent) {
 
 function handleMouseMove(e: MouseEvent) {
   const zoom = canvasZoom.value
-
   if (isDraggingVerticalSplitter.value) {
     const deltaX = (e.clientX - verticalDragStart.value.x) / zoom
     const newWidth = chatPanelWidth.value + deltaX
-    const maxChatWidth = boxWidth.value - MIN_SCRATCHPAD_WIDTH - 4 // splitter width
+    const maxChatWidth = boxWidth.value - MIN_SCRATCHPAD_WIDTH - 4
     if (newWidth >= MIN_CHAT_WIDTH && newWidth <= maxChatWidth) {
       chatPanelWidth.value = newWidth
       verticalDragStart.value.x = e.clientX
-    }
-  }
-
-  if (isDraggingHorizontalSplitter.value) {
-    const deltaY = (e.clientY - horizontalDragStart.value.y) / zoom
-    const newHeight = editorHeight.value + deltaY
-    const contentHeight = boxHeight.value - HEADER_HEIGHT
-    const maxEditorHeight = contentHeight * 0.8
-    if (newHeight >= MIN_EDITOR_HEIGHT && newHeight <= maxEditorHeight) {
-      editorHeight.value = newHeight
-      horizontalDragStart.value.y = e.clientY
     }
   }
 }
 
 function handleMouseUp() {
   isDraggingVerticalSplitter.value = false
-  isDraggingHorizontalSplitter.value = false
 }
-
-// ---------------------------------------------------------------------------
-// Horizontal splitter (editor ↔ results in scratchpad)
-// ---------------------------------------------------------------------------
-
-function handleHorizontalSplitterMouseDown(e: MouseEvent) {
-  e.stopPropagation()
-  e.preventDefault()
-  isDraggingHorizontalSplitter.value = true
-  horizontalDragStart.value.y = e.clientY
-}
-
-// ---------------------------------------------------------------------------
-// Box size tracking
-// ---------------------------------------------------------------------------
 
 function handleUpdateSize(newSize: { width: number; height: number }) {
   boxWidth.value = newSize.width
-  boxHeight.value = newSize.height
-  // Clamp chat panel width
   const maxChatWidth = newSize.width - MIN_SCRATCHPAD_WIDTH - 4
   if (chatPanelWidth.value > maxChatWidth) {
     chatPanelWidth.value = Math.max(MIN_CHAT_WIDTH, maxChatWidth)
@@ -260,11 +294,6 @@ function handleUpdateSize(newSize: { width: number; height: number }) {
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
   window.addEventListener('mouseup', handleMouseUp)
-
-  // Restore query from persisted state
-  if (persisted.query) {
-    scratchpadState.query.value = persisted.query
-  }
 })
 
 onUnmounted(() => {
@@ -333,8 +362,6 @@ onUnmounted(() => {
                 v-html="renderMarkdown(msg.content)"
               />
             </div>
-
-            <!-- Tool result messages are not rendered directly - they're shown via the tool call status -->
           </template>
 
           <!-- Streaming indicator -->
@@ -349,6 +376,20 @@ onUnmounted(() => {
           <div v-if="chatError" class="message error-message">
             <div class="message-content">{{ chatError }}</div>
           </div>
+        </div>
+
+        <!-- Session stats -->
+        <div v-if="hasStats" class="session-stats">
+          <span v-if="chatStats.totalQueries > 0" class="stat">
+            {{ chatStats.totalQueries }} {{ chatStats.totalQueries === 1 ? 'query' : 'queries' }}
+          </span>
+          <span v-if="chatStats.totalExecutionTimeMs > 0" class="stat">
+            {{ formatTime(chatStats.totalExecutionTimeMs) }}
+          </span>
+          <span v-if="totalCost" class="stat">{{ totalCost }}</span>
+          <span v-if="tokenUsage.totalTokens > 0" class="stat">
+            {{ formatTokens(tokenUsage.totalTokens) }} tokens
+          </span>
         </div>
 
         <!-- Input -->
@@ -377,27 +418,18 @@ onUnmounted(() => {
         @mousedown="handleVerticalSplitterMouseDown"
       />
 
-      <!-- Right: Scratchpad -->
+      <!-- Right: Query Panel -->
       <div class="scratchpad-panel">
-        <QueryEditor
-          v-model="scratchpadState.query.value"
-          :height="editorHeight"
-          :is-running="scratchpadState.isRunning.value"
-          :dialect="currentDialect"
-        />
-
-        <!-- Horizontal splitter -->
-        <div
-          class="horizontal-splitter"
-          @mousedown="handleHorizontalSplitterMouseDown"
-        />
-
-        <ResultsTable
-          :table-name="scratchpadState.tableName.value"
-          :stats="scratchpadState.stats.value"
-          :error="scratchpadState.error.value"
+        <QueryPanel
+          ref="queryPanelRef"
+          v-model="currentQuery"
+          :connection-id="connectionId"
+          :box-id="boxId"
+          :box-name="`_chat_${boxId}`"
           :show-row-detail="false"
           :show-analytics="false"
+          :show-autofix="false"
+          @query-complete="handleQueryComplete"
         />
       </div>
     </div>
@@ -569,6 +601,21 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+/* Session stats */
+.session-stats {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-caption);
+  color: var(--text-tertiary);
+  border-top: var(--border-width-thin) solid var(--border-secondary);
+  flex-shrink: 0;
+}
+
+.session-stats .stat {
+  white-space: nowrap;
+}
+
 /* Input area */
 .input-area {
   display: flex;
@@ -643,25 +690,5 @@ onUnmounted(() => {
   flex-direction: column;
   min-width: 200px;
   overflow: hidden;
-}
-
-/* Horizontal splitter (between editor and results) */
-.horizontal-splitter {
-  height: var(--border-width-thin);
-  background: var(--border-primary);
-  cursor: ns-resize;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 10;
-}
-
-.horizontal-splitter::before {
-  content: '';
-  position: absolute;
-  top: -6px;
-  bottom: -6px;
-  left: 0;
-  right: 0;
-  z-index: 10;
 }
 </style>

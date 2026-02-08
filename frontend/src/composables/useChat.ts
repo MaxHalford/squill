@@ -27,6 +27,12 @@ export interface ChatMessage {
   toolCallId?: string
 }
 
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
 /** SSE event from backend */
 interface SSEEvent {
   type: 'text-delta' | 'tool-call' | 'finish' | 'error'
@@ -36,6 +42,7 @@ interface SSEEvent {
   args?: Record<string, unknown>
   reason?: string
   message?: string
+  usage?: { input_tokens: number; output_tokens: number; total_tokens: number }
 }
 
 export interface UseChatOptions {
@@ -47,6 +54,7 @@ export interface UseChatOptions {
   onToolCall: (toolCall: ToolCall) => Promise<string>
   maxSteps?: number
   initialMessages?: ChatMessage[]
+  initialTokenUsage?: TokenUsage
 }
 
 // ---------------------------------------------------------------------------
@@ -100,12 +108,13 @@ async function* readSSE(
 // ---------------------------------------------------------------------------
 
 export function useChat(options: UseChatOptions) {
-  const { apiUrl, sessionToken, dialect, connectionInfo, currentQuery, onToolCall, maxSteps = 10, initialMessages } = options
+  const { apiUrl, sessionToken, dialect, connectionInfo, currentQuery, onToolCall, maxSteps = 10, initialMessages, initialTokenUsage } = options
 
   const messages = ref<ChatMessage[]>(initialMessages ? [...initialMessages] : [])
   const isStreaming = ref(false)
   const streamingText = ref('')
   const error = ref<string | null>(null)
+  const tokenUsage = ref<TokenUsage>(initialTokenUsage ? { ...initialTokenUsage } : { inputTokens: 0, outputTokens: 0, totalTokens: 0 })
 
   let abortController: AbortController | null = null
 
@@ -183,7 +192,11 @@ export function useChat(options: UseChatOptions) {
           errorMsg = event.message || 'Unknown error'
           break
         case 'finish':
-          // Stream complete for this turn
+          if (event.usage) {
+            tokenUsage.value.inputTokens += event.usage.input_tokens
+            tokenUsage.value.outputTokens += event.usage.output_tokens
+            tokenUsage.value.totalTokens += event.usage.total_tokens
+          }
           break
       }
     }
@@ -281,6 +294,7 @@ export function useChat(options: UseChatOptions) {
     isStreaming,
     streamingText,
     error,
+    tokenUsage,
     sendMessage,
     stop,
     clear,

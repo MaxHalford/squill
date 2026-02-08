@@ -21,6 +21,7 @@ export interface QueryExecutionResult {
   columns: string[]
   executionTimeMs: number
   engine: DatabaseEngine
+  stats?: { totalBytesProcessed?: string; cacheHit?: boolean }
 }
 
 export function useQueryExecution() {
@@ -50,6 +51,7 @@ export function useQueryExecution() {
     const startTime = performance.now()
     let rowCount = 0
     let columns: string[] = []
+    let engineStats: QueryExecutionResult['stats']
 
     if (isLocalConnectionType(engine)) {
       const result = await duckdbStore.runQueryWithStorage(cleanedQuery, tableName, options?.boxId)
@@ -61,6 +63,7 @@ export function useQueryExecution() {
       await duckdbStore.storeResults(tableName, result.rows as Record<string, unknown>[], options?.boxId, result.schema, 'bigquery')
       rowCount = result.rows.length
       columns = result.schema?.map((c: { name: string }) => c.name) || []
+      engineStats = result.stats
     } else if (engine === 'postgres') {
       if (!connectionId) throw new Error('No PostgreSQL connection')
       const result = await postgresStore.runQuery(connectionId, cleanedQuery)
@@ -79,7 +82,7 @@ export function useQueryExecution() {
 
     const executionTimeMs = Math.round(performance.now() - startTime)
 
-    return { tableName, rowCount, columns, executionTimeMs, engine }
+    return { tableName, rowCount, columns, executionTimeMs, engine, stats: engineStats }
   }
 
   return { executeQuery }
