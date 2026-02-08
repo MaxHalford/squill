@@ -243,7 +243,7 @@ const toggleFaq = (index: number) => {
 </script>
 
 <template>
-  <div class="landing-page">
+  <main class="landing-page">
     <!-- Hero Section -->
     <section class="hero">
       <!-- Decorative floating windows -->
@@ -692,7 +692,7 @@ const toggleFaq = (index: number) => {
           SQUILL PRO
         </h2>
         <p class="pro-price">
-          8€ / month / person
+          8€ / month / user
         </p>
 
         <div class="pro-features">
@@ -706,12 +706,12 @@ const toggleFaq = (index: number) => {
           >
             <span class="status-icon">{{ feature.released ? '&#10003;' : '&#9671;' }}</span>
             <div class="pro-feature-content">
-              <h4>
+              <h3>
                 {{ feature.title }} <span
                   v-if="!feature.released"
                   class="badge"
                 >work in progress</span>
-              </h4>
+              </h3>
               <p>{{ feature.description }}</p>
             </div>
           </component>
@@ -832,7 +832,7 @@ const toggleFaq = (index: number) => {
         aria-hidden="true"
       >
     </footer>
-  </div>
+  </main>
 </template>
 
 <style scoped>
@@ -875,7 +875,6 @@ const toggleFaq = (index: number) => {
   background: var(--surface-primary);
   border: var(--border-width-thick) solid var(--border-primary);
   box-shadow: var(--shadow-md);
-  animation: float 6s ease-in-out infinite;
 }
 
 .deco-window-header {
@@ -904,21 +903,18 @@ const toggleFaq = (index: number) => {
   top: 12%;
   left: 5%;
   width: 180px;
-  animation-delay: 0s;
 }
 
 .deco-window-2 {
   top: 8%;
   right: 8%;
   width: 180px;
-  animation-delay: -2s;
 }
 
 .deco-window-3 {
   bottom: 15%;
   left: 8%;
   width: 210px;
-  animation-delay: -4s;
 }
 
 /* Mini table styles */
@@ -958,8 +954,7 @@ const toggleFaq = (index: number) => {
   padding: 8px 12px;
   font-family: var(--font-family-mono);
   font-size: 9px;
-  animation: float 6s ease-in-out infinite;
-  animation-delay: -1s;
+
 }
 
 .schema-item {
@@ -1000,36 +995,30 @@ const toggleFaq = (index: number) => {
   opacity: 0;
 }
 
-/* Fade in + float animation when loaded */
-@keyframes fadeInUp {
+/* Fade in animation when loaded */
+@keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(20px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
 .deco-bird.deco-loaded {
-  animation-name: fadeInUp, float;
-  animation-duration: 0.5s, 6s;
-  animation-timing-function: ease-out, ease-in-out;
-  animation-fill-mode: forwards, none;
-  animation-iteration-count: 1, infinite;
+  animation: fadeIn 0.5s ease-out forwards;
 }
 
 /* Position and stagger entrance animations for each bird */
-.deco-bird-balcon { bottom: 3%; left: 65%; width: 180px; animation-delay: 0s, -0.5s; }
-.deco-bird-select-bar { top: 29%; left: 2%; width: 340px; animation-delay: 0.1s, -1.5s; }
-.deco-bird-graph { top: 50%; right: 15%; width: 210px; animation-delay: 0.2s, -2.5s; }
-.deco-bird-fromagerie { bottom: 2%; left: 30%; width: 345px; animation-delay: 0.3s, -3.5s; }
-.deco-bird-theatre { bottom: 5%; left: 5%; width: 220px; animation-delay: 0.4s, -4.5s; }
-.deco-bird-where { top: 8%; right: 50%; width: 265px; animation-delay: 0.5s, -5.5s; }
-.deco-bird-rolling { top: 20%; right: 2%; width: 340px; animation-delay: 0.6s, -6.5s; }
-.deco-bird-music { top: 2%; right: 22%; width: 340px; animation-delay: 0.7s, -7.5s; }
-.deco-bird-stand { bottom: 12%; right: 5%; width: 280px; animation-delay: 0.8s, -8.5s; }
+.deco-bird-balcon { bottom: 3%; left: 65%; width: 180px; animation-delay: 0s; }
+.deco-bird-select-bar { top: 29%; left: 2%; width: 340px; animation-delay: 0.1s; }
+.deco-bird-graph { top: 50%; right: 15%; width: 210px; animation-delay: 0.2s; }
+.deco-bird-fromagerie { bottom: 2%; left: 30%; width: 345px; animation-delay: 0.3s; }
+.deco-bird-theatre { bottom: 5%; left: 5%; width: 220px; animation-delay: 0.4s; }
+.deco-bird-where { top: 8%; right: 50%; width: 265px; animation-delay: 0.5s; }
+.deco-bird-rolling { top: 20%; right: 2%; width: 340px; animation-delay: 0.6s; }
+.deco-bird-music { top: 2%; right: 22%; width: 340px; animation-delay: 0.7s; }
+.deco-bird-stand { bottom: 12%; right: 5%; width: 280px; animation-delay: 0.8s; }
 
 /* Sticky note decoration */
 .deco-note {
@@ -1042,8 +1031,7 @@ const toggleFaq = (index: number) => {
   font-size: 9px;
   transform: rotate(3deg);
   box-shadow: var(--shadow-sm);
-  animation: float 7s ease-in-out infinite;
-  animation-delay: -3s;
+
 }
 
 .deco-note span {
@@ -1054,12 +1042,6 @@ const toggleFaq = (index: number) => {
 .deco-note span:first-child {
   font-weight: 600;
   margin-bottom: 2px;
-}
-
-/* Float animation */
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
 }
 
 /* Hero main content */
@@ -1647,7 +1629,7 @@ const toggleFaq = (index: number) => {
 }
 
 .pro-feature.coming-soon {
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 .pro-feature.clickable {
@@ -1682,7 +1664,7 @@ button.pro-feature {
   text-align: center;
 }
 
-.pro-feature-content h4 {
+.pro-feature-content h3 {
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body-lg);
   margin: 0 0 var(--space-1) 0;
@@ -1696,7 +1678,7 @@ button.pro-feature {
 
 .badge {
   font-size: var(--font-size-caption);
-  opacity: 0.6;
+  color: rgba(255, 255, 255, 0.78);
   font-weight: 400;
 }
 

@@ -9,6 +9,7 @@ export default defineConfig(() => ({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'script-defer',
       workbox: {
         // Precache DuckDB WASM files for instant loading
         // These are hashed by Vite, so they're safe to precache
