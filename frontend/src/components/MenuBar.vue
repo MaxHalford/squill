@@ -143,13 +143,19 @@ const showShortcuts = () => {
   emit('show-shortcuts')
 }
 
-// Box types
-const boxTypes: Array<{ id: BoxType; name: string }> = [
-  { id: 'sql', name: 'SQL editor' },
-  { id: 'schema', name: 'Schema browser' },
-  { id: 'note', name: 'Sticky note' },
-  { id: 'history', name: 'Query history' }
-]
+// Box types - chat requires Pro/VIP
+const boxTypes = computed(() => {
+  const types: Array<{ id: BoxType; name: string }> = [
+    { id: 'sql', name: 'SQL editor' },
+    { id: 'schema', name: 'Schema browser' },
+    { id: 'note', name: 'Sticky note' },
+    { id: 'history', name: 'Query history' },
+  ]
+  if (userStore.isPro) {
+    types.push({ id: 'chat', name: 'Ask a wizard' })
+  }
+  return types
+})
 
 // Submenu state
 const addDatabaseMenuOpen = ref(false)
@@ -676,7 +682,7 @@ onUnmounted(() => {
 
           <div class="settings-section">
             <div class="setting-header">
-              AI autofix
+              Hex remover
               <span v-if="!userStore.isPro" class="pro-badge">Pro</span>
             </div>
             <div class="setting-description">
@@ -692,7 +698,7 @@ onUnmounted(() => {
                   :disabled="!userStore.isPro"
                   class="setting-checkbox"
                 />
-                <span>Enable AI autofix</span>
+                <span>Enable hex remover</span>
               </label>
             </div>
           </div>

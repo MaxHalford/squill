@@ -69,7 +69,7 @@ There are benchmark scripts to test AI code-fixing performance.
 
 ```sh
 cd backend
-python -m scripts.benchmark_fixer
+python -m scripts.benchmarks.hex_remover
 ```
 
 ## Need help?

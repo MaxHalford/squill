@@ -1,14 +1,14 @@
-"""AI-powered SQL assistance endpoints."""
+"""Hex remover endpoint — AI-powered SQL fix suggestions."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from models import User
-from services.ai_fixer import FixError, FixRequest, FixResponse, suggest_fix_core
+from services.hex_remover import FixError, FixRequest, FixResponse, suggest_fix_core
 from services.auth import get_current_user
 
-router = APIRouter(prefix="/ai", tags=["ai"])
+router = APIRouter(prefix="/remove-hex", tags=["hex-remover"])
 
 
-@router.post("/fix", response_model=FixResponse)
+@router.post("/", response_model=FixResponse)
 async def suggest_fix(
     fix_request: FixRequest,
     http_request: Request,

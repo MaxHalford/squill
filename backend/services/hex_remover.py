@@ -1,4 +1,4 @@
-"""Framework-independent AI SQL fix logic.
+"""Hex remover — AI-powered SQL fix suggestions.
 
 Provides suggest_fix_core() which can be called from both the FastAPI
 endpoint and the CLI benchmark without any web-framework dependencies.
@@ -102,16 +102,14 @@ def prepend_line_numbers(query: str) -> str:
     return "\n".join(f"{i + 1}: {line}" for i, line in enumerate(lines))
 
 
-def _build_system_prompt(dialect: str) -> str:
-    system_content = (
-        f"You are an expert in {dialect.title()} SQL. The user wrote and executed a SQL query that has an issue. You are tasked with suggesting a single-line fix."
-        " You have two actions available:"
-        ' "replace" — replace an existing line with your suggestion;'
-        ' "insert" — insert a new line at the given position, pushing subsequent lines down.'
-        " If you cannot determine a relevant fix (e.g., the error is about permissions, missing tables/columns that you don't have information about, or is otherwise unfixable by changing the query syntax), set no_relevant_fix to true."
-        " The query as a whole must make sense after applying your fix."
-    )
-    system_content += """\n\nExamples:
+STATIC_FIXER_PROMPT = (
+    "You are an expert SQL fixer. The user wrote and executed a SQL query that has an issue. You are tasked with suggesting a single-line fix."
+    " You have two actions available:"
+    ' "replace" — replace an existing line with your suggestion;'
+    ' "insert" — insert a new line at the given position, pushing subsequent lines down.'
+    " If you cannot determine a relevant fix (e.g., the error is about permissions, missing tables/columns that you don't have information about, or is otherwise unfixable by changing the query syntax), set no_relevant_fix to true."
+    " The query as a whole must make sense after applying your fix."
+    """\n\nExamples:
 
 Example 1 — replacing a line:
 
@@ -142,7 +140,7 @@ SELECT list expression references column key which is neither grouped nor aggreg
 Response:
 {"line_number": 5, "suggestion": "GROUP BY key", "action": "insert", "no_relevant_fix": false}
 """
-    return system_content
+)
 
 
 def _build_user_prompt(
@@ -207,7 +205,6 @@ def suggest_fix_core(
     try:
         client = _get_client()
 
-        system_prompt = _build_system_prompt(database_dialect)
         user_prompt = _build_user_prompt(
             query, error_message, schema_context, sample_queries
         )
@@ -215,11 +212,16 @@ def suggest_fix_core(
         kwargs: dict = dict(
             model=model,
             input=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": STATIC_FIXER_PROMPT},
+                {
+                    "role": "system",
+                    "content": f"SQL dialect: {database_dialect.title()}",
+                },
                 {"role": "user", "content": user_prompt},
             ],
             text_format=QueryLineFix,
             temperature=0.2,
+            prompt_cache_key="squill-fixer",
         )
         if metadata:
             kwargs["metadata"] = metadata

@@ -30,6 +30,65 @@ const closeDatabaseModal = () => {
   selectedDatabase.value = null
 }
 
+// Pro feature modal state
+interface ProFeature {
+  title: string
+  description: string
+  longDescription: string
+  released: boolean
+}
+
+const proFeatures: ProFeature[] = [
+  {
+    title: 'Hex remover',
+    description: 'Broken query? An LLM will lift the curse.',
+    longDescription: 'When a query fails, Squill sends the error message and your SQL to an LLM, which analyzes the issue and suggests a corrected query. It understands your schema context and common SQL pitfalls across BigQuery, PostgreSQL, DuckDB, and Snowflake. One click to apply the fix.',
+    released: true
+  },
+  {
+    title: 'Ask a wizard',
+    description: 'Pair-program SQL with an analytics agent in natural language.',
+    longDescription: '',
+    released: false
+  },
+  {
+    title: 'Persistent storage',
+    description: 'Save canvases to the cloud. Pick up where you left off.',
+    longDescription: '',
+    released: false
+  },
+  {
+    title: 'Collaborative canvas',
+    description: 'Work together in real-time. See each other\'s cursors.',
+    longDescription: '',
+    released: false
+  },
+  {
+    title: 'Usage analytics',
+    description: 'Track your query patterns. Measure table/column usage.',
+    longDescription: '',
+    released: false
+  },
+  {
+    title: 'Shareable dashboards',
+    description: 'Publish your analysis. Share with stakeholders.',
+    longDescription: '',
+    released: false
+  }
+]
+
+const selectedProFeature = ref<ProFeature | null>(null)
+
+const openProFeatureModal = (feature: ProFeature) => {
+  if (feature.released) {
+    selectedProFeature.value = feature
+  }
+}
+
+const closeProFeatureModal = () => {
+  selectedProFeature.value = null
+}
+
 // FAQ data (database-specific entries removed - now shown in database modal)
 const faqs = [
   {
@@ -39,6 +98,18 @@ const faqs = [
   {
     question: 'Do I need to create an account?',
     answer: 'Yes, because secrets have to be stored for some databases (like PostgreSQL passwords or BigQuery refresh tokens). Creating an account also allows you to upgrade to Squill Pro when you\'re ready. You do not need an account to process CSV files and play with DuckDB.'
+  },
+  {
+    question: 'Can I query CSV files with SQL?',
+    answer: 'Yes. Drag and drop any CSV file onto the canvas and Squill will load it into DuckDB, which runs entirely in your browser via WebAssembly. You can then write SQL against it immediately — no server, no upload.'
+  },
+  {
+    question: 'What databases does Squill support?',
+    answer: 'Squill supports DuckDB (runs in your browser), PostgreSQL, BigQuery, and Snowflake. You can connect to multiple databases at the same time and switch between them freely.'
+  },
+  {
+    question: 'Is Squill open source?',
+    answer: 'Yes, Squill is fully open source under the AGPL license. You can inspect the code, contribute, or self-host it. The source code is available on GitHub.'
   },
   {
     question: 'Why 8€/month for Pro?',
@@ -63,7 +134,7 @@ const webApplicationSchema = {
   '@type': 'WebApplication',
   name: 'Squill',
   url: 'https://squill.dev',
-  description: 'Browser-based SQL editor and data exploration tool. Run SQL queries on CSV files and databases directly in your browser with DuckDB.',
+  description: 'Free, open source online SQL editor. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. Infinite canvas, drag-and-drop CSV, AI query fixer. No install needed.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Any',
   browserRequirements: 'Requires JavaScript, WebAssembly support',
@@ -92,10 +163,12 @@ const webApplicationSchema = {
     'DuckDB WebAssembly support',
     'BigQuery integration',
     'PostgreSQL integration',
-    'CSV file analysis',
+    'Snowflake integration',
+    'Drag and drop CSV file analysis',
     'Schema explorer',
     'Go to definition (Cmd+click)',
-    'AI SQL fixer (Pro)'
+    'Hex remover - AI SQL fixer (Pro)',
+    'Ask a wizard - AI chat (Pro, coming soon)'
   ]
 }
 
@@ -114,15 +187,15 @@ const faqSchema = {
 
 // SEO Meta Tags
 useHead({
-  title: 'Squill - Browser-based SQL Editor & Data Exploration Tool',
+  title: 'Squill - Free Online SQL Editor | DuckDB, PostgreSQL, BigQuery, Snowflake',
   meta: [
     {
       name: 'description',
-      content: 'Squill is a browser-based SQL editor and data exploration tool. Run SQL queries on CSV files and databases directly in your browser with DuckDB. No data leaves your device.'
+      content: 'Open source SQL editor that runs in your browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. Infinite canvas, drag-and-drop CSV, schema explorer, AI query fixer. No install needed.'
     },
     // Open Graph
-    { property: 'og:title', content: 'Squill - Browser-based SQL Editor' },
-    { property: 'og:description', content: 'Run SQL queries on CSV files and databases directly in your browser. No data leaves your device.' },
+    { property: 'og:title', content: 'Squill - Free Online SQL Editor' },
+    { property: 'og:description', content: 'Open source SQL editor in the browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. No install needed.' },
     { property: 'og:url', content: 'https://squill.dev/' },
     { property: 'og:type', content: 'website' },
     { property: 'og:site_name', content: 'Squill' },
@@ -130,13 +203,13 @@ useHead({
     { property: 'og:image', content: 'https://squill.dev/og-image.png' },
     { property: 'og:image:width', content: '1200' },
     { property: 'og:image:height', content: '630' },
-    { property: 'og:image:alt', content: 'Squill - Browser-based SQL Editor' },
+    { property: 'og:image:alt', content: 'Squill - Free Online SQL Editor' },
     // Twitter
     { name: 'twitter:card', content: 'summary_large_image' },
-    { name: 'twitter:title', content: 'Squill - Browser-based SQL Editor' },
-    { name: 'twitter:description', content: 'Run SQL queries on CSV files and databases directly in your browser. No data leaves your device.' },
+    { name: 'twitter:title', content: 'Squill - Free Online SQL Editor' },
+    { name: 'twitter:description', content: 'Open source SQL editor in the browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. No install needed.' },
     { name: 'twitter:image', content: 'https://squill.dev/og-image.png' },
-    { name: 'twitter:image:alt', content: 'Squill - Browser-based SQL Editor' },
+    { name: 'twitter:image:alt', content: 'Squill - Free Online SQL Editor' },
   ],
   link: [
     { rel: 'canonical', href: 'https://squill.dev/' }
@@ -242,7 +315,7 @@ const toggleFaq = (index: number) => {
       <!-- Main content -->
       <div class="hero-content">
         <h1 class="hero-title">SQUILL</h1>
-        <p class="hero-tagline">Browser-based canvas for SQL</p>
+        <p class="hero-tagline">Open source SQL editor in the browser</p>
         <button class="btn-primary" @click="launchApp">
           Open editor
         </button>
@@ -258,6 +331,7 @@ const toggleFaq = (index: number) => {
     <!-- Features Section -->
     <section class="section features">
       <h2 class="section-title">WHAT YOU GET</h2>
+      <p class="features-subtitle">A free, open source online SQL editor. No download, no install — just open your browser and start querying DuckDB, PostgreSQL, BigQuery, and Snowflake.</p>
       <div class="features-grid">
         <div class="feature-card">
           <div class="feature-icon icon-canvas">
@@ -416,6 +490,29 @@ const toggleFaq = (index: number) => {
       </Transition>
     </Teleport>
 
+    <!-- Pro Feature Detail Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="selectedProFeature" class="modal-overlay" @click.self="closeProFeatureModal">
+          <div class="database-modal">
+            <button class="modal-close" @click="closeProFeatureModal" aria-label="Close">×</button>
+            <div class="modal-header">
+              <div class="modal-title-group">
+                <h3>{{ selectedProFeature.title }}</h3>
+                <span class="modal-badge pro-modal-badge">Pro</span>
+              </div>
+            </div>
+            <div class="modal-body">
+              <p class="modal-description">{{ selectedProFeature.longDescription }}</p>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-primary" @click="closeProFeatureModal">Got it</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Pro Section -->
     <section class="section section-inverted pro">
       <div class="pro-container">
@@ -423,45 +520,20 @@ const toggleFaq = (index: number) => {
         <p class="pro-price">8€ / month / person</p>
 
         <div class="pro-features">
-          <div class="pro-feature available">
-            <span class="status-icon">&#10003;</span>
+          <component
+            v-for="feature in proFeatures"
+            :key="feature.title"
+            :is="feature.released ? 'button' : 'div'"
+            class="pro-feature"
+            :class="{ available: feature.released, 'coming-soon': !feature.released, clickable: feature.released }"
+            @click="openProFeatureModal(feature)"
+          >
+            <span class="status-icon">{{ feature.released ? '&#10003;' : '&#9671;' }}</span>
             <div class="pro-feature-content">
-              <h4>AI SQL fixer</h4>
-              <p>Broken query? An LLM will suggest a fix.</p>
+              <h4>{{ feature.title }} <span v-if="!feature.released" class="badge">work in progress</span></h4>
+              <p>{{ feature.description }}</p>
             </div>
-          </div>
-
-          <div class="pro-feature coming-soon">
-            <span class="status-icon">&#9671;</span>
-            <div class="pro-feature-content">
-              <h4>Persistent storage <span class="badge">work in progress</span></h4>
-              <p>Save canvases to the cloud. Pick up where you left off.</p>
-            </div>
-          </div>
-
-          <div class="pro-feature coming-soon">
-            <span class="status-icon">&#9671;</span>
-            <div class="pro-feature-content">
-              <h4>Collaborative canvas <span class="badge">work in progress</span></h4>
-              <p>Work together in real-time. See each other's cursors.</p>
-            </div>
-          </div>
-
-          <div class="pro-feature coming-soon">
-            <span class="status-icon">&#9671;</span>
-            <div class="pro-feature-content">
-              <h4>Usage analytics <span class="badge">work in progress</span></h4>
-              <p>Track your query patterns. Measure table/column usage.</p>
-            </div>
-          </div>
-
-          <div class="pro-feature coming-soon">
-            <span class="status-icon">&#9671;</span>
-            <div class="pro-feature-content">
-              <h4>Shareable dashboards <span class="badge">work in progress</span></h4>
-              <p>Publish your analysis. Share with stakeholders.</p>
-            </div>
-          </div>
+          </component>
         </div>
 
         <p class="pro-philosophy">You're paying for compute, not vanity features.</p>
@@ -474,27 +546,32 @@ const toggleFaq = (index: number) => {
       <div class="testimonials-grid">
         <div class="testimonial-card testimonial-main">
           <blockquote>
-            "Your testimonial could be here."
+            "It's very nice, babe."
           </blockquote>
           <cite>
-            <span class="author">Future Happy User</span>
-            <span class="role">Data Scientist at Some Company</span>
+            <span class="author">Sarah</span>
+            <span class="role">Mandatory Beta Tester</span>
+          </cite>
+        </div>
+
+        <div class="testimonial-card testimonial-secondary">
+          <blockquote>
+            "I want more birds."
+          </blockquote>
+          <cite>
+            <span class="author">Olivia, age 2</span>
+            <span class="role">Chief Design Officer</span>
           </cite>
         </div>
 
         <div class="testimonial-card testimonial-placeholder">
           <div class="hatching"></div>
-          <span>More coming soon...</span>
+          <span>Your testimonial here...</span>
         </div>
 
         <div class="testimonial-card testimonial-placeholder">
           <div class="hatching"></div>
-          <span>More coming soon...</span>
-        </div>
-
-        <div class="testimonial-card testimonial-placeholder">
-          <div class="hatching"></div>
-          <span>More coming soon...</span>
+          <span>Your testimonial here...</span>
         </div>
       </div>
     </section>
@@ -875,6 +952,14 @@ const toggleFaq = (index: number) => {
   max-width: 1200px;
   margin-left: auto;
   margin-right: auto;
+}
+
+.features-subtitle {
+  text-align: center;
+  color: var(--text-secondary);
+  margin: -32px auto 48px;
+  font-size: var(--font-size-body);
+  max-width: 700px;
 }
 
 .features-grid {
@@ -1351,6 +1436,30 @@ const toggleFaq = (index: number) => {
   opacity: 0.6;
 }
 
+.pro-feature.clickable {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.pro-feature.clickable:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+button.pro-feature {
+  text-align: left;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.pro-modal-badge {
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+}
+
 .status-icon {
   font-size: 20px;
   line-height: 1;
@@ -1431,6 +1540,37 @@ const toggleFaq = (index: number) => {
 }
 
 .testimonial-main .role {
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
+}
+
+.testimonial-secondary {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  grid-column: span 2;
+}
+
+.testimonial-secondary blockquote {
+  font-size: var(--font-size-body-lg);
+  font-style: italic;
+  font-family: var(--font-family-mono);
+  margin: 0 0 var(--space-4) 0;
+  line-height: var(--line-height-relaxed);
+}
+
+.testimonial-secondary cite {
+  display: flex;
+  flex-direction: column;
+  font-style: normal;
+}
+
+.testimonial-secondary .author {
+  font-weight: 600;
+  font-family: var(--font-family-mono);
+}
+
+.testimonial-secondary .role {
   font-size: var(--font-size-body-sm);
   color: var(--text-secondary);
 }
@@ -1610,7 +1750,7 @@ const toggleFaq = (index: number) => {
   width: 180px;
   height: auto;
   filter: invert(1);
-  opacity: 0.5;
+  opacity: 1;
 }
 
 .footer-bird-left {

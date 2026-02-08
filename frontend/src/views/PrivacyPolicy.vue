@@ -54,7 +54,7 @@ Squill offers both client-side and server-assisted features:
 
 - **Free tier (DuckDB, CSV files)**: Runs entirely in your browser. No data is transmitted to our servers.
 - **Database connections (BigQuery, PostgreSQL)**: Require server-side processing and credential storage.
-- **Squill Pro features (AI SQL fixer)**: Transmit query data to third-party AI providers.
+- **Squill Pro features (Hex remover)**: Transmit query data to third-party AI providers.
 
 ## Data we collect
 
@@ -75,7 +75,7 @@ All credentials are encrypted at rest using industry-standard encryption.
 
 ### AI feature data (Squill Pro)
 
-When you use the AI SQL fixer, the following data is sent to our AI provider (OpenAI):
+When you use the Hex remover, the following data is sent to our AI provider (OpenAI):
 - Your SQL query
 - The error message
 - Database schema context (table and column names)
@@ -100,7 +100,7 @@ This local data never leaves your device unless you use server-assisted features
 
 ## Third-party services
 
-### OpenAI (AI SQL fixer - Pro)
+### OpenAI (Hex remover - Pro)
 
 Query data is sent to OpenAI for AI-powered fix suggestions. See [OpenAI's privacy policy](https://openai.com/privacy).
 
