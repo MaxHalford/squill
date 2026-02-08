@@ -25,20 +25,9 @@ import { buildDuckDBSchema, buildBigQuerySchema, buildPostgresSchema, buildSnowf
 import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai'
 import { isFixableError } from '../utils/errorClassifier'
 import { getConnectionDisplayName } from '../utils/connectionHelpers'
-import type { DatabaseEngine } from '../types/database'
+import { type DatabaseEngine, type QueryCompleteEvent } from '../types/database'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface QueryCompleteEvent {
-  tableName: string
-  rowCount: number
-  columns: string[]
-  executionTimeMs: number
-  engine: DatabaseEngine
-  stats?: { totalBytesProcessed?: string; cacheHit?: boolean }
-}
+export type { QueryCompleteEvent }
 
 // ---------------------------------------------------------------------------
 // Stores

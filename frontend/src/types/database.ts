@@ -105,3 +105,16 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
  * Get database info by engine
  */
 export const getDatabaseInfo = (engine: DatabaseEngine): DatabaseInfo => DATABASE_INFO[engine]
+
+/**
+ * Event emitted when a query completes execution.
+ * Extracted here so plain .ts files can import it without depending on .vue module resolution.
+ */
+export interface QueryCompleteEvent {
+  tableName: string
+  rowCount: number
+  columns: string[]
+  executionTimeMs: number
+  engine: DatabaseEngine
+  stats?: { totalBytesProcessed?: string; cacheHit?: boolean }
+}

@@ -11,7 +11,7 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { useConnectionsStore } from '../stores/connections'
 import { collectSchemaForConnection, type ConnectionType } from '../utils/schemaAdapter'
 import type { ToolCall } from './useChat'
-import type { QueryCompleteEvent } from '../components/QueryPanel.vue'
+import type { QueryCompleteEvent } from '../types/database'
 
 export interface ChatToolsOptions {
   onRunQuery: (query: string) => Promise<QueryCompleteEvent>
