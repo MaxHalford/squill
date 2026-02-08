@@ -77,7 +77,7 @@ You do not need an account to use DuckDB or analyze CSV files locally.
 ## Squill Pro
 
 Squill Pro is a paid subscription (8€/month) that includes:
-- **AI SQL fixer**: Get AI-powered suggestions to fix broken queries
+- **Hex remover**: Get AI-powered suggestions to fix broken queries
 - Additional features as they become available
 
 Pro features may involve transmitting data to third-party services (e.g., OpenAI for AI features). See our [Privacy Policy](/privacy-policy) for details.
@@ -129,7 +129,7 @@ Please refer to our [Privacy Policy](/privacy-policy) for detailed information a
 
 Squill integrates with the following services:
 
-- **OpenAI**: Powers the AI SQL fixer (Pro). Subject to [OpenAI's terms](https://openai.com/terms).
+- **OpenAI**: Powers the Hex remover (Pro). Subject to [OpenAI's terms](https://openai.com/terms).
 - **Google Cloud**: For BigQuery connections. Subject to [Google Cloud terms](https://cloud.google.com/terms).
 - **Paddle**: Processes Pro subscriptions. Subject to [Paddle's terms](https://www.paddle.com/legal/terms).
 

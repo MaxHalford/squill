@@ -491,11 +491,18 @@ watch(() => settingsStore.editorFontSize, (size) => {
   }
 })
 
-// Clear dry run result when query changes (to show fresh estimate on next hover)
-watch(() => props.modelValue, () => {
-  // Only reset if the query actually changed from what we estimated
-  const currentQuery = editorView.value?.state.doc.toString() || ''
-  if (currentQuery !== lastDryRunQuery) {
+// Sync external modelValue changes into CodeMirror (e.g. chat agent setting the query)
+watch(() => props.modelValue, (newVal) => {
+  if (!editorView.value) return
+  const currentDoc = editorView.value.state.doc.toString()
+  if (newVal !== undefined && newVal !== currentDoc) {
+    editorView.value.dispatch({
+      changes: { from: 0, to: currentDoc.length, insert: newVal },
+    })
+  }
+
+  // Clear dry run result when query changes (to show fresh estimate on next hover)
+  if (currentDoc !== lastDryRunQuery) {
     dryRunResult.value = null
   }
 })

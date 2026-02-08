@@ -12,6 +12,7 @@ from routers.ai import router as ai_router
 from routers.auth import router as auth_router
 from routers.bigquery import router as bigquery_router
 from routers.billing import router as billing_router
+from routers.chat import router as chat_router
 from routers.connections import router as connections_router
 from routers.postgres import router as postgres_router
 from routers.snowflake import router as snowflake_router
@@ -69,6 +70,7 @@ app.include_router(ai_router)
 app.include_router(auth_router)
 app.include_router(bigquery_router)
 app.include_router(billing_router)
+app.include_router(chat_router)
 app.include_router(connections_router)
 app.include_router(postgres_router)
 app.include_router(snowflake_router)

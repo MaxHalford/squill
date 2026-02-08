@@ -15,6 +15,7 @@ import { useUserStore } from '../stores/user'
 import { useQueryResultsStore } from '../stores/queryResults'
 import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
+import { useQueryExecution } from '../composables/useQueryExecution'
 import { buildDuckDBSchema, buildBigQuerySchema, buildPostgresSchema, buildSnowflakeSchema, combineSchemas } from '../utils/schemaBuilder'
 import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai'
 import { useQueryHistoryStore } from '../stores/queryHistory'
@@ -33,6 +34,7 @@ const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 const queryHistoryStore = useQueryHistoryStore()
 const queryResultsStore = useQueryResultsStore()
+const { executeQuery } = useQueryExecution()
 
 // Inject canvas zoom for splitter dragging
 const canvasZoom = inject('canvasZoom', ref(1))
@@ -480,189 +482,83 @@ const runQuery = async () => {
     const engine = getEffectiveEngine(connectionType, query, availableTables)
     detectedEngine.value = engine
 
-    let result
     const boxName = baseBoxRef.value?.boxName || props.initialName
     const tableName = duckdbStore.sanitizeTableName(boxName)
+    const usePagination = settingsStore.fetchPaginationEnabled && !isLocalConnectionType(engine)
+    const connectionId = boxConnection.value?.id
 
-    // Execute query based on effective engine
-    if (isLocalConnectionType(engine)) {
-      // Execute in local DuckDB with CTAS for efficient storage
-      // This avoids the Arrow → JS → SQL INSERT roundtrip
-      result = await duckdbStore.runQueryWithStorage(
-        query,
-        boxName,
-        props.boxId
-      )
+    let execResult: { rowCount: number; executionTimeMs: number; engine: string; stats?: Record<string, unknown> }
 
-      // For DuckDB queries, all rows are fetched immediately
-      queryResultsStore.initQueryResult(props.boxId, 'duckdb', {
-        totalRows: result.stats.rowCount,
-        fetchedRows: result.stats.rowCount,
-        hasMoreRows: false
-      })
-    } else {
-      // Execute in remote database based on connection type
-      // Supports: BigQuery, PostgreSQL
-      const usePagination = settingsStore.fetchPaginationEnabled
+    if (usePagination) {
+      // Paginated flow for remote engines — uses engine-specific pagination APIs
       const batchSize = settingsStore.fetchBatchSize
 
       if (engine === 'bigquery') {
-        const connectionId = boxConnection.value?.id
-        if (!connectionId) {
-          throw new Error('Please connect to BigQuery first')
-        }
-        // Token refresh is handled automatically by bigqueryStore.runQuery/runQueryPaginated
+        if (!connectionId) throw new Error('Please connect to BigQuery first')
 
-        if (usePagination) {
-          // Use paginated query for BigQuery
-          const paginatedResult = await bigqueryStore.runQueryPaginated(
-            query,
-            batchSize,
-            undefined, // No page token for first request
-            abortController.signal,
-            connectionId
-          )
-
-          result = {
-            rows: paginatedResult.rows,
-            schema: paginatedResult.columns,
-            stats: paginatedResult.stats
-          }
-
-          // Store first batch in DuckDB (BigQuery needs explicit type casts)
-          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns, 'bigquery')
-
-          // Initialize fetch state
-          // Note: Background loading is disabled - we use lazy loading only
-          // (fetch more data when user navigates to pages beyond what's loaded)
-          const sourceEngine = 'bigquery' as const
-          queryResultsStore.initQueryResult(props.boxId, sourceEngine, {
-            totalRows: paginatedResult.totalRows,
-            fetchedRows: paginatedResult.rows.length,
-            hasMoreRows: paginatedResult.hasMore,
-            pageToken: paginatedResult.pageToken,
-            originalQuery: query,
-            connectionId,
-            schema: paginatedResult.columns
-          })
-        } else {
-          // Non-paginated flow (original behavior)
-          result = await bigqueryStore.runQuery(query, abortController.signal, connectionId)
-          await duckdbStore.storeResults(boxName, result.rows as Record<string, unknown>[], props.boxId, result.schema, 'bigquery')
-          queryResultsStore.initQueryResult(props.boxId, 'bigquery', {
-            totalRows: result.rows.length,
-            fetchedRows: result.rows.length,
-            hasMoreRows: false
-          })
-        }
+        const paginatedResult = await bigqueryStore.runQueryPaginated(
+          query, batchSize, undefined, abortController.signal, connectionId
+        )
+        await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns, 'bigquery')
+        queryResultsStore.initQueryResult(props.boxId, 'bigquery', {
+          totalRows: paginatedResult.totalRows,
+          fetchedRows: paginatedResult.rows.length,
+          hasMoreRows: paginatedResult.hasMore,
+          pageToken: paginatedResult.pageToken,
+          originalQuery: query,
+          connectionId,
+          schema: paginatedResult.columns
+        })
+        execResult = { rowCount: paginatedResult.rows.length, executionTimeMs: 0, engine, stats: paginatedResult.stats }
       } else if (engine === 'postgres') {
-        const connectionId = boxConnection.value?.id
-        if (!connectionId) {
-          throw new Error('No PostgreSQL connection selected')
-        }
+        if (!connectionId) throw new Error('No PostgreSQL connection selected')
 
-        if (usePagination) {
-          // Use paginated query for Postgres
-          const paginatedResult = await postgresStore.runQueryPaginated(
-            connectionId,
-            query,
-            batchSize,
-            0, // Start at offset 0
-            true, // Include count on first request
-            abortController.signal
-          )
-
-          result = {
-            rows: paginatedResult.rows,
-            schema: paginatedResult.columns,
-            stats: paginatedResult.stats
-          }
-
-          // Store first batch in DuckDB
-          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
-
-          // Initialize fetch state
-          // Note: Background loading is disabled - we use lazy loading only
-          // (fetch more data when user navigates to pages beyond what's loaded)
-          const sourceEngine = 'postgres' as const
-          queryResultsStore.initQueryResult(props.boxId, sourceEngine, {
-            totalRows: paginatedResult.totalRows,
-            fetchedRows: paginatedResult.rows.length,
-            hasMoreRows: paginatedResult.hasMore,
-            nextOffset: paginatedResult.nextOffset,
-            originalQuery: query,
-            connectionId,
-            schema: paginatedResult.columns
-          })
-        } else {
-          // Non-paginated flow (original behavior)
-          result = await postgresStore.runQuery(connectionId, query, abortController.signal)
-          await duckdbStore.storeResults(boxName, result.rows as Record<string, unknown>[], props.boxId, result.schema)
-          queryResultsStore.initQueryResult(props.boxId, 'postgres', {
-            totalRows: result.rows.length,
-            fetchedRows: result.rows.length,
-            hasMoreRows: false
-          })
-        }
+        const paginatedResult = await postgresStore.runQueryPaginated(
+          connectionId, query, batchSize, 0, true, abortController.signal
+        )
+        await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
+        queryResultsStore.initQueryResult(props.boxId, 'postgres', {
+          totalRows: paginatedResult.totalRows,
+          fetchedRows: paginatedResult.rows.length,
+          hasMoreRows: paginatedResult.hasMore,
+          nextOffset: paginatedResult.nextOffset,
+          originalQuery: query,
+          connectionId,
+          schema: paginatedResult.columns
+        })
+        execResult = { rowCount: paginatedResult.rows.length, executionTimeMs: 0, engine, stats: paginatedResult.stats }
       } else if (engine === 'snowflake') {
-        const connectionId = boxConnection.value?.id
-        if (!connectionId) {
-          throw new Error('No Snowflake connection selected')
-        }
+        if (!connectionId) throw new Error('No Snowflake connection selected')
 
-        if (usePagination) {
-          // Use paginated query for Snowflake
-          const paginatedResult = await snowflakeStore.runQueryPaginated(
-            connectionId,
-            query,
-            batchSize,
-            0, // Start at offset 0
-            true, // Include count on first request
-            abortController.signal
-          )
-
-          result = {
-            rows: paginatedResult.rows,
-            schema: paginatedResult.columns,
-            stats: paginatedResult.stats
-          }
-
-          // Store first batch in DuckDB
-          await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
-
-          // Initialize fetch state
-          // Note: Background loading is disabled - we use lazy loading only
-          // (fetch more data when user navigates to pages beyond what's loaded)
-          const sourceEngine = 'snowflake' as const
-          queryResultsStore.initQueryResult(props.boxId, sourceEngine, {
-            totalRows: paginatedResult.totalRows,
-            fetchedRows: paginatedResult.rows.length,
-            hasMoreRows: paginatedResult.hasMore,
-            nextOffset: paginatedResult.nextOffset,
-            originalQuery: query,
-            connectionId,
-            schema: paginatedResult.columns
-          })
-        } else {
-          // Non-paginated flow (original behavior)
-          result = await snowflakeStore.runQuery(connectionId, query, abortController.signal)
-          await duckdbStore.storeResults(boxName, result.rows as Record<string, unknown>[], props.boxId, result.schema)
-          queryResultsStore.initQueryResult(props.boxId, 'snowflake', {
-            totalRows: result.rows.length,
-            fetchedRows: result.rows.length,
-            hasMoreRows: false
-          })
-        }
+        const paginatedResult = await snowflakeStore.runQueryPaginated(
+          connectionId, query, batchSize, 0, true, abortController.signal
+        )
+        await duckdbStore.storeResults(boxName, paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
+        queryResultsStore.initQueryResult(props.boxId, 'snowflake', {
+          totalRows: paginatedResult.totalRows,
+          fetchedRows: paginatedResult.rows.length,
+          hasMoreRows: paginatedResult.hasMore,
+          nextOffset: paginatedResult.nextOffset,
+          originalQuery: query,
+          connectionId,
+          schema: paginatedResult.columns
+        })
+        execResult = { rowCount: paginatedResult.rows.length, executionTimeMs: 0, engine, stats: paginatedResult.stats }
       } else {
-        // Placeholder for future database types
         throw new Error(`Database type "${engine}" is not yet supported`)
       }
+
+      execResult.executionTimeMs = Math.round(performance.now() - startTime)
+    } else {
+      // Non-paginated flow — shared execution logic
+      const result = await executeQuery(query, boxName, boxConnection.value?.type, connectionId, { boxId: props.boxId })
+      queryResultsStore.initQueryResult(props.boxId, result.engine, {
+        totalRows: result.rowCount,
+        fetchedRows: result.rowCount,
+        hasMoreRows: false
+      })
+      execResult = result
     }
-
-    const endTime = performance.now()
-
-    // Calculate execution time
-    const executionTimeMs = endTime - startTime
 
     // Clear any previous suggestion on successful run
     suggestion.value = null
@@ -675,8 +571,9 @@ const runQuery = async () => {
     resultTableName.value = tableName
 
     queryStats.value = {
-      ...result.stats,
-      executionTimeMs: Math.round(executionTimeMs),
+      ...(execResult.stats || {}),
+      rowCount: execResult.rowCount,
+      executionTimeMs: execResult.executionTimeMs,
       engine: engine
     }
 
@@ -691,8 +588,8 @@ const runQuery = async () => {
         connectionType: engine,
         success: true,
         boxName: baseBoxRef.value?.boxName || props.initialName,
-        executionTimeMs: Math.round(executionTimeMs),
-        rowCount: (result.stats as { rowCount?: number })?.rowCount
+        executionTimeMs: execResult.executionTimeMs,
+        rowCount: execResult.rowCount,
       })
     }
   } catch (err: any) {
