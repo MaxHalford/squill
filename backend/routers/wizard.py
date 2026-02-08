@@ -1,14 +1,14 @@
-"""AI analytics chat endpoint."""
+"""Ask a wizard endpoint — streaming AI analytics agent."""
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from models import User
-from services.ai_agent import stream_agent_response
+from services.wizard import stream_agent_response
 from services.auth import get_current_user
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(prefix="/ask-wizard", tags=["wizard"])
 
 
 class ChatRequest(BaseModel):

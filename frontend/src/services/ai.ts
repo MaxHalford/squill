@@ -96,7 +96,7 @@ export async function suggestFix(
   }
 
   try {
-    const response = await fetch(`${BACKEND_URL}/ai/fix`, {
+    const response = await fetch(`${BACKEND_URL}/remove-hex/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -1,4 +1,4 @@
-"""Framework-independent AI SQL fix logic.
+"""Hex remover — AI-powered SQL fix suggestions.
 
 Provides suggest_fix_core() which can be called from both the FastAPI
 endpoint and the CLI benchmark without any web-framework dependencies.

@@ -69,7 +69,7 @@ const {
   sendMessage,
   stop,
 } = useChat({
-  apiUrl: `${BACKEND_URL}/chat/`,
+  apiUrl: `${BACKEND_URL}/ask-wizard/`,
   sessionToken: computed(() => userStore.sessionToken),
   dialect,
   connectionInfo,
