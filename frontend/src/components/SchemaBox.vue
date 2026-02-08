@@ -1165,6 +1165,7 @@ defineExpose({
       <input
         ref="searchInputRef"
         v-model="searchQuery"
+        name="schema-search"
         class="search-input"
         type="text"
         placeholder="Search tables and columns..."

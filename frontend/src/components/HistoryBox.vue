@@ -208,6 +208,7 @@ onUnmounted(() => {
       <div class="toolbar">
         <input
           v-model="searchQuery"
+          name="history-search"
           type="text"
           class="search-input"
           placeholder="Search queries..."

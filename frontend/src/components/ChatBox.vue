@@ -452,6 +452,7 @@ onUnmounted(() => {
         <div class="input-area">
           <textarea
             v-model="inputText"
+            name="chat-input"
             class="chat-input"
             placeholder="Ask about your data..."
             rows="2"
