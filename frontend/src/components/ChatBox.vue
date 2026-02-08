@@ -575,6 +575,7 @@ onUnmounted(() => {
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   align-items: flex-end;
+  border-top: var(--border-width-thin) solid var(--border-primary);
 }
 
 .chat-input {

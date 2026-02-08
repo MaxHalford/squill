@@ -1,8 +1,8 @@
 """Streaming AI agent for analytics chat.
 
 Provides a thin proxy between the frontend and OpenAI:
-- Receives messages in OpenAI format (frontend sends them directly)
-- Prepends a system prompt with database context
+- Receives messages in Chat Completions format (frontend sends them directly)
+- Converts to Responses API input format
 - Streams OpenAI responses as SSE events
 - Tool calls are streamed to the frontend for client-side execution
 """
@@ -12,6 +12,13 @@ import logging
 from collections.abc import AsyncGenerator
 
 import openai
+from openai.types.responses import (
+    ResponseCompletedEvent,
+    ResponseFailedEvent,
+    ResponseFunctionToolCall,
+    ResponseOutputItemDoneEvent,
+    ResponseTextDeltaEvent,
+)
 
 from config import get_settings
 
@@ -22,44 +29,38 @@ AGENT_MODEL = "gpt-4o-mini"
 TOOL_DEFINITIONS = [
     {
         "type": "function",
-        "function": {
-            "name": "list_schemas",
-            "description": "List available database schemas or datasets for the current connection.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
+        "name": "list_schemas",
+        "description": "List available database schemas or datasets for the current connection.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "type": "function",
+        "name": "list_tables",
+        "description": "List tables and their columns in a specific schema or dataset.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "schema": {
+                    "type": "string",
+                    "description": "The schema or dataset name to list tables from",
+                }
+            },
+            "required": ["schema"],
         },
     },
     {
         "type": "function",
-        "function": {
-            "name": "list_tables",
-            "description": "List tables and their columns in a specific schema or dataset.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "schema": {
-                        "type": "string",
-                        "description": "The schema or dataset name to list tables from",
-                    }
-                },
-                "required": ["schema"],
+        "name": "run_query",
+        "description": "Execute a SQL query and return a summary of results. Use this to explore data, validate hypotheses, and answer the user's question.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The SQL query to execute",
+                }
             },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_query",
-            "description": "Execute a SQL query and return a summary of results. Use this to explore data, validate hypotheses, and answer the user's question.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The SQL query to execute",
-                    }
-                },
-                "required": ["query"],
-            },
+            "required": ["query"],
         },
     },
 ]
@@ -115,6 +116,51 @@ def _get_client() -> openai.AsyncOpenAI:
 
 
 # ---------------------------------------------------------------------------
+# Message conversion (Chat Completions → Responses API input)
+# ---------------------------------------------------------------------------
+
+
+def _convert_messages(messages: list[dict]) -> list[dict]:
+    """Convert Chat Completions format messages to Responses API input."""
+    result: list[dict] = []
+    for msg in messages:
+        role = msg.get("role")
+
+        if role == "user":
+            result.append({"role": "user", "content": msg["content"]})
+
+        elif role == "assistant":
+            if msg.get("content"):
+                result.append(
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": msg["content"]}],
+                    }
+                )
+            for tc in msg.get("tool_calls", []):
+                result.append(
+                    {
+                        "type": "function_call",
+                        "call_id": tc["id"],
+                        "name": tc["function"]["name"],
+                        "arguments": tc["function"]["arguments"],
+                    }
+                )
+
+        elif role == "tool":
+            result.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": msg["tool_call_id"],
+                    "output": msg["content"],
+                }
+            )
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # SSE helpers
 # ---------------------------------------------------------------------------
 
@@ -142,8 +188,8 @@ async def stream_agent_response(
 ) -> AsyncGenerator[str, None]:
     """Stream an agent response as SSE events.
 
-    Calls OpenAI with the conversation history and tool definitions,
-    then re-encodes streaming chunks as simple SSE events:
+    Uses the OpenAI Responses API with streaming. Re-encodes events as
+    simple SSE for the frontend:
 
     - {"type":"text-delta","content":"..."} — incremental text
     - {"type":"tool-call","id":"...","name":"...","args":{...}} — complete tool call
@@ -153,72 +199,57 @@ async def stream_agent_response(
     client = _get_client()
 
     context_prompt = _build_context_prompt(dialect, connection_info, current_query)
-    full_messages = [
-        {"role": "system", "content": STATIC_SYSTEM_PROMPT},
-        {"role": "system", "content": context_prompt},
-        *messages,
+    input_items = [
+        {"role": "developer", "content": context_prompt},
+        *_convert_messages(messages),
     ]
 
     try:
-        stream = await client.chat.completions.create(
+        kwargs: dict = dict(
             model=AGENT_MODEL,
-            messages=full_messages,
+            instructions=STATIC_SYSTEM_PROMPT,
+            input=input_items,
             tools=TOOL_DEFINITIONS,
-            stream=True,
+            prompt_cache_key="squill-agent",
         )
+        async with client.responses.stream(**kwargs) as stream:
+            async for event in stream:
+                if isinstance(event, ResponseTextDeltaEvent):
+                    yield _sse_json({"type": "text-delta", "content": event.delta})
 
-        # Accumulate tool calls across chunks
-        tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments}
-
-        async for chunk in stream:
-            if not chunk.choices:
-                continue
-
-            choice = chunk.choices[0]
-            delta = choice.delta
-            finish_reason = choice.finish_reason
-
-            # Stream text deltas
-            if delta and delta.content:
-                yield _sse_json({"type": "text-delta", "content": delta.content})
-
-            # Accumulate tool call fragments
-            if delta and delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    if idx not in tool_calls:
-                        tool_calls[idx] = {"id": "", "name": "", "arguments": ""}
-
-                    if tc.id:
-                        tool_calls[idx]["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        tool_calls[idx]["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        tool_calls[idx]["arguments"] += tc.function.arguments
-
-            # On finish, emit complete tool calls and finish event
-            if finish_reason:
-                if finish_reason == "tool_calls":
-                    for tc_data in tool_calls.values():
+                elif isinstance(event, ResponseOutputItemDoneEvent):
+                    item = event.item
+                    if isinstance(item, ResponseFunctionToolCall):
                         try:
-                            args = json.loads(tc_data["arguments"])
+                            args = json.loads(item.arguments)
                         except json.JSONDecodeError:
                             args = {}
                         yield _sse_json(
                             {
                                 "type": "tool-call",
-                                "id": tc_data["id"],
-                                "name": tc_data["name"],
+                                "id": item.call_id,
+                                "name": item.name,
                                 "args": args,
                             }
                         )
 
-                yield _sse_json(
-                    {
-                        "type": "finish",
-                        "reason": finish_reason,
-                    }
-                )
+                elif isinstance(event, ResponseCompletedEvent):
+                    has_tool_calls = any(
+                        isinstance(item, ResponseFunctionToolCall)
+                        for item in event.response.output
+                    )
+                    yield _sse_json(
+                        {
+                            "type": "finish",
+                            "reason": "tool_calls" if has_tool_calls else "stop",
+                        }
+                    )
+
+                elif isinstance(event, ResponseFailedEvent):
+                    err = event.response.error
+                    msg = err.message if err else "Response failed"
+                    yield _sse_json({"type": "error", "message": msg})
+                    yield _sse_json({"type": "finish", "reason": "stop"})
 
         yield _sse("[DONE]")
 

@@ -221,6 +221,7 @@ def suggest_fix_core(
             ],
             text_format=QueryLineFix,
             temperature=0.2,
+            prompt_cache_key="squill-fixer",
         )
         if metadata:
             kwargs["metadata"] = metadata
