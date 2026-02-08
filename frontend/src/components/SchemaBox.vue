@@ -9,7 +9,25 @@ import { useSnowflakeStore } from '../stores/snowflake'
 import { useSchemaStore } from '../stores/bigquerySchema'
 import { getTypeCategory } from '../utils/typeUtils'
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
+import type { BigQueryDataset, BigQueryTable } from '../types/bigquery'
+import type { PostgresTableInfo } from '../stores/postgres'
+import type { SnowflakeDatabaseInfo, SnowflakeSchemaInfo, SnowflakeTableInfo } from '../stores/snowflake'
 import { collectSchemaForConnection } from '../utils/schemaAdapter'
+
+// Schema browser item types for the column navigation
+interface BrowserItem {
+  id: string
+  name: string
+  type: string
+  rowCount?: number
+  schemaName?: string
+  databaseName?: string
+}
+
+interface SchemaField {
+  name: string
+  type: string
+}
 
 const bigqueryStore = useBigQueryStore()
 const connectionsStore = useConnectionsStore()
@@ -45,7 +63,7 @@ try {
   if (injectedZoom) {
     canvasZoom.value = injectedZoom.value
   }
-} catch (e) {
+} catch {
   // Use default zoom if injection fails
 }
 
@@ -71,13 +89,13 @@ const selectedSnowflakeDatabase = ref<string | null>(null)
 const selectedSnowflakeSchema = ref<string | null>(null)
 
 // Data cache
-const datasets = ref<Record<string, any[]>>({}) // { projectId: [datasets] }
-const tables = ref<Record<string, any[]>>({}) // { datasetId: [tables] }
-const schemas = ref<Record<string, any[]>>({}) // { tableId: schema }
+const datasets = ref<Record<string, BrowserItem[]>>({}) // { projectId: [datasets] }
+const tables = ref<Record<string, BrowserItem[]>>({}) // { datasetId: [tables] }
+const schemas = ref<Record<string, SchemaField[]>>({}) // { tableId: schema }
 // Snowflake-specific caches
-const snowflakeDatabases = ref<Record<string, any[]>>({}) // { connectionId: [databases] }
-const snowflakeSchemas = ref<Record<string, any[]>>({}) // { connectionId:database: [schemas] }
-const snowflakeTables = ref<Record<string, any[]>>({}) // { connectionId:database.schema: [tables] }
+const snowflakeDatabases = ref<Record<string, SnowflakeDatabaseInfo[]>>({}) // { connectionId: [databases] }
+const snowflakeSchemas = ref<Record<string, SnowflakeSchemaInfo[]>>({}) // { connectionId:database: [schemas] }
+const snowflakeTables = ref<Record<string, SnowflakeTableInfo[]>>({}) // { connectionId:database.schema: [tables] }
 
 // Loading states
 const loadingDatasets = ref<Record<string, boolean>>({})
@@ -150,7 +168,7 @@ const selectedProjectType = computed(() => {
 })
 
 // Column 2: Datasets (BigQuery), Databases (Snowflake), or Tables (DuckDB/PostgreSQL)
-const column2Items = computed(() => {
+const column2Items = computed((): BrowserItem[] => {
   if (!selectedProject.value) return []
 
   if (selectedProject.value === 'duckdb') {
@@ -166,7 +184,7 @@ const column2Items = computed(() => {
   } else if (selectedProjectType.value === 'postgres') {
     // Show PostgreSQL tables directly (grouped by schema)
     const postgresTables = tables.value[selectedProject.value] || []
-    return postgresTables.map((t: any) => ({
+    return postgresTables.map((t) => ({
       id: `${t.schemaName}.${t.name}`,
       name: t.schemaName === 'public' ? t.name : `${t.schemaName}.${t.name}`,
       type: t.type || 'table',
@@ -175,7 +193,7 @@ const column2Items = computed(() => {
   } else if (selectedProjectType.value === 'snowflake') {
     // Show Snowflake databases (like BigQuery datasets)
     const databases = snowflakeDatabases.value[selectedProject.value] || []
-    return databases.map((db: any) => ({
+    return databases.map((db) => ({
       id: db.name,
       name: db.name,
       type: 'database'
@@ -195,7 +213,7 @@ const column3Items = computed(() => {
     if (!selectedSnowflakeDatabase.value) return []
     const cacheKey = `${selectedProject.value}:${selectedSnowflakeDatabase.value}`
     const schemaList = snowflakeSchemas.value[cacheKey] || []
-    return schemaList.map((s: any) => ({
+    return schemaList.map((s) => ({
       id: s.name,
       name: s.name,
       type: 'schema'
@@ -208,21 +226,21 @@ const column3Items = computed(() => {
 })
 
 // Column 4: Tables (for Snowflake when schema is selected) or Columns
-const column4Items = computed(() => {
+const column4Items = computed((): BrowserItem[] => {
   if (selectedProjectType.value === 'snowflake') {
     // Show Snowflake tables when schema is selected
     if (!selectedSnowflakeSchema.value || !selectedSnowflakeDatabase.value) return []
     const cacheKey = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}`
     const tableList = snowflakeTables.value[cacheKey] || []
     // Use table name as id for selection tracking
-    return tableList.map((t: any) => ({
+    return tableList.map((t) => ({
       id: t.name,
       name: t.name,
       type: t.type || 'table'
     }))
   }
 
-  // For other types, show columns
+  // For other types, show columns (using name as id for consistency)
   if (!selectedTable.value) return []
   let key: string
   if (selectedProject.value === 'duckdb') {
@@ -232,15 +250,23 @@ const column4Items = computed(() => {
   } else {
     key = `${selectedDataset.value}.${selectedTable.value}`
   }
-  return schemas.value[key] || []
+  return (schemas.value[key] || []).map((f) => ({
+    id: f.name,
+    name: f.name,
+    type: f.type
+  }))
 })
 
 // Column 5: Columns (for Snowflake only)
-const column5Items = computed(() => {
+const column5Items = computed((): BrowserItem[] => {
   if (selectedProjectType.value !== 'snowflake') return []
   if (!selectedTable.value) return []
   const key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
-  return schemas.value[key] || []
+  return (schemas.value[key] || []).map((f) => ({
+    id: f.name,
+    name: f.name,
+    type: f.type
+  }))
 })
 
 // Virtual scrolling for columns list (performance optimization for large tables)
@@ -412,7 +438,7 @@ const loadDatasets = async (projectId: string) => {
   try {
     // Use the helper that works with any BigQuery connection
     const fetchedDatasets = await bigqueryStore.fetchDatasetsWithAnyConnection(projectId)
-    datasets.value[projectId] = fetchedDatasets.map((ds: any) => ({
+    datasets.value[projectId] = fetchedDatasets.map((ds: BigQueryDataset) => ({
       id: ds.datasetReference.datasetId,
       name: ds.datasetReference.datasetId,
       type: 'dataset'
@@ -432,7 +458,7 @@ const loadTables = async (datasetId: string) => {
   try {
     // Use the helper that works with any BigQuery connection
     const fetchedTables = await bigqueryStore.fetchTablesWithAnyConnection(datasetId, selectedProject.value)
-    tables.value[datasetId] = fetchedTables.map((t: any) => ({
+    tables.value[datasetId] = fetchedTables.map((t: BigQueryTable) => ({
       id: t.tableReference.tableId,
       name: t.tableReference.tableId,
       type: 'table'
@@ -449,7 +475,7 @@ const loadPostgresTables = async (connectionId: string) => {
   loadingTables.value[connectionId] = true
   try {
     const fetchedTables = await postgresStore.fetchTables(connectionId)
-    tables.value[connectionId] = fetchedTables.map((t: any) => ({
+    tables.value[connectionId] = fetchedTables.map((t: PostgresTableInfo) => ({
       id: `${t.schemaName}.${t.name}`,
       name: t.name,
       schemaName: t.schemaName,
@@ -495,7 +521,7 @@ const loadSnowflakeTablesForSchema = async (connectionId: string, databaseName: 
   loadingTables.value[cacheKey] = true
   try {
     const fetchedTables = await snowflakeStore.fetchTablesForSchema(connectionId, databaseName, schemaName)
-    snowflakeTables.value[cacheKey] = fetchedTables.map((t: any) => ({
+    snowflakeTables.value[cacheKey] = fetchedTables.map((t: SnowflakeTableInfo) => ({
       name: t.name,
       databaseName: t.databaseName,
       schemaName: t.schemaName,
@@ -582,7 +608,7 @@ const loadSchema = async (tableId: string, key: string) => {
 }
 
 // Insert table name into query
-const insertTableName = (item: any) => {
+const insertTableName = (item: BrowserItem) => {
   let tableName = ''
 
   if (selectedProject.value === 'duckdb') {
@@ -606,7 +632,7 @@ const insertTableName = (item: any) => {
 }
 
 // Query table - creates a new query box with SELECT * query
-const queryTable = (item: any) => {
+const queryTable = (item: BrowserItem) => {
   // Determine engine and build full table name
   let engine: DatabaseEngine
   let fullTableName = ''
@@ -1143,17 +1169,47 @@ defineExpose({
         type="text"
         placeholder="Search tables and columns..."
         @keydown.escape="clearSearch"
-      />
-      <button v-if="searchQuery" class="clear-search-btn" @click="clearSearch">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
+      >
+      <button
+        v-if="searchQuery"
+        class="clear-search-btn"
+        @click="clearSearch"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <line
+            x1="18"
+            y1="6"
+            x2="6"
+            y2="18"
+          />
+          <line
+            x1="6"
+            y1="6"
+            x2="18"
+            y2="18"
+          />
         </svg>
       </button>
 
       <!-- Search Results Dropdown -->
-      <div v-if="searchQuery && searchResults.length > 0" class="search-results" @wheel.stop>
-        <template v-for="(group, connectionId) in groupedSearchResults" :key="connectionId">
+      <div
+        v-if="searchQuery && searchResults.length > 0"
+        class="search-results"
+        @wheel.stop
+      >
+        <template
+          v-for="(group, connectionId) in groupedSearchResults"
+          :key="connectionId"
+        >
           <div class="search-group-header">
             <span
               class="engine-badge"
@@ -1172,24 +1228,41 @@ defineExpose({
             class="search-result-item"
             @click="navigateToSearchResult(result)"
           >
-            <span class="search-result-table" v-html="highlightMatch(result.displayName, debouncedSearchQuery)"></span>
-            <span v-if="result.matchedColumns.length > 0" class="search-result-columns">
-              <span v-html="highlightMatch(result.matchedColumns.slice(0, 3).join(', '), debouncedSearchQuery)"></span>{{ result.matchedColumns.length > 3 ? '...' : '' }}
+            <span
+              class="search-result-table"
+              v-html="highlightMatch(result.displayName, debouncedSearchQuery)"
+            />
+            <span
+              v-if="result.matchedColumns.length > 0"
+              class="search-result-columns"
+            >
+              <span v-html="highlightMatch(result.matchedColumns.slice(0, 3).join(', '), debouncedSearchQuery)" />{{ result.matchedColumns.length > 3 ? '...' : '' }}
             </span>
           </div>
         </template>
       </div>
 
       <!-- No Results -->
-      <div v-if="searchQuery && searchResults.length === 0" class="search-no-results">
+      <div
+        v-if="searchQuery && searchResults.length === 0"
+        class="search-no-results"
+      >
         No tables or columns match "{{ searchQuery }}"
       </div>
     </div>
 
-    <div ref="schemaBrowserRef" class="schema-browser">
+    <div
+      ref="schemaBrowserRef"
+      class="schema-browser"
+    >
       <!-- Column 1: Connections -->
-      <div class="column" :style="{ width: `${col1Width}px` }">
-        <div class="column-header">Connections</div>
+      <div
+        class="column"
+        :style="{ width: `${col1Width}px` }"
+      >
+        <div class="column-header">
+          Connections
+        </div>
         <div class="column-content">
           <div
             v-for="project in projects"
@@ -1212,26 +1285,38 @@ defineExpose({
       </div>
 
       <!-- Resize handle 1 -->
-      <div class="resize-handle" @mousedown="handleResizeStart($event, 1)"></div>
+      <div
+        class="resize-handle"
+        @mousedown="handleResizeStart($event, 1)"
+      />
 
       <!-- Column 2: Datasets (BigQuery), Databases (Snowflake), or Tables (DuckDB/PostgreSQL) -->
-      <div v-if="selectedProject" class="column" :style="{ width: `${col2Width}px` }">
+      <div
+        v-if="selectedProject"
+        class="column"
+        :style="{ width: `${col2Width}px` }"
+      >
         <div class="column-header">
           {{ selectedProjectType === 'bigquery' ? 'Datasets' : selectedProjectType === 'snowflake' ? 'Databases' : 'Tables' }}
         </div>
         <div class="column-content">
-          <div v-if="loadingDatasets[selectedProject] || loadingTables[selectedProject]" class="loading">Retrieving...</div>
+          <div
+            v-if="loadingDatasets[selectedProject] || loadingTables[selectedProject]"
+            class="loading"
+          >
+            Retrieving...
+          </div>
           <div
             v-for="item in column2Items"
             :key="item.id"
             :class="['item', {
               selected: selectedProjectType === 'bigquery' ? selectedDataset === item.id :
-                        selectedProjectType === 'snowflake' ? selectedSnowflakeDatabase === item.id :
-                        selectedTable === item.id
+                selectedProjectType === 'snowflake' ? selectedSnowflakeDatabase === item.id :
+                selectedTable === item.id
             }]"
             @click="selectedProjectType === 'bigquery' ? selectDataset(item.id) :
-                    selectedProjectType === 'snowflake' ? selectSnowflakeDatabase(item.id) :
-                    selectTable(item.id)"
+              selectedProjectType === 'snowflake' ? selectSnowflakeDatabase(item.id) :
+              selectTable(item.id)"
             @dblclick="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' ? insertTableName(item) : null"
             @mouseenter="hoveredTableItem = item.id"
             @mouseleave="hoveredTableItem = null"
@@ -1239,27 +1324,50 @@ defineExpose({
             <span class="item-name">{{ item.name }}</span>
             <button
               v-if="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake'"
+              v-tooltip="'Query this table'"
               class="query-button"
               :class="{ visible: hoveredTableItem === item.id }"
               @click.stop="queryTable(item)"
-              v-tooltip="'Query this table'"
             >
               ▶
             </button>
-            <span v-if="item.rowCount" class="item-meta">{{ item.rowCount }} rows</span>
+            <span
+              v-if="item.rowCount"
+              class="item-meta"
+            >{{ item.rowCount }} rows</span>
           </div>
         </div>
       </div>
 
       <!-- Resize handle 2 -->
-      <div v-if="selectedProject" class="resize-handle" @mousedown="handleResizeStart($event, 2)"></div>
+      <div
+        v-if="selectedProject"
+        class="resize-handle"
+        @mousedown="handleResizeStart($event, 2)"
+      />
 
       <!-- Column 3: BigQuery Tables or Snowflake Schemas -->
-      <div v-if="(selectedDataset && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')" class="column" :style="{ width: `${col3Width}px` }">
-        <div class="column-header">{{ selectedProjectType === 'snowflake' ? 'Schemas' : 'Tables' }}</div>
+      <div
+        v-if="(selectedDataset && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')"
+        class="column"
+        :style="{ width: `${col3Width}px` }"
+      >
+        <div class="column-header">
+          {{ selectedProjectType === 'snowflake' ? 'Schemas' : 'Tables' }}
+        </div>
         <div class="column-content">
-          <div v-if="selectedProjectType === 'bigquery' && selectedDataset && loadingTables[selectedDataset]" class="loading">Retrieving...</div>
-          <div v-if="selectedProjectType === 'snowflake' && loadingTables[`${selectedProject}:${selectedSnowflakeDatabase}`]" class="loading">Retrieving...</div>
+          <div
+            v-if="selectedProjectType === 'bigquery' && selectedDataset && loadingTables[selectedDataset]"
+            class="loading"
+          >
+            Retrieving...
+          </div>
+          <div
+            v-if="selectedProjectType === 'snowflake' && loadingTables[`${selectedProject}:${selectedSnowflakeDatabase}`]"
+            class="loading"
+          >
+            Retrieving...
+          </div>
           <div
             v-for="item in column3Items"
             :key="item.id"
@@ -1274,10 +1382,10 @@ defineExpose({
             <span class="item-name">{{ item.name }}</span>
             <button
               v-if="selectedProjectType !== 'snowflake'"
+              v-tooltip="'Query this table'"
               class="query-button"
               :class="{ visible: hoveredTableItem === item.id }"
               @click.stop="queryTable(item)"
-              v-tooltip="'Query this table'"
             >
               ▶
             </button>
@@ -1286,13 +1394,28 @@ defineExpose({
       </div>
 
       <!-- Resize handle 3 -->
-      <div v-if="(selectedDataset && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')" class="resize-handle" @mousedown="handleResizeStart($event, 3)"></div>
+      <div
+        v-if="(selectedDataset && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')"
+        class="resize-handle"
+        @mousedown="handleResizeStart($event, 3)"
+      />
 
       <!-- Column 4: Snowflake Tables (when schema is selected) -->
-      <div v-if="selectedSnowflakeSchema && selectedProjectType === 'snowflake'" class="column" :style="{ width: `${col4Width}px` }">
-        <div class="column-header">Tables</div>
+      <div
+        v-if="selectedSnowflakeSchema && selectedProjectType === 'snowflake'"
+        class="column"
+        :style="{ width: `${col4Width}px` }"
+      >
+        <div class="column-header">
+          Tables
+        </div>
         <div class="column-content">
-          <div v-if="loadingTables[`${selectedProject}:${selectedSnowflakeDatabase}.${selectedSnowflakeSchema}`]" class="loading">Retrieving...</div>
+          <div
+            v-if="loadingTables[`${selectedProject}:${selectedSnowflakeDatabase}.${selectedSnowflakeSchema}`]"
+            class="loading"
+          >
+            Retrieving...
+          </div>
           <div
             v-for="table in column4Items"
             :key="table.id"
@@ -1304,10 +1427,10 @@ defineExpose({
           >
             <span class="item-name">{{ table.name }}</span>
             <button
+              v-tooltip="'Query this table'"
               class="query-button"
               :class="{ visible: hoveredTableItem === table.id }"
               @click.stop="queryTable(table)"
-              v-tooltip="'Query this table'"
             >
               ▶
             </button>
@@ -1316,20 +1439,38 @@ defineExpose({
       </div>
 
       <!-- Resize handle 4 (between Snowflake Tables and Columns) -->
-      <div v-if="selectedSnowflakeSchema && selectedProjectType === 'snowflake'" class="resize-handle" @mousedown="handleResizeStart($event, 4)"></div>
+      <div
+        v-if="selectedSnowflakeSchema && selectedProjectType === 'snowflake'"
+        class="resize-handle"
+        @mousedown="handleResizeStart($event, 4)"
+      />
 
       <!-- Column 4 (non-Snowflake) / Column 5 (Snowflake): Columns -->
-      <div v-if="selectedTable" class="column column-schema">
-        <div class="column-header">Columns</div>
+      <div
+        v-if="selectedTable"
+        class="column column-schema"
+      >
+        <div class="column-header">
+          Columns
+        </div>
         <div
           ref="columnsContainerRef"
           class="column-content"
           :class="{ 'virtual-scroll': useVirtualScroll }"
           @scroll="handleColumnsScroll"
         >
-          <div v-if="loadingSchema[selectedTable]" class="loading">Retrieving...</div>
+          <div
+            v-if="loadingSchema[selectedTable]"
+            class="loading"
+          >
+            Retrieving...
+          </div>
           <!-- Virtual scroll spacer - creates the full scrollable height -->
-          <div v-if="useVirtualScroll" class="virtual-scroll-spacer" :style="{ height: `${columnsTotalHeight}px` }"></div>
+          <div
+            v-if="useVirtualScroll"
+            class="virtual-scroll-spacer"
+            :style="{ height: `${columnsTotalHeight}px` }"
+          />
           <!-- Render only visible items when virtualizing -->
           <div
             v-for="field in visibleColumnItems"
@@ -1342,12 +1483,21 @@ defineExpose({
               <span class="field-name">{{ field.name }}</span>
               <button
                 v-if="!isUnsupportedType(field.type)"
+                v-tooltip="'View column analytics'"
                 class="analytics-btn"
                 @click.stop="handleShowAnalytics($event, field)"
-                v-tooltip="'View column analytics'"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 20V10M12 20V4M6 20v-6"/>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M18 20V10M12 20V4M6 20v-6" />
                 </svg>
               </button>
             </span>

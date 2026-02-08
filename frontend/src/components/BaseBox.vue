@@ -105,7 +105,10 @@ defineExpose({ boxName })
     @drag-end="emit('drag-end')"
   >
     <template #header>
-      <div v-if="showHeaderName" class="box-name-container">
+      <div
+        v-if="showHeaderName"
+        class="box-name-container"
+      >
         <input
           v-if="isEditingName"
           ref="nameInputRef"
@@ -115,40 +118,64 @@ defineExpose({ boxName })
           @blur="finishEditingName"
           @keydown="handleNameKeydown"
           @click.stop
-        />
+        >
         <span
           v-else
-          class="box-name"
           v-tooltip="'Double-click to edit'"
+          class="box-name"
           @dblclick="startEditingName"
         >{{ boxName }}</span>
       </div>
 
-      <div class="header-buttons" :class="{ 'no-name': !showHeaderName }">
+      <div
+        class="header-buttons"
+        :class="{ 'no-name': !showHeaderName }"
+      >
         <button
-          class="header-btn"
           v-tooltip="'Fit to view'"
+          class="header-btn"
           aria-label="Fit to view"
           @click="handleMaximize"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
           </svg>
         </button>
         <button
-          class="header-btn delete-btn"
           v-tooltip="'Close (Delete)'"
+          class="header-btn delete-btn"
           aria-label="Close"
           @click="handleDelete"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 5L5 19M5 5l14 14"/>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M19 5L5 19M5 5l14 14" />
           </svg>
         </button>
       </div>
     </template>
 
-    <div v-if="connectionMissing" class="connection-missing-overlay">
+    <div
+      v-if="connectionMissing"
+      class="connection-missing-overlay"
+    >
       <div class="connection-missing-message">
         <span>Connection unavailable</span>
         <span class="connection-missing-hint">

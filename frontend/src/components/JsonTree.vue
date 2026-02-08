@@ -159,7 +159,10 @@ const isCurrentExpanded = computed(() => isExpanded(currentPath))
           @keydown="handleKeydown($event, currentPath)"
         >
           <span class="json-chevron">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            ><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" /></svg>
           </span>
           <span class="json-preview">{{ getPreview(data) }}</span>
         </span>
@@ -175,7 +178,10 @@ const isCurrentExpanded = computed(() => isExpanded(currentPath))
             @keydown="handleKeydown($event, currentPath)"
           >
             <span class="json-chevron expanded">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              ><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" /></svg>
             </span>
             <span class="json-bracket">{{ getOpenBracket(data) }}</span>
           </span>
@@ -187,8 +193,14 @@ const isCurrentExpanded = computed(() => isExpanded(currentPath))
               class="json-entry"
             >
               <!-- Key/Index -->
-              <span v-if="!Array.isArray(data)" class="json-key">"{{ key }}"</span>
-              <span v-else class="json-index">{{ key }}</span>
+              <span
+                v-if="!Array.isArray(data)"
+                class="json-key"
+              >"{{ key }}"</span>
+              <span
+                v-else
+                class="json-index"
+              >{{ key }}</span>
               <span class="json-colon">: </span>
 
               <!-- Nested expandable value -->

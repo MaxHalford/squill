@@ -47,7 +47,7 @@ const emit = defineEmits([
   'drag-start', 'drag-end', 'navigate-to-table',
 ])
 
-const baseBoxRef = ref<any>(null)
+const baseBoxRef = ref<InstanceType<typeof BaseBox> | null>(null)
 const queryPanelRef = ref<InstanceType<typeof QueryPanel> | null>(null)
 const queryText = ref(props.initialQuery)
 

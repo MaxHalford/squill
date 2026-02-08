@@ -12,7 +12,7 @@ export async function loadCsvWithDuckDB(
   file: File,
   db: AsyncDuckDB,
   conn: AsyncDuckDBConnection,
-  existingTables: Record<string, any>
+  existingTables: Record<string, unknown>
 ): Promise<CsvLoadResult> {
   // 1. Generate unique table name
   const tableName = generateUniqueTableName(file.name, existingTables)

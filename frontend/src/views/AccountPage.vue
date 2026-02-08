@@ -2,23 +2,41 @@
   <div class="page-container">
     <div class="page-content">
       <div class="page-header">
-        <button class="back-button" @click="goBack">← Back</button>
-        <button v-if="userStore.isLoggedIn" class="sign-out-button" @click="handleSignOut">
+        <button
+          class="back-button"
+          @click="goBack"
+        >
+          ← Back
+        </button>
+        <button
+          v-if="userStore.isLoggedIn"
+          class="sign-out-button"
+          @click="handleSignOut"
+        >
           Sign out
         </button>
       </div>
 
       <!-- Not logged in state -->
-      <div v-if="!userStore.isLoggedIn" class="not-logged-in">
+      <div
+        v-if="!userStore.isLoggedIn"
+        class="not-logged-in"
+      >
         <h1>Account</h1>
         <p>You're not signed in. Sign in to access account features.</p>
-        <button class="sign-in-button" @click="handleSignIn">
+        <button
+          class="sign-in-button"
+          @click="handleSignIn"
+        >
           Sign in with Google
         </button>
       </div>
 
       <!-- Logged in state -->
-      <div v-else class="account-sections">
+      <div
+        v-else
+        class="account-sections"
+      >
         <h1>Account</h1>
 
         <!-- Profile Section -->
@@ -31,7 +49,9 @@
               </div>
             </div>
             <div class="profile-info">
-              <div class="profile-email">{{ userStore.user?.email }}</div>
+              <div class="profile-email">
+                {{ userStore.user?.email }}
+              </div>
               <div class="profile-provider">
                 Signed in with Google
               </div>
@@ -44,13 +64,19 @@
           <h2>Plan</h2>
 
           <!-- Success message after checkout -->
-          <div v-if="checkoutStatus === 'success'" class="success-banner">
+          <div
+            v-if="checkoutStatus === 'success'"
+            class="success-banner"
+          >
             Welcome to Squill Pro! Your subscription is now active.
           </div>
 
           <div class="plan-card">
             <div class="plan-status">
-              <span class="plan-badge" :class="badgeClass">
+              <span
+                class="plan-badge"
+                :class="badgeClass"
+              >
                 {{ planLabel }}
               </span>
             </div>
@@ -154,8 +180,8 @@
             <p>Permanently delete your account and all associated data. This action cannot be undone.</p>
             <button
               class="delete-button"
-              @click="handleDeleteAccount"
               :disabled="isDeleting"
+              @click="handleDeleteAccount"
             >
               {{ isDeleting ? 'Deleting...' : 'Delete account' }}
             </button>

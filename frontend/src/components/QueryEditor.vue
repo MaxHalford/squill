@@ -17,6 +17,7 @@ import { useBigQueryStore, type DryRunResult } from '../stores/bigquery'
 import { createTableLinkExtension } from '../utils/tableLinkExtension'
 import { attachTooltip } from '../directives/tooltip'
 import type { TableReferenceWithPosition } from '../utils/queryAnalyzer'
+import type { SchemaNamespace } from '../utils/schemaBuilder'
 
 // Types for error suggestions
 interface LineSuggestion {
@@ -27,17 +28,13 @@ interface LineSuggestion {
   message?: string
 }
 
-interface SchemaTable {
-  [tableName: string]: string[]
-}
-
 const props = defineProps<{
   modelValue?: string
   height?: number
   isRunning?: boolean
   disabled?: boolean
   dialect?: 'bigquery' | 'duckdb' | 'postgres'
-  schema?: SchemaTable
+  schema?: SchemaNamespace
   suggestion?: LineSuggestion | null
   connectionType?: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
   connectionId?: string
@@ -431,7 +428,7 @@ const editorTheme = EditorView.theme({
   },
 }, { dark: false })
 
-const buildSQLExtension = (dialect: string, _schema: SchemaTable) => {
+const buildSQLExtension = (dialect: string, _schema: SchemaNamespace) => {
   // Get the CodeMirror dialect for syntax highlighting
   const sqlDialect = getCodeMirrorDialect(dialect as SqlDialect)
   // Don't pass schema to sql() - we'll handle completions separately
@@ -441,7 +438,7 @@ const buildSQLExtension = (dialect: string, _schema: SchemaTable) => {
 }
 
 // Build completion sources with exact match filtering
-const buildCompletionSources = (dialect: string, schema: SchemaTable, connectionType?: string) => {
+const buildCompletionSources = (dialect: string, schema: SchemaNamespace, connectionType?: string) => {
   const sqlDialect = getCodeMirrorDialect(dialect as SqlDialect)
 
   // Wrap schema completions to filter out exact matches
@@ -698,24 +695,47 @@ defineExpose({
 </script>
 
 <template>
-  <div class="query-editor-wrapper" :style="{ height: `${height || 150}px` }">
-    <div ref="editorRef" class="query-editor" />
+  <div
+    class="query-editor-wrapper"
+    :style="{ height: `${height || 150}px` }"
+  >
+    <div
+      ref="editorRef"
+      class="query-editor"
+    />
 
     <button
+      v-tooltip="runButtonTooltip"
       class="run-btn"
       :disabled="disabled"
-      v-tooltip="runButtonTooltip"
       @mouseenter="triggerDryRun"
       @click.stop="isRunning ? emit('stop') : emit('run')"
     >
       <template v-if="isRunning">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-          <rect x="4" y="4" width="16" height="16" rx="2"/>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <rect
+            x="4"
+            y="4"
+            width="16"
+            height="16"
+            rx="2"
+          />
         </svg>
         <span class="elapsed">{{ elapsedTime.toFixed(1) }}s</span>
       </template>
-      <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M8 5v14l11-7z"/>
+      <svg
+        v-else
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path d="M8 5v14l11-7z" />
       </svg>
     </button>
   </div>

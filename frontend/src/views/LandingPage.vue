@@ -289,56 +289,140 @@ const toggleFaq = (index: number) => {
 
       <!-- Schema tree decoration -->
       <div class="hero-decoration deco-schema">
-        <div class="schema-item schema-db">cinema_db</div>
-        <div class="schema-item schema-table">films</div>
-        <div class="schema-item schema-table">directors</div>
-        <div class="schema-item schema-table">awards</div>
+        <div class="schema-item schema-db">
+          cinema_db
+        </div>
+        <div class="schema-item schema-table">
+          films
+        </div>
+        <div class="schema-item schema-table">
+          directors
+        </div>
+        <div class="schema-item schema-table">
+          awards
+        </div>
       </div>
 
       <!-- Floating bird stickers (decorative) -->
-      <img src="@/assets/birds/balcon.svg" class="hero-decoration deco-bird deco-bird-balcon" :class="{ 'deco-loaded': loadedBirds.balcon }" @load="loadedBirds.balcon = true" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/fromagerie0.svg" class="hero-decoration deco-bird deco-bird-fromagerie" :class="{ 'deco-loaded': loadedBirds.fromagerie }" @load="loadedBirds.fromagerie = true" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/graph.svg" class="hero-decoration deco-bird deco-bird-graph" :class="{ 'deco-loaded': loadedBirds.graph }" @load="loadedBirds.graph = true" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/select_bar.svg" class="hero-decoration deco-bird deco-bird-select-bar" :class="{ 'deco-loaded': loadedBirds.selectBar }" @load="loadedBirds.selectBar = true" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/theatre.svg" class="hero-decoration deco-bird deco-bird-theatre" :class="{ 'deco-loaded': loadedBirds.theatre }" @load="loadedBirds.theatre = true" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/where.svg" class="hero-decoration deco-bird deco-bird-where" :class="{ 'deco-loaded': loadedBirds.where }" @load="loadedBirds.where = true" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/rolling.svg" class="hero-decoration deco-bird deco-bird-rolling" :class="{ 'deco-loaded': loadedBirds.rolling }" @load="loadedBirds.rolling = true" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/music.svg" class="hero-decoration deco-bird deco-bird-music" :class="{ 'deco-loaded': loadedBirds.music }" @load="loadedBirds.music = true" alt="" aria-hidden="true" />
-      <img src="@/assets/birds/stand.svg" class="hero-decoration deco-bird deco-bird-stand" :class="{ 'deco-loaded': loadedBirds.stand }" @load="loadedBirds.stand = true" alt="" aria-hidden="true" />
+      <img
+        src="@/assets/birds/balcon.svg"
+        class="hero-decoration deco-bird deco-bird-balcon"
+        :class="{ 'deco-loaded': loadedBirds.balcon }"
+        alt=""
+        aria-hidden="true"
+        @load="loadedBirds.balcon = true"
+      >
+      <img
+        src="@/assets/birds/fromagerie0.svg"
+        class="hero-decoration deco-bird deco-bird-fromagerie"
+        :class="{ 'deco-loaded': loadedBirds.fromagerie }"
+        alt=""
+        aria-hidden="true"
+        @load="loadedBirds.fromagerie = true"
+      >
+      <img
+        src="@/assets/birds/graph.svg"
+        class="hero-decoration deco-bird deco-bird-graph"
+        :class="{ 'deco-loaded': loadedBirds.graph }"
+        alt=""
+        aria-hidden="true"
+        @load="loadedBirds.graph = true"
+      >
+      <img
+        src="@/assets/birds/select_bar.svg"
+        class="hero-decoration deco-bird deco-bird-select-bar"
+        :class="{ 'deco-loaded': loadedBirds.selectBar }"
+        alt=""
+        aria-hidden="true"
+        @load="loadedBirds.selectBar = true"
+      >
+      <img
+        src="@/assets/birds/theatre.svg"
+        class="hero-decoration deco-bird deco-bird-theatre"
+        :class="{ 'deco-loaded': loadedBirds.theatre }"
+        alt=""
+        aria-hidden="true"
+        @load="loadedBirds.theatre = true"
+      >
+      <img
+        src="@/assets/birds/where.svg"
+        class="hero-decoration deco-bird deco-bird-where"
+        :class="{ 'deco-loaded': loadedBirds.where }"
+        alt=""
+        aria-hidden="true"
+        @load="loadedBirds.where = true"
+      >
+      <img
+        src="@/assets/birds/rolling.svg"
+        class="hero-decoration deco-bird deco-bird-rolling"
+        :class="{ 'deco-loaded': loadedBirds.rolling }"
+        alt=""
+        aria-hidden="true"
+        @load="loadedBirds.rolling = true"
+      >
+      <img
+        src="@/assets/birds/music.svg"
+        class="hero-decoration deco-bird deco-bird-music"
+        :class="{ 'deco-loaded': loadedBirds.music }"
+        alt=""
+        aria-hidden="true"
+        @load="loadedBirds.music = true"
+      >
+      <img
+        src="@/assets/birds/stand.svg"
+        class="hero-decoration deco-bird deco-bird-stand"
+        :class="{ 'deco-loaded': loadedBirds.stand }"
+        alt=""
+        aria-hidden="true"
+        @load="loadedBirds.stand = true"
+      >
 
       <!-- Sticky note decoration -->
       <div class="hero-decoration deco-note">
         <span>TODO:</span>
-        <span>Watch more<br/>Park Chan-wook</span>
+        <span>Watch more<br>Park Chan-wook</span>
       </div>
 
       <!-- Main content -->
       <div class="hero-content">
-        <h1 class="hero-title">SQUILL</h1>
-        <p class="hero-tagline">Open source SQL editor in the browser</p>
-        <button class="btn-primary" @click="launchApp">
+        <h1 class="hero-title">
+          SQUILL
+        </h1>
+        <p class="hero-tagline">
+          Open source SQL editor in the browser
+        </p>
+        <button
+          class="btn-primary"
+          @click="launchApp"
+        >
           Open editor
         </button>
       </div>
 
       <!-- Scroll hint -->
-      <div class="scroll-hint" aria-hidden="true">
-        <span class="scroll-chevron"></span>
+      <div
+        class="scroll-hint"
+        aria-hidden="true"
+      >
+        <span class="scroll-chevron" />
       </div>
-
     </section>
 
     <!-- Features Section -->
     <section class="section features">
-      <h2 class="section-title">WHAT YOU GET</h2>
-      <p class="features-subtitle">A free, open source online SQL editor. No download, no install — just open your browser and start querying DuckDB, PostgreSQL, BigQuery, and Snowflake.</p>
+      <h2 class="section-title">
+        WHAT YOU GET
+      </h2>
+      <p class="features-subtitle">
+        A free, open source online SQL editor. No download, no install — just open your browser and start querying DuckDB, PostgreSQL, BigQuery, and Snowflake.
+      </p>
       <div class="features-grid">
         <div class="feature-card">
           <div class="feature-icon icon-canvas">
             <div class="icon-grid">
-              <span></span><span></span><span></span>
-              <span></span><span></span><span></span>
-              <span></span><span></span><span></span>
+              <span /><span /><span />
+              <span /><span /><span />
+              <span /><span /><span />
             </div>
           </div>
           <h3>Infinite canvas</h3>
@@ -358,9 +442,9 @@ const toggleFaq = (index: number) => {
         <div class="feature-card">
           <div class="feature-icon icon-db">
             <div class="db-stack">
-              <span class="db-layer"></span>
-              <span class="db-layer"></span>
-              <span class="db-layer"></span>
+              <span class="db-layer" />
+              <span class="db-layer" />
+              <span class="db-layer" />
             </div>
           </div>
           <h3>Unlimited connections</h3>
@@ -372,12 +456,12 @@ const toggleFaq = (index: number) => {
             <div class="csv-icon">
               <div class="csv-doc">
                 <div class="csv-lines">
-                  <span></span>
-                  <span></span>
-                  <span></span>
+                  <span />
+                  <span />
+                  <span />
                 </div>
               </div>
-              <div class="csv-arrow"></div>
+              <div class="csv-arrow" />
             </div>
           </div>
           <h3>Drag & drop CSV</h3>
@@ -387,10 +471,22 @@ const toggleFaq = (index: number) => {
         <div class="feature-card">
           <div class="feature-icon icon-analytics">
             <div class="analytics-icon">
-              <div class="analytics-bar" style="height: 40%"></div>
-              <div class="analytics-bar" style="height: 70%"></div>
-              <div class="analytics-bar" style="height: 55%"></div>
-              <div class="analytics-bar" style="height: 85%"></div>
+              <div
+                class="analytics-bar"
+                style="height: 40%"
+              />
+              <div
+                class="analytics-bar"
+                style="height: 70%"
+              />
+              <div
+                class="analytics-bar"
+                style="height: 55%"
+              />
+              <div
+                class="analytics-bar"
+                style="height: 85%"
+              />
             </div>
           </div>
           <h3>Click-to-analyze</h3>
@@ -400,9 +496,9 @@ const toggleFaq = (index: number) => {
         <div class="feature-card">
           <div class="feature-icon icon-pages">
             <div class="pages-stack">
-              <span class="page-layer"></span>
-              <span class="page-layer"></span>
-              <span class="page-layer front"></span>
+              <span class="page-layer" />
+              <span class="page-layer" />
+              <span class="page-layer front" />
             </div>
           </div>
           <h3>Large results, no sweat</h3>
@@ -411,9 +507,29 @@ const toggleFaq = (index: number) => {
 
         <div class="feature-card">
           <div class="feature-icon icon-magnifier">
-            <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-              <circle cx="14" cy="14" r="10" stroke="var(--surface-inverse)" stroke-width="3" fill="var(--surface-tertiary)"/>
-              <line x1="23" y1="23" x2="33" y2="33" stroke="var(--surface-inverse)" stroke-width="4" stroke-linecap="round"/>
+            <svg
+              width="36"
+              height="36"
+              viewBox="0 0 36 36"
+              fill="none"
+            >
+              <circle
+                cx="14"
+                cy="14"
+                r="10"
+                stroke="var(--surface-inverse)"
+                stroke-width="3"
+                fill="var(--surface-tertiary)"
+              />
+              <line
+                x1="23"
+                y1="23"
+                x2="33"
+                y2="33"
+                stroke="var(--surface-inverse)"
+                stroke-width="4"
+                stroke-linecap="round"
+              />
             </svg>
           </div>
           <h3>Schema explorer</h3>
@@ -422,18 +538,30 @@ const toggleFaq = (index: number) => {
 
         <div class="feature-card">
           <div class="feature-icon icon-opensource">
-            <div class="opensource-icon">&lt;/&gt;</div>
+            <div class="opensource-icon">
+              &lt;/&gt;
+            </div>
           </div>
           <h3>Fully open source</h3>
-          <p>Licensed under AGPL. Inspect the code, contribute, or self-host. <a href="https://github.com/MaxHalford/squill" target="_blank" rel="noopener">View on GitHub</a>.</p>
+          <p>
+            Licensed under AGPL. Inspect the code, contribute, or self-host. <a
+              href="https://github.com/MaxHalford/squill"
+              target="_blank"
+              rel="noopener"
+            >View on GitHub</a>.
+          </p>
         </div>
       </div>
     </section>
 
     <!-- Databases Section -->
     <section class="section databases">
-      <h2 class="section-title">SUPPORTED DATABASES</h2>
-      <p class="databases-subtitle">Click on a logo to learn how each database is supported</p>
+      <h2 class="section-title">
+        SUPPORTED DATABASES
+      </h2>
+      <p class="databases-subtitle">
+        Click on a logo to learn how each database is supported
+      </p>
       <div class="databases-grid">
         <button
           v-for="engine in DATABASE_ENGINES"
@@ -445,9 +573,12 @@ const toggleFaq = (index: number) => {
             :src="DATABASE_INFO[engine].logo"
             :alt="DATABASE_INFO[engine].name"
             class="database-logo"
-          />
+          >
           <span class="database-name">{{ DATABASE_INFO[engine].name }}</span>
-          <span class="database-badge" :class="DATABASE_INFO[engine].connectionType">
+          <span
+            class="database-badge"
+            :class="DATABASE_INFO[engine].connectionType"
+          >
             {{ DATABASE_INFO[engine].connectionType === 'client' ? 'Client-side' : 'Server-side' }}
           </span>
         </button>
@@ -457,20 +588,39 @@ const toggleFaq = (index: number) => {
     <!-- Database Detail Modal -->
     <Teleport to="body">
       <Transition name="modal">
-        <div v-if="selectedDatabase" class="modal-overlay" @click.self="closeDatabaseModal">
+        <div
+          v-if="selectedDatabase"
+          class="modal-overlay"
+          @click.self="closeDatabaseModal"
+        >
           <div class="database-modal">
-            <button class="modal-close" @click="closeDatabaseModal" aria-label="Close">×</button>
+            <button
+              class="modal-close"
+              aria-label="Close"
+              @click="closeDatabaseModal"
+            >
+              ×
+            </button>
             <div class="modal-header">
-              <img :src="selectedDatabase.logo" :alt="selectedDatabase.name" class="modal-logo" />
+              <img
+                :src="selectedDatabase.logo"
+                :alt="selectedDatabase.name"
+                class="modal-logo"
+              >
               <div class="modal-title-group">
                 <h3>{{ selectedDatabase.name }}</h3>
-                <span class="modal-badge" :class="selectedDatabase.connectionType">
+                <span
+                  class="modal-badge"
+                  :class="selectedDatabase.connectionType"
+                >
                   {{ selectedDatabase.connectionType === 'client' ? 'Client-side' : 'Server-side' }}
                 </span>
               </div>
             </div>
             <div class="modal-body">
-              <p class="modal-description">{{ selectedDatabase.longDescription }}</p>
+              <p class="modal-description">
+                {{ selectedDatabase.longDescription }}
+              </p>
               <div class="modal-details">
                 <div class="detail-row">
                   <span class="detail-label">Authentication</span>
@@ -483,7 +633,12 @@ const toggleFaq = (index: number) => {
               </div>
             </div>
             <div class="modal-footer">
-              <button class="btn-primary" @click="closeDatabaseModal">Got it</button>
+              <button
+                class="btn-primary"
+                @click="closeDatabaseModal"
+              >
+                Got it
+              </button>
             </div>
           </div>
         </div>
@@ -493,9 +648,19 @@ const toggleFaq = (index: number) => {
     <!-- Pro Feature Detail Modal -->
     <Teleport to="body">
       <Transition name="modal">
-        <div v-if="selectedProFeature" class="modal-overlay" @click.self="closeProFeatureModal">
+        <div
+          v-if="selectedProFeature"
+          class="modal-overlay"
+          @click.self="closeProFeatureModal"
+        >
           <div class="database-modal">
-            <button class="modal-close" @click="closeProFeatureModal" aria-label="Close">×</button>
+            <button
+              class="modal-close"
+              aria-label="Close"
+              @click="closeProFeatureModal"
+            >
+              ×
+            </button>
             <div class="modal-header">
               <div class="modal-title-group">
                 <h3>{{ selectedProFeature.title }}</h3>
@@ -503,10 +668,17 @@ const toggleFaq = (index: number) => {
               </div>
             </div>
             <div class="modal-body">
-              <p class="modal-description">{{ selectedProFeature.longDescription }}</p>
+              <p class="modal-description">
+                {{ selectedProFeature.longDescription }}
+              </p>
             </div>
             <div class="modal-footer">
-              <button class="btn-primary" @click="closeProFeatureModal">Got it</button>
+              <button
+                class="btn-primary"
+                @click="closeProFeatureModal"
+              >
+                Got it
+              </button>
             </div>
           </div>
         </div>
@@ -516,33 +688,46 @@ const toggleFaq = (index: number) => {
     <!-- Pro Section -->
     <section class="section section-inverted pro">
       <div class="pro-container">
-        <h2 class="section-title">SQUILL PRO</h2>
-        <p class="pro-price">8€ / month / person</p>
+        <h2 class="section-title">
+          SQUILL PRO
+        </h2>
+        <p class="pro-price">
+          8€ / month / person
+        </p>
 
         <div class="pro-features">
           <component
+            :is="feature.released ? 'button' : 'div'"
             v-for="feature in proFeatures"
             :key="feature.title"
-            :is="feature.released ? 'button' : 'div'"
             class="pro-feature"
             :class="{ available: feature.released, 'coming-soon': !feature.released, clickable: feature.released }"
             @click="openProFeatureModal(feature)"
           >
             <span class="status-icon">{{ feature.released ? '&#10003;' : '&#9671;' }}</span>
             <div class="pro-feature-content">
-              <h4>{{ feature.title }} <span v-if="!feature.released" class="badge">work in progress</span></h4>
+              <h4>
+                {{ feature.title }} <span
+                  v-if="!feature.released"
+                  class="badge"
+                >work in progress</span>
+              </h4>
               <p>{{ feature.description }}</p>
             </div>
           </component>
         </div>
 
-        <p class="pro-philosophy">You're paying for compute, not vanity features.</p>
+        <p class="pro-philosophy">
+          You're paying for compute, not vanity features.
+        </p>
       </div>
     </section>
 
     <!-- Testimonials Section -->
     <section class="section testimonials">
-      <h2 class="section-title">WHAT PEOPLE SAY</h2>
+      <h2 class="section-title">
+        WHAT PEOPLE SAY
+      </h2>
       <div class="testimonials-grid">
         <div class="testimonial-card testimonial-main">
           <blockquote>
@@ -565,12 +750,12 @@ const toggleFaq = (index: number) => {
         </div>
 
         <div class="testimonial-card testimonial-placeholder">
-          <div class="hatching"></div>
+          <div class="hatching" />
           <span>Your testimonial here...</span>
         </div>
 
         <div class="testimonial-card testimonial-placeholder">
-          <div class="hatching"></div>
+          <div class="hatching" />
           <span>Your testimonial here...</span>
         </div>
       </div>
@@ -578,7 +763,9 @@ const toggleFaq = (index: number) => {
 
     <!-- FAQ Section -->
     <section class="section faq">
-      <h2 class="section-title">FREQUENTLY ASKED QUESTIONS</h2>
+      <h2 class="section-title">
+        FREQUENTLY ASKED QUESTIONS
+      </h2>
       <div class="faq-list">
         <div
           v-for="(faq, index) in faqs"
@@ -586,7 +773,10 @@ const toggleFaq = (index: number) => {
           class="faq-item"
           :class="{ open: openFaq === index }"
         >
-          <button class="faq-question" @click="toggleFaq(index)">
+          <button
+            class="faq-question"
+            @click="toggleFaq(index)"
+          >
             <span class="faq-toggle">{{ openFaq === index ? '−' : '+' }}</span>
             {{ faq.question }}
           </button>
@@ -601,22 +791,46 @@ const toggleFaq = (index: number) => {
 
     <!-- Footer -->
     <footer class="landing-footer">
-      <img src="@/assets/birds/personnage1.svg" class="footer-bird footer-bird-left" alt="" aria-hidden="true" />
+      <img
+        src="@/assets/birds/personnage1.svg"
+        class="footer-bird footer-bird-left"
+        alt=""
+        aria-hidden="true"
+      >
       <div class="footer-content">
         <span class="footer-logo">SQUILL</span>
         <div class="footer-links">
-          <a href="https://github.com/MaxHalford/squill" target="_blank" rel="noopener">GitHub</a>
+          <a
+            href="https://github.com/MaxHalford/squill"
+            target="_blank"
+            rel="noopener"
+          >GitHub</a>
           <span class="divider">|</span>
-          <router-link to="/privacy-policy">Privacy Policy</router-link>
+          <router-link to="/privacy-policy">
+            Privacy Policy
+          </router-link>
           <span class="divider">|</span>
-          <router-link to="/terms-of-service">Terms of Service</router-link>
+          <router-link to="/terms-of-service">
+            Terms of Service
+          </router-link>
           <span class="divider">|</span>
-          <router-link to="/refund-policy">Refund Policy</router-link>
+          <router-link to="/refund-policy">
+            Refund Policy
+          </router-link>
         </div>
-        <p class="footer-tagline">Made by a data scientist, for data people</p>
-        <p class="footer-tagline">Funky birds drawn by Lina</p>
+        <p class="footer-tagline">
+          Made by a data scientist, for data people
+        </p>
+        <p class="footer-tagline">
+          Funky birds drawn by Lina
+        </p>
       </div>
-      <img src="@/assets/birds/personnage2.svg" class="footer-bird footer-bird-right" alt="" aria-hidden="true" />
+      <img
+        src="@/assets/birds/personnage2.svg"
+        class="footer-bird footer-bird-right"
+        alt=""
+        aria-hidden="true"
+      >
     </footer>
   </div>
 </template>

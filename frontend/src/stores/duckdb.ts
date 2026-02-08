@@ -177,7 +177,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // For other engines: lets DuckDB infer types (they return properly typed data)
   const storeResults = async (
     boxName: string,
-    results: Record<string, any>[],
+    results: Record<string, unknown>[],
     boxId: number | null = null,
     schema?: ColumnSchema[],
     sourceEngine?: DatabaseEngine
@@ -506,7 +506,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     tableName: string,
     page: number,
     pageSize: number
-  ): Promise<{ rows: Record<string, any>[], columns: string[], columnTypes: Record<string, string> }> => {
+  ): Promise<{ rows: Record<string, SerializableValue>[], columns: string[], columnTypes: Record<string, string> }> => {
     if (!isInitialized.value) {
       await initialize()
     }
@@ -522,7 +522,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         columnTypes[f.name] = f.type.toString()
       })
       const rows = result.toArray().map(row => {
-        const obj: Record<string, any> = {}
+        const obj: Record<string, SerializableValue> = {}
         columns.forEach(col => {
           obj[col] = serializeDuckDBValue(row[col])
         })

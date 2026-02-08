@@ -52,14 +52,25 @@ onUnmounted(() => {
         <div class="shortcuts-modal">
           <!-- Header -->
           <div class="modal-header">
-            <h1 id="shortcuts-title">Keyboard shortcuts</h1>
+            <h1 id="shortcuts-title">
+              Keyboard shortcuts
+            </h1>
             <button
               class="close-button"
               aria-label="Close"
               @click="emit('close')"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 6L6 18M6 6l12 12"/>
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
           </div>
@@ -71,7 +82,9 @@ onUnmounted(() => {
               :key="category"
               class="shortcut-category"
             >
-              <h2 class="category-title">{{ category }}</h2>
+              <h2 class="category-title">
+                {{ category }}
+              </h2>
               <div class="shortcuts-list">
                 <div
                   v-for="shortcut in shortcutsByCategory.get(category)"
@@ -80,7 +93,10 @@ onUnmounted(() => {
                 >
                   <span class="shortcut-name">{{ shortcut.name }}</span>
                   <span class="shortcut-keys">
-                    <kbd v-for="(key, idx) in shortcut.keys" :key="idx">{{ key }}</kbd>
+                    <kbd
+                      v-for="(key, idx) in shortcut.keys"
+                      :key="idx"
+                    >{{ key }}</kbd>
                   </span>
                 </div>
               </div>

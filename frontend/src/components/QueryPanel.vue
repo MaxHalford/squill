@@ -61,6 +61,7 @@ const props = withDefaults(defineProps<{
   showAnalytics?: boolean
 }>(), {
   modelValue: '',
+  connectionId: undefined,
   boxId: null,
   boxName: 'untitled',
   showAutofix: true,
@@ -109,7 +110,7 @@ let backgroundLoadController: AbortController | null = null
 const suggestion = ref<LineSuggestion | null>(null)
 const isFetchingFix = ref(false)
 
-const editorRef = ref<any>(null)
+const editorRef = ref<InstanceType<typeof QueryEditor> | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
 
@@ -330,7 +331,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
   }
 
   try {
-    const query = cleanQueryForExecution(editorRef.value.getQuery())
+    const query = cleanQueryForExecution(editorRef.value?.getQuery() ?? queryText.value)
     const startTime = performance.now()
 
     const availableTables = await duckdbStore.getFreshTableNames()
@@ -440,7 +441,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
     const completeEvent: QueryCompleteEvent = {
       tableName,
       rowCount: execResult.rowCount,
-      columns: (execResult as any).columns || [],
+      columns: (execResult as { columns?: string[] }).columns || [],
       executionTimeMs: execResult.executionTimeMs,
       engine: engine as DatabaseEngine,
       stats: execResult.stats as QueryCompleteEvent['stats'],
@@ -448,11 +449,11 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
 
     emit('query-complete', completeEvent)
     return completeEvent
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
       error.value = 'Query cancelled'
     } else {
-      const errorMessage = err.message || err.toString() || 'Query execution failed'
+      const errorMessage = err instanceof Error ? err.message : String(err)
       error.value = errorMessage
       console.error('Query error:', err)
 
@@ -589,7 +590,10 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="rootRef" class="query-panel">
+  <div
+    ref="rootRef"
+    class="query-panel"
+  >
     <QueryEditor
       ref="editorRef"
       v-model="queryText"

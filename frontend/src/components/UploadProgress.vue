@@ -7,14 +7,20 @@ defineProps<{
 
 <template>
   <Transition name="slide">
-    <div v-if="files.length > 0" class="upload-progress">
+    <div
+      v-if="files.length > 0"
+      class="upload-progress"
+    >
       <div class="progress-bar">
         <div class="progress-bar-indeterminate" />
       </div>
       <div class="progress-info">
         <span class="progress-text">
           Importing {{ files[currentIndex] }}
-          <span v-if="files.length > 1" class="progress-count">
+          <span
+            v-if="files.length > 1"
+            class="progress-count"
+          >
             ({{ currentIndex + 1 }}/{{ files.length }})
           </span>
         </span>

@@ -103,95 +103,167 @@ const toggleDropdown = () => {
 </script>
 
 <template>
-  <div class="menu-item" :class="{ active: activeDropdown === 'canvas' }">
-    <button class="menu-button" @click.stop="toggleDropdown">
+  <div
+    class="menu-item"
+    :class="{ active: activeDropdown === 'canvas' }"
+  >
+    <button
+      class="menu-button"
+      @click.stop="toggleDropdown"
+    >
       <span class="menu-text">{{ canvasStore.activeCanvasName }}</span>
       <span class="menu-caret">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M6 9l6 6 6-6"/>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M6 9l6 6 6-6" />
         </svg>
       </span>
     </button>
 
     <Transition name="dropdown">
-    <div v-if="activeDropdown === 'canvas'" class="dropdown canvas-dropdown">
-      <!-- Canvas List Section -->
-      <div class="dropdown-section">
-        <div class="section-label">Canvases</div>
-        <button
-          v-for="canvas in canvasList"
-          :key="canvas.id"
-          class="dropdown-item canvas-item"
-          :class="{ selected: canvas.id === canvasStore.activeCanvasId }"
-          @click="handleCanvasSelect(canvas.id)"
-        >
-          <div class="canvas-info">
-            <!-- Editable name -->
-            <input
-              v-if="editingCanvasId === canvas.id"
-              :ref="(el) => setInputRef(canvas.id, el as HTMLInputElement)"
-              v-model="editInputValue"
-              class="canvas-name-input"
-              type="text"
+      <div
+        v-if="activeDropdown === 'canvas'"
+        class="dropdown canvas-dropdown"
+      >
+        <!-- Canvas List Section -->
+        <div class="dropdown-section">
+          <div class="section-label">
+            Canvases
+          </div>
+          <button
+            v-for="canvas in canvasList"
+            :key="canvas.id"
+            class="dropdown-item canvas-item"
+            :class="{ selected: canvas.id === canvasStore.activeCanvasId }"
+            @click="handleCanvasSelect(canvas.id)"
+          >
+            <div class="canvas-info">
+              <!-- Editable name -->
+              <input
+                v-if="editingCanvasId === canvas.id"
+                :ref="(el) => setInputRef(canvas.id, el as HTMLInputElement)"
+                v-model="editInputValue"
+                class="canvas-name-input"
+                type="text"
+                @click.stop
+                @keydown="handleEditKeydown"
+                @blur="saveCanvasName"
+              >
+              <span
+                v-else
+                class="canvas-name"
+              >
+                {{ canvas.name }}
+              </span>
+            </div>
+            <div
+              class="canvas-actions"
               @click.stop
-              @keydown="handleEditKeydown"
-              @blur="saveCanvasName"
-            />
-            <span v-else class="canvas-name">
-              {{ canvas.name }}
-            </span>
-          </div>
-          <div class="canvas-actions" @click.stop>
-            <!-- Rename button -->
-            <button
-              class="action-btn"
-              @click="startEditing(canvas, $event)"
-              v-tooltip="'Rename'"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
-            </button>
-            <!-- Duplicate button -->
-            <button
-              class="action-btn"
-              @click="handleDuplicate(canvas.id, $event)"
-              v-tooltip="'Duplicate'"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-              </svg>
-            </button>
-            <!-- Delete button -->
-            <button
-              v-if="canvasList.length > 1"
-              class="action-btn delete-btn"
-              @click="handleDelete(canvas.id, $event)"
-              v-tooltip="'Delete'"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-        </button>
-      </div>
+              <!-- Rename button -->
+              <button
+                v-tooltip="'Rename'"
+                class="action-btn"
+                @click="startEditing(canvas, $event)"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+              <!-- Duplicate button -->
+              <button
+                v-tooltip="'Duplicate'"
+                class="action-btn"
+                @click="handleDuplicate(canvas.id, $event)"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect
+                    x="9"
+                    y="9"
+                    width="13"
+                    height="13"
+                    rx="2"
+                    ry="2"
+                  />
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
+              </button>
+              <!-- Delete button -->
+              <button
+                v-if="canvasList.length > 1"
+                v-tooltip="'Delete'"
+                class="action-btn delete-btn"
+                @click="handleDelete(canvas.id, $event)"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </button>
+        </div>
 
-      <!-- Add Canvas Section -->
-      <div class="dropdown-section add-section">
-        <div class="section-divider"></div>
-        <button class="dropdown-item add-item" @click="handleCreateCanvas">
-          <span class="add-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-          </span>
-          New canvas
-        </button>
+        <!-- Add Canvas Section -->
+        <div class="dropdown-section add-section">
+          <div class="section-divider" />
+          <button
+            class="dropdown-item add-item"
+            @click="handleCreateCanvas"
+          >
+            <span class="add-icon">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </span>
+            New canvas
+          </button>
+        </div>
       </div>
-    </div>
     </Transition>
   </div>
 </template>

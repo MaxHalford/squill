@@ -211,9 +211,14 @@ onUnmounted(() => {
           type="text"
           class="search-input"
           placeholder="Search queries..."
-        />
-        <select v-model="selectedConnectionId" class="connection-filter">
-          <option :value="null">All connections</option>
+        >
+        <select
+          v-model="selectedConnectionId"
+          class="connection-filter"
+        >
+          <option :value="null">
+            All connections
+          </option>
           <option
             v-for="conn in connectionOptions"
             :key="conn.id"
@@ -248,25 +253,36 @@ onUnmounted(() => {
               <span class="item-name">{{ entry.boxName || 'Query' }}</span>
               <span class="item-time">{{ formatRelativeTime(entry.timestamp) }}</span>
             </div>
-            <div class="item-preview">{{ getFirstLine(entry.query) }}</div>
+            <div class="item-preview">
+              {{ getFirstLine(entry.query) }}
+            </div>
             <div class="item-meta">
               <span
+                v-tooltip="getConnectionName(entry)"
                 class="engine-badge"
                 :style="{
                   background: DATABASE_INFO[entry.connectionType].color,
                   color: DATABASE_INFO[entry.connectionType].textColor
                 }"
-                v-tooltip="getConnectionName(entry)"
               >
                 {{ DATABASE_INFO[entry.connectionType].shortName }}
               </span>
-              <span v-if="entry.success && entry.rowCount !== undefined" class="row-count">
+              <span
+                v-if="entry.success && entry.rowCount !== undefined"
+                class="row-count"
+              >
                 {{ formatRowCount(entry.rowCount) }}
               </span>
-              <span v-if="entry.success && entry.executionTimeMs" class="exec-time">
+              <span
+                v-if="entry.success && entry.executionTimeMs"
+                class="exec-time"
+              >
                 {{ formatExecutionTime(entry.executionTimeMs) }}
               </span>
-              <span v-if="!entry.success" class="error-indicator">
+              <span
+                v-if="!entry.success"
+                class="error-indicator"
+              >
                 Failed
               </span>
             </div>
@@ -275,31 +291,54 @@ onUnmounted(() => {
 
         <!-- Query preview -->
         <div class="preview-panel">
-          <div v-if="!selectedEntry" class="preview-empty">
+          <div
+            v-if="!selectedEntry"
+            class="preview-empty"
+          >
             Select a query to preview
           </div>
           <template v-else>
             <!-- Action buttons -->
             <div class="preview-actions">
               <button
-                class="icon-btn"
                 v-tooltip="'Open in new SQL box'"
+                class="icon-btn"
                 @click.stop="restoreQuery"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                  <polyline points="15 3 21 3 21 9"/>
-                  <line x1="10" y1="14" x2="21" y2="3"/>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line
+                    x1="10"
+                    y1="14"
+                    x2="21"
+                    y2="3"
+                  />
                 </svg>
               </button>
               <CopyButton :text="selectedEntry.query" />
             </div>
             <!-- Error message if failed -->
-            <div v-if="!selectedEntry.success && selectedEntry.errorMessage" class="preview-error">
+            <div
+              v-if="!selectedEntry.success && selectedEntry.errorMessage"
+              class="preview-error"
+            >
               {{ selectedEntry.errorMessage }}
             </div>
             <!-- CodeMirror editor -->
-            <div ref="editorRef" class="code-editor" />
+            <div
+              ref="editorRef"
+              class="code-editor"
+            />
           </template>
         </div>
       </div>

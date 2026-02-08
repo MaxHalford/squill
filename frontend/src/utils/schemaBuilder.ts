@@ -9,9 +9,14 @@ export interface TableMetadata {
   boxId?: number | null
 }
 
+/** Schema structure for CodeMirror SQL autocompletion: table names map to column arrays, or nested namespaces */
+export interface SchemaNamespace {
+  [key: string]: string[] | SchemaNamespace
+}
+
 // Build schema from DuckDB tables for CodeMirror autocompletion
-export function buildDuckDBSchema(tables: Record<string, TableMetadata>): Record<string, any> {
-  const schema: Record<string, any> = {}
+export function buildDuckDBSchema(tables: Record<string, TableMetadata>): Record<string, string[]> {
+  const schema: Record<string, string[]> = {}
 
   for (const [tableName, metadata] of Object.entries(tables)) {
     // Simple array of column names
@@ -27,8 +32,8 @@ export function buildDuckDBSchema(tables: Record<string, TableMetadata>): Record
 export function buildBigQuerySchema(
   bigQuerySchemas: Record<string, Array<{ name: string; type: string }>>,
   activeProject?: string
-): Record<string, any> {
-  const schema: Record<string, any> = {}
+): SchemaNamespace {
+  const schema: SchemaNamespace = {}
 
   // Build hierarchical structure: project -> dataset -> table -> columns
   for (const [fullTableName, columns] of Object.entries(bigQuerySchemas)) {
@@ -36,34 +41,38 @@ export function buildBigQuerySchema(
     if (parts.length !== 3) continue
 
     const [project, dataset, table] = parts
+    const columnNames = columns.map(col => col.name)
 
     // Initialize project level
     if (!schema[project]) {
       schema[project] = {}
     }
+    const projectNs = schema[project] as SchemaNamespace
 
     // Initialize dataset level
-    if (!schema[project][dataset]) {
-      schema[project][dataset] = {}
+    if (!projectNs[dataset]) {
+      projectNs[dataset] = {}
     }
+    const datasetNs = projectNs[dataset] as SchemaNamespace
 
     // Add table with columns (just column names as strings)
-    schema[project][dataset][table] = columns.map(col => col.name)
+    datasetNs[table] = columnNames
 
     // If this is the active project, also add dataset-level shortcuts
     if (activeProject && project === activeProject) {
       // Add dataset.table shortcut
       const datasetTableKey = `${dataset}.${table}`
       if (!schema[datasetTableKey]) {
-        schema[datasetTableKey] = columns.map(col => col.name)
+        schema[datasetTableKey] = columnNames
       }
 
       // Also add dataset as top-level with its tables
       if (!schema[dataset]) {
         schema[dataset] = {}
       }
-      if (!schema[dataset][table]) {
-        schema[dataset][table] = columns.map(col => col.name)
+      const topDatasetNs = schema[dataset] as SchemaNamespace
+      if (!topDatasetNs[table]) {
+        topDatasetNs[table] = columnNames
       }
     }
   }
@@ -76,8 +85,8 @@ export function buildPostgresSchema(
   tablesCache: Map<string, PostgresTableInfo[]>,
   columnsCache: Map<string, PostgresColumnInfo[]>,
   connectionId: string
-): Record<string, any> {
-  const schema: Record<string, any> = {}
+): Record<string, string[]> {
+  const schema: Record<string, string[]> = {}
 
   const tables = tablesCache.get(connectionId)
   if (!tables) return schema
@@ -105,8 +114,8 @@ export function buildSnowflakeSchema(
   tablesCache: Map<string, SnowflakeTableInfo[]>,
   columnsCache: Map<string, SnowflakeColumnInfo[]>,
   connectionId: string
-): Record<string, any> {
-  const schema: Record<string, any> = {}
+): Record<string, string[]> {
+  const schema: Record<string, string[]> = {}
 
   const tables = tablesCache.get(connectionId)
   if (!tables) return schema
@@ -139,10 +148,10 @@ export function buildSnowflakeSchema(
 
 // Combine schemas for autocompletion
 export function combineSchemas(
-  duckdb: Record<string, any>,
-  bigquery: Record<string, any>,
-  postgres: Record<string, any> = {},
-  snowflake: Record<string, any> = {}
-): Record<string, any> {
+  duckdb: SchemaNamespace,
+  bigquery: SchemaNamespace,
+  postgres: SchemaNamespace = {},
+  snowflake: SchemaNamespace = {}
+): SchemaNamespace {
   return { ...duckdb, ...bigquery, ...postgres, ...snowflake }
 }

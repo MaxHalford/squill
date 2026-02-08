@@ -1,51 +1,31 @@
 import js from '@eslint/js'
+import tseslint from 'typescript-eslint'
 import pluginVue from 'eslint-plugin-vue'
-import tsparser from '@typescript-eslint/parser'
-import tseslint from '@typescript-eslint/eslint-plugin'
 
-export default [
+export default tseslint.config(
   js.configs.recommended,
-  ...pluginVue.configs['flat/essential'],
+  ...tseslint.configs.recommended,
+  ...pluginVue.configs['flat/recommended'],
   {
     files: ['**/*.vue'],
     languageOptions: {
       parserOptions: {
-        parser: tsparser,
-        ecmaVersion: 2020,
-        sourceType: 'module'
+        parser: tseslint.parser,
       }
-    },
-    plugins: {
-      '@typescript-eslint': tseslint
-    },
-    rules: {
-      'no-unused-vars': 'off',
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      'vue/multi-word-component-names': 'off',
-      'no-undef': 'off'
     }
   },
   {
-    files: ['**/*.ts', '**/*.tsx'],
-    languageOptions: {
-      parser: tsparser,
-      parserOptions: {
-        ecmaVersion: 2020,
-        sourceType: 'module'
-      }
-    },
-    plugins: {
-      '@typescript-eslint': tseslint
-    },
     rules: {
       'no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      'no-undef': 'off'
+      '@typescript-eslint/no-empty-object-type': 'off',
+      'vue/multi-word-component-names': 'off',
+      'vue/no-v-html': 'off',
+      'no-undef': 'off',
     }
   },
   {
     ignores: ['dist/', 'node_modules/']
   }
-]
+)

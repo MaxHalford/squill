@@ -202,15 +202,15 @@ const handleConnectionSelect = async (connectionId: string) => {
     }
   } else if (connection.type === 'postgres') {
     // Prefetch PostgreSQL schema for autocompletion
-    bigqueryStore.setProjectId(null as any)
+    bigqueryStore.setProjectId(null)
     await postgresStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load PostgreSQL schema:', err))
   } else if (connection.type === 'snowflake') {
     // Prefetch Snowflake schema for autocompletion
-    bigqueryStore.setProjectId(null as any)
+    bigqueryStore.setProjectId(null)
     await snowflakeStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load Snowflake schema:', err))
   } else {
     // DuckDB or other local connections
-    bigqueryStore.setProjectId(null as any)
+    bigqueryStore.setProjectId(null)
   }
 
   closeDropdown()
@@ -452,7 +452,12 @@ onUnmounted(() => {
 <template>
   <div class="menu-bar">
     <div class="menu-left">
-      <router-link to="/" class="app-name">Squill</router-link>
+      <router-link
+        to="/"
+        class="app-name"
+      >
+        Squill
+      </router-link>
 
       <!-- Canvas Dropdown -->
       <CanvasDropdown
@@ -462,440 +467,649 @@ onUnmounted(() => {
       />
 
       <!-- Unified Connection Dropdown -->
-      <div class="menu-item" :class="{ active: activeDropdown === 'connection' }">
-        <button class="menu-button" @click.stop="toggleDropdown('connection')">
-          <span v-if="connectionsStore.activeConnection?.type === 'bigquery' && connectionsStore.activeConnection?.projectId" class="menu-text">
+      <div
+        class="menu-item"
+        :class="{ active: activeDropdown === 'connection' }"
+      >
+        <button
+          class="menu-button"
+          @click.stop="toggleDropdown('connection')"
+        >
+          <span
+            v-if="connectionsStore.activeConnection?.type === 'bigquery' && connectionsStore.activeConnection?.projectId"
+            class="menu-text"
+          >
             {{ getConnectionDisplayName(connectionsStore.activeConnection) }} / {{ connectionsStore.activeConnection.projectId }}
-            <span v-if="shouldShowActiveExpired" class="token-expired-indicator"> (Expired)</span>
+            <span
+              v-if="shouldShowActiveExpired"
+              class="token-expired-indicator"
+            > (Expired)</span>
           </span>
-          <span v-else-if="connectionsStore.activeConnection" class="menu-text">
+          <span
+            v-else-if="connectionsStore.activeConnection"
+            class="menu-text"
+          >
             {{ getConnectionDisplayName(connectionsStore.activeConnection) }}
-            <span v-if="shouldShowActiveExpired" class="token-expired-indicator"> (Expired)</span>
+            <span
+              v-if="shouldShowActiveExpired"
+              class="token-expired-indicator"
+            > (Expired)</span>
           </span>
-          <span v-else class="menu-text placeholder-text">
+          <span
+            v-else
+            class="menu-text placeholder-text"
+          >
             No connection
           </span>
           <span class="menu-caret">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 9l6 6 6-6"/>
-              </svg>
-            </span>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </span>
         </button>
 
         <Transition name="dropdown">
-        <div v-if="activeDropdown === 'connection'" class="dropdown connection-dropdown">
-          <!-- Connections Section -->
-          <div v-if="connectionsStore.connections.length > 0" class="dropdown-section">
-            <div class="section-label">Connections</div>
-            <button
-              v-for="connection in connectionsStore.connections"
-              :key="connection.id"
-              class="dropdown-item connection-item"
-              :class="{
-                selected: connectionsStore.activeConnectionId === connection.id,
-                expired: shouldShowExpired(connection.id)
-              }"
-              @click="handleConnectionSelect(connection.id)"
+          <div
+            v-if="activeDropdown === 'connection'"
+            class="dropdown connection-dropdown"
+          >
+            <!-- Connections Section -->
+            <div
+              v-if="connectionsStore.connections.length > 0"
+              class="dropdown-section"
             >
-              <div class="connection-info">
-                <div class="connection-name">{{ getConnectionDisplayName(connection) }}</div>
-                <div v-if="shouldShowExpired(connection.id)" class="expired-badge">
-                  Token Expired
-                </div>
+              <div class="section-label">
+                Connections
               </div>
-              <div class="connection-actions" @click.stop>
-                <button
-                  v-if="shouldShowExpired(connection.id)"
-                  class="reconnect-btn"
-                  @click="handleReconnect(connection.id, $event)"
-                  v-tooltip="'Reconnect'"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-                    <path d="M21 3v5h-5"/>
-                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-                    <path d="M3 21v-5h5"/>
-                  </svg>
-                </button>
-                <button
-                  class="delete-btn"
-                  @click="handleDeleteConnection(connection.id, $event)"
-                  v-tooltip="'Delete'"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 6L6 18M6 6l12 12"/>
-                  </svg>
-                </button>
-              </div>
-            </button>
-          </div>
-
-          <!-- Projects Section (BigQuery only) -->
-          <div v-if="connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired" class="dropdown-section">
-            <div class="section-label">Projects</div>
-            <div v-if="bigqueryStore.projects.length === 0" class="dropdown-message">
-              No projects found
-            </div>
-            <button
-              v-for="project in bigqueryStore.projects"
-              :key="project.projectId"
-              class="dropdown-item project-item"
-              :class="{ selected: project.projectId === connectionsStore.activeConnection?.projectId }"
-              @click="handleProjectSelect(project.projectId)"
-            >
-              <span class="item-text">{{ project.name || project.projectId }}</span>
-              <span v-if="project.projectId === connectionsStore.activeConnection?.projectId" class="item-check">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"/>
-                </svg>
-              </span>
-            </button>
-          </div>
-
-          <!-- Add Database Section -->
-          <div class="dropdown-section add-section">
-            <div class="section-divider"></div>
-            <div class="submenu-trigger">
               <button
-                class="dropdown-item add-item"
-                @click.stop="addDatabaseMenuOpen = !addDatabaseMenuOpen"
+                v-for="connection in connectionsStore.connections"
+                :key="connection.id"
+                class="dropdown-item connection-item"
+                :class="{
+                  selected: connectionsStore.activeConnectionId === connection.id,
+                  expired: shouldShowExpired(connection.id)
+                }"
+                @click="handleConnectionSelect(connection.id)"
               >
-                <span class="add-icon">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 5v14M5 12h14"/>
-                  </svg>
-                </span>
-                Add database
-                <span class="dropdown-arrow">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M9 6l6 6-6 6"/>
+                <div class="connection-info">
+                  <div class="connection-name">
+                    {{ getConnectionDisplayName(connection) }}
+                  </div>
+                  <div
+                    v-if="shouldShowExpired(connection.id)"
+                    class="expired-badge"
+                  >
+                    Token Expired
+                  </div>
+                </div>
+                <div
+                  class="connection-actions"
+                  @click.stop
+                >
+                  <button
+                    v-if="shouldShowExpired(connection.id)"
+                    v-tooltip="'Reconnect'"
+                    class="reconnect-btn"
+                    @click="handleReconnect(connection.id, $event)"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                      <path d="M21 3v5h-5" />
+                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                      <path d="M3 21v-5h5" />
+                    </svg>
+                  </button>
+                  <button
+                    v-tooltip="'Delete'"
+                    class="delete-btn"
+                    @click="handleDeleteConnection(connection.id, $event)"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </button>
+            </div>
+
+            <!-- Projects Section (BigQuery only) -->
+            <div
+              v-if="connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired"
+              class="dropdown-section"
+            >
+              <div class="section-label">
+                Projects
+              </div>
+              <div
+                v-if="bigqueryStore.projects.length === 0"
+                class="dropdown-message"
+              >
+                No projects found
+              </div>
+              <button
+                v-for="project in bigqueryStore.projects"
+                :key="project.projectId"
+                class="dropdown-item project-item"
+                :class="{ selected: project.projectId === connectionsStore.activeConnection?.projectId }"
+                @click="handleProjectSelect(project.projectId)"
+              >
+                <span class="item-text">{{ project.name || project.projectId }}</span>
+                <span
+                  v-if="project.projectId === connectionsStore.activeConnection?.projectId"
+                  class="item-check"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M20 6L9 17l-5-5" />
                   </svg>
                 </span>
               </button>
+            </div>
 
-              <!-- Flyout submenu -->
-              <div class="flyout-menu" :class="{ open: addDatabaseMenuOpen }" @click.stop>
+            <!-- Add Database Section -->
+            <div class="dropdown-section add-section">
+              <div class="section-divider" />
+              <div class="submenu-trigger">
                 <button
-                  class="dropdown-item flyout-item"
-                  @click="handleAddDatabase('bigquery')"
+                  class="dropdown-item add-item"
+                  @click.stop="addDatabaseMenuOpen = !addDatabaseMenuOpen"
                 >
-                  <img :src="DATABASE_INFO.bigquery.logo" :alt="DATABASE_INFO.bigquery.name" class="db-icon" />
-                  {{ DATABASE_INFO.bigquery.name }}
+                  <span class="add-icon">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </span>
+                  Add database
+                  <span class="dropdown-arrow">
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M9 6l6 6-6 6" />
+                    </svg>
+                  </span>
                 </button>
-                <button
-                  class="dropdown-item flyout-item"
-                  @click="handleAddDatabase('postgres')"
+
+                <!-- Flyout submenu -->
+                <div
+                  class="flyout-menu"
+                  :class="{ open: addDatabaseMenuOpen }"
+                  @click.stop
                 >
-                  <img :src="DATABASE_INFO.postgres.logo" :alt="DATABASE_INFO.postgres.name" class="db-icon" />
-                  {{ DATABASE_INFO.postgres.name }}
-                </button>
-                <button
-                  class="dropdown-item flyout-item"
-                  @click="handleAddDatabase('snowflake')"
-                >
-                  <img :src="DATABASE_INFO.snowflake.logo" :alt="DATABASE_INFO.snowflake.name" class="db-icon" />
-                  {{ DATABASE_INFO.snowflake.name }}
-                </button>
+                  <button
+                    class="dropdown-item flyout-item"
+                    @click="handleAddDatabase('bigquery')"
+                  >
+                    <img
+                      :src="DATABASE_INFO.bigquery.logo"
+                      :alt="DATABASE_INFO.bigquery.name"
+                      class="db-icon"
+                    >
+                    {{ DATABASE_INFO.bigquery.name }}
+                  </button>
+                  <button
+                    class="dropdown-item flyout-item"
+                    @click="handleAddDatabase('postgres')"
+                  >
+                    <img
+                      :src="DATABASE_INFO.postgres.logo"
+                      :alt="DATABASE_INFO.postgres.name"
+                      class="db-icon"
+                    >
+                    {{ DATABASE_INFO.postgres.name }}
+                  </button>
+                  <button
+                    class="dropdown-item flyout-item"
+                    @click="handleAddDatabase('snowflake')"
+                  >
+                    <img
+                      :src="DATABASE_INFO.snowflake.logo"
+                      :alt="DATABASE_INFO.snowflake.name"
+                      class="db-icon"
+                    >
+                    {{ DATABASE_INFO.snowflake.name }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
         </Transition>
       </div>
 
       <!-- Add Box Menu -->
-      <div class="menu-item" :class="{ active: activeDropdown === 'box' }">
-        <button class="menu-button" @click.stop="toggleDropdown('box')">
+      <div
+        class="menu-item"
+        :class="{ active: activeDropdown === 'box' }"
+      >
+        <button
+          class="menu-button"
+          @click.stop="toggleDropdown('box')"
+        >
           <span class="menu-text">Add</span>
           <span class="menu-caret">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 9l6 6 6-6"/>
-              </svg>
-            </span>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </span>
         </button>
 
         <Transition name="dropdown">
-        <div v-if="activeDropdown === 'box'" class="dropdown">
-          <button
-            v-for="boxType in boxTypes"
-            :key="boxType.id"
-            class="dropdown-item"
-            @click="addBox(boxType.id)"
+          <div
+            v-if="activeDropdown === 'box'"
+            class="dropdown"
           >
-            <div class="item-main">
-              <span class="item-text">{{ boxType.name }}</span>
-            </div>
-          </button>
-        </div>
+            <button
+              v-for="boxType in boxTypes"
+              :key="boxType.id"
+              class="dropdown-item"
+              @click="addBox(boxType.id)"
+            >
+              <div class="item-main">
+                <span class="item-text">{{ boxType.name }}</span>
+              </div>
+            </button>
+          </div>
         </Transition>
       </div>
-
     </div>
 
     <div class="menu-right">
       <!-- Settings Menu -->
-      <div class="menu-item" :class="{ active: activeDropdown === 'settings' }">
-        <button class="menu-button" @click.stop="toggleDropdown('settings')">
+      <div
+        class="menu-item"
+        :class="{ active: activeDropdown === 'settings' }"
+      >
+        <button
+          class="menu-button"
+          @click.stop="toggleDropdown('settings')"
+        >
           <span class="menu-text">Settings</span>
           <span class="menu-caret">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 9l6 6 6-6"/>
-              </svg>
-            </span>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </span>
         </button>
 
         <Transition name="dropdown">
-        <div v-if="activeDropdown === 'settings'" class="dropdown settings-dropdown right-dropdown">
-          <div class="settings-section">
-            <div class="setting-header">Fetch pagination</div>
-            <div class="setting-description">
-              Load large result sets in batches for better performance
+          <div
+            v-if="activeDropdown === 'settings'"
+            class="dropdown settings-dropdown right-dropdown"
+          >
+            <div class="settings-section">
+              <div class="setting-header">
+                Fetch pagination
+              </div>
+              <div class="setting-description">
+                Load large result sets in batches for better performance
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <input
+                    type="checkbox"
+                    :checked="settingsStore.fetchPaginationEnabled"
+                    class="setting-checkbox"
+                    @change="settingsStore.toggleFetchPagination"
+                  >
+                  <span>Enable fetch pagination</span>
+                </label>
+              </div>
+
+              <div
+                class="setting-row"
+                :class="{ disabled: !settingsStore.fetchPaginationEnabled }"
+              >
+                <label class="setting-label">
+                  <span>Rows per batch</span>
+                  <input
+                    type="number"
+                    :value="fetchBatchInputValue"
+                    :disabled="!settingsStore.fetchPaginationEnabled"
+                    min="100"
+                    max="100000"
+                    class="setting-input-number"
+                    @input="handleFetchBatchChange"
+                  >
+                </label>
+              </div>
             </div>
 
-            <div class="setting-row">
-              <label class="setting-label">
-                <input
-                  type="checkbox"
-                  :checked="settingsStore.fetchPaginationEnabled"
-                  @change="settingsStore.toggleFetchPagination"
-                  class="setting-checkbox"
-                />
-                <span>Enable fetch pagination</span>
-              </label>
-            </div>
-
-            <div class="setting-row" :class="{ disabled: !settingsStore.fetchPaginationEnabled }">
-              <label class="setting-label">
-                <span>Rows per batch</span>
-                <input
-                  type="number"
-                  :value="fetchBatchInputValue"
-                  @input="handleFetchBatchChange"
-                  :disabled="!settingsStore.fetchPaginationEnabled"
-                  min="100"
-                  max="100000"
-                  class="setting-input-number"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div class="settings-section">
-            <div class="setting-header">
-              Hex remover
-              <span v-if="!userStore.isPro" class="pro-badge">Pro</span>
-            </div>
-            <div class="setting-description">
-              Automatically suggest fixes when queries fail
-            </div>
-
-            <div class="setting-row" :class="{ disabled: !userStore.isPro }">
-              <label class="setting-label">
-                <input
-                  type="checkbox"
-                  :checked="settingsStore.autofixEnabled"
-                  @change="settingsStore.toggleAutofix"
-                  :disabled="!userStore.isPro"
-                  class="setting-checkbox"
-                />
-                <span>Enable hex remover</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="settings-section">
-            <div class="setting-header">Pagination size</div>
-            <div class="setting-description">
-              Number of rows to display per page in results tables
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">
-                <span>Rows per page</span>
-                <input
-                  type="number"
-                  :value="paginationInputValue"
-                  @input="handlePaginationChange"
-                  min="1"
-                  max="10000"
-                  class="setting-input-number"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div class="settings-section">
-            <div class="setting-header">Code editor</div>
-            <div class="setting-description">
-              Configure the SQL editor appearance
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">
-                <span>Font size</span>
-                <input
-                  type="number"
-                  :value="editorFontSizeInputValue"
-                  @input="handleEditorFontSizeChange"
-                  min="8"
-                  max="24"
-                  class="setting-input-number"
-                />
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">
-                <input
-                  type="checkbox"
-                  :checked="settingsStore.showEditorLineNumbers"
-                  @change="settingsStore.toggleEditorLineNumbers"
-                  class="setting-checkbox"
-                />
-                <span>Show line numbers</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="settings-section">
-            <div class="setting-header">Appearance</div>
-            <div class="setting-description">
-              Change the look and feel of the canvas
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">
-                <span>Theme</span>
-                <select
-                  :value="settingsStore.themePreference"
-                  @change="settingsStore.setThemePreference(($event.target as HTMLSelectElement).value as 'system' | 'light' | 'dark')"
-                  class="setting-select"
-                >
-                  <option value="system">System</option>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">
-                <span>Canvas pattern</span>
-                <select
-                  :value="settingsStore.canvasPattern"
-                  @change="settingsStore.setCanvasPattern(($event.target as HTMLSelectElement).value as 'dots' | 'grid' | 'crosshatch' | 'waves' | 'none')"
-                  class="setting-select"
-                >
-                  <option value="dots">Dots</option>
-                  <option value="grid">Grid</option>
-                  <option value="crosshatch">Crosshatch</option>
-                  <option value="waves">Waves</option>
-                  <option value="none">None</option>
-                </select>
-              </label>
-            </div>
-          </div>
-
-          <div class="settings-section">
-            <div class="setting-header">Accent color</div>
-            <div class="setting-description">
-              Main highlight color used throughout the app
-            </div>
-            <div class="color-palette">
-              <button
-                v-for="color in accentColors"
-                :key="color"
-                class="color-swatch"
-                :class="{ active: settingsStore.accentColor === color }"
-                :style="{ background: color }"
-                @click="settingsStore.setTableLinkHighlightColor(color)"
-                :title="color"
-              />
-              <label class="color-picker-wrapper">
-                <input
-                  type="color"
-                  class="color-picker-input"
-                  :value="settingsStore.accentColor"
-                  @input="settingsStore.setTableLinkHighlightColor(($event.target as HTMLInputElement).value)"
-                />
+            <div class="settings-section">
+              <div class="setting-header">
+                Hex remover
                 <span
-                  class="color-swatch color-picker-swatch"
-                  :class="{ active: !accentColors.includes(settingsStore.accentColor) }"
-                  :style="{ background: accentColors.includes(settingsStore.accentColor) ? 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' : settingsStore.accentColor }"
+                  v-if="!userStore.isPro"
+                  class="pro-badge"
+                >Pro</span>
+              </div>
+              <div class="setting-description">
+                Automatically suggest fixes when queries fail
+              </div>
+
+              <div
+                class="setting-row"
+                :class="{ disabled: !userStore.isPro }"
+              >
+                <label class="setting-label">
+                  <input
+                    type="checkbox"
+                    :checked="settingsStore.autofixEnabled"
+                    :disabled="!userStore.isPro"
+                    class="setting-checkbox"
+                    @change="settingsStore.toggleAutofix"
+                  >
+                  <span>Enable hex remover</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
+                Pagination size
+              </div>
+              <div class="setting-description">
+                Number of rows to display per page in results tables
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <span>Rows per page</span>
+                  <input
+                    type="number"
+                    :value="paginationInputValue"
+                    min="1"
+                    max="10000"
+                    class="setting-input-number"
+                    @input="handlePaginationChange"
+                  >
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
+                Code editor
+              </div>
+              <div class="setting-description">
+                Configure the SQL editor appearance
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <span>Font size</span>
+                  <input
+                    type="number"
+                    :value="editorFontSizeInputValue"
+                    min="8"
+                    max="24"
+                    class="setting-input-number"
+                    @input="handleEditorFontSizeChange"
+                  >
+                </label>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <input
+                    type="checkbox"
+                    :checked="settingsStore.showEditorLineNumbers"
+                    class="setting-checkbox"
+                    @change="settingsStore.toggleEditorLineNumbers"
+                  >
+                  <span>Show line numbers</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
+                Appearance
+              </div>
+              <div class="setting-description">
+                Change the look and feel of the canvas
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <span>Theme</span>
+                  <select
+                    :value="settingsStore.themePreference"
+                    class="setting-select"
+                    @change="settingsStore.setThemePreference(($event.target as HTMLSelectElement).value as 'system' | 'light' | 'dark')"
+                  >
+                    <option value="system">System</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <span>Canvas pattern</span>
+                  <select
+                    :value="settingsStore.canvasPattern"
+                    class="setting-select"
+                    @change="settingsStore.setCanvasPattern(($event.target as HTMLSelectElement).value as 'dots' | 'grid' | 'crosshatch' | 'waves' | 'none')"
+                  >
+                    <option value="dots">Dots</option>
+                    <option value="grid">Grid</option>
+                    <option value="crosshatch">Crosshatch</option>
+                    <option value="waves">Waves</option>
+                    <option value="none">None</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
+                Accent color
+              </div>
+              <div class="setting-description">
+                Main highlight color used throughout the app
+              </div>
+              <div class="color-palette">
+                <button
+                  v-for="color in accentColors"
+                  :key="color"
+                  class="color-swatch"
+                  :class="{ active: settingsStore.accentColor === color }"
+                  :style="{ background: color }"
+                  :title="color"
+                  @click="settingsStore.setTableLinkHighlightColor(color)"
                 />
-              </label>
+                <label class="color-picker-wrapper">
+                  <input
+                    type="color"
+                    class="color-picker-input"
+                    :value="settingsStore.accentColor"
+                    @input="settingsStore.setTableLinkHighlightColor(($event.target as HTMLInputElement).value)"
+                  >
+                  <span
+                    class="color-swatch color-picker-swatch"
+                    :class="{ active: !accentColors.includes(settingsStore.accentColor) }"
+                    :style="{ background: accentColors.includes(settingsStore.accentColor) ? 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' : settingsStore.accentColor }"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
+                Viewport behavior
+              </div>
+              <div class="setting-description">
+                Control how the viewport moves when interacting with boxes
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <input
+                    type="checkbox"
+                    :checked="settingsStore.panToBoxOnSelect"
+                    class="setting-checkbox"
+                    @change="settingsStore.togglePanToBoxOnSelect"
+                  >
+                  <span>Pan to box on select</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
+                Schema cache
+              </div>
+              <div class="setting-description">
+                Refresh schema information for all connections
+              </div>
+              <button
+                class="action-button"
+                @click="handleRefreshSchemas"
+              >
+                Refresh schemas
+              </button>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
+                Help
+              </div>
+              <button
+                class="action-button"
+                @click="showShortcuts"
+              >
+                Keyboard shortcuts
+              </button>
+            </div>
+
+            <div class="settings-section settings-section-danger">
+              <div class="setting-header">
+                Reset
+              </div>
+              <div class="setting-description">
+                Clear all data including connections, queries, and cached results
+              </div>
+              <button
+                class="reset-button"
+                @click="handleResetAll"
+              >
+                Reset all data
+              </button>
             </div>
           </div>
-
-          <div class="settings-section">
-            <div class="setting-header">Viewport behavior</div>
-            <div class="setting-description">
-              Control how the viewport moves when interacting with boxes
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">
-                <input
-                  type="checkbox"
-                  :checked="settingsStore.panToBoxOnSelect"
-                  @change="settingsStore.togglePanToBoxOnSelect"
-                  class="setting-checkbox"
-                />
-                <span>Pan to box on select</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="settings-section">
-            <div class="setting-header">Schema cache</div>
-            <div class="setting-description">
-              Refresh schema information for all connections
-            </div>
-            <button @click="handleRefreshSchemas" class="action-button">
-              Refresh schemas
-            </button>
-          </div>
-
-          <div class="settings-section">
-            <div class="setting-header">Help</div>
-            <button @click="showShortcuts" class="action-button">
-              Keyboard shortcuts
-            </button>
-          </div>
-
-          <div class="settings-section settings-section-danger">
-            <div class="setting-header">Reset</div>
-            <div class="setting-description">
-              Clear all data including connections, queries, and cached results
-            </div>
-            <button @click="handleResetAll" class="reset-button">
-              Reset all data
-            </button>
-          </div>
-        </div>
         </Transition>
       </div>
       <!-- Pro Badge -->
-      <span v-if="userStore.isPro" class="pro-badge menu-pro-badge">Pro</span>
+      <span
+        v-if="userStore.isPro"
+        class="pro-badge menu-pro-badge"
+      >Pro</span>
 
       <!-- User Menu -->
-      <div v-if="userStore.isLoggedIn" class="menu-item user-menu-item">
-        <button class="user-button" @click.stop="toggleUserDropdown">
+      <div
+        v-if="userStore.isLoggedIn"
+        class="menu-item user-menu-item"
+      >
+        <button
+          class="user-button"
+          @click.stop="toggleUserDropdown"
+        >
           <span class="user-initials">{{ userInitial }}</span>
         </button>
 
         <Transition name="dropdown">
-        <div v-if="activeDropdown === 'user'" class="dropdown user-dropdown">
-          <div class="user-info">
-            <div class="user-email">{{ userStore.user?.email }}</div>
+          <div
+            v-if="activeDropdown === 'user'"
+            class="dropdown user-dropdown"
+          >
+            <div class="user-info">
+              <div class="user-email">
+                {{ userStore.user?.email }}
+              </div>
+            </div>
+            <button
+              class="dropdown-item"
+              @click="goToAccount"
+            >
+              <span class="item-text">Account</span>
+            </button>
+            <button
+              class="dropdown-item"
+              @click="handleSignOut"
+            >
+              <span class="item-text">Sign out</span>
+            </button>
           </div>
-          <button class="dropdown-item" @click="goToAccount">
-            <span class="item-text">Account</span>
-          </button>
-          <button class="dropdown-item" @click="handleSignOut">
-            <span class="item-text">Sign out</span>
-          </button>
-        </div>
         </Transition>
       </div>
 
@@ -903,8 +1117,8 @@ onUnmounted(() => {
       <button
         v-else
         class="sign-in-btn"
-        @click="handleSignIn"
         :disabled="userStore.isLoading"
+        @click="handleSignIn"
       >
         {{ userStore.isLoading ? 'Signing in...' : 'Sign in' }}
       </button>

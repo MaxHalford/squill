@@ -177,9 +177,9 @@ onMounted(async () => {
       await handleBigQueryFlow(code)
       router.push('/app')
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     status.value = 'error'
-    errorMessage.value = err.message || 'Authentication failed'
+    errorMessage.value = err instanceof Error ? err.message : 'Authentication failed'
   }
 })
 
@@ -190,14 +190,22 @@ const goHome = () => {
 
 <template>
   <div class="auth-callback">
-    <div v-if="status === 'loading'" class="loading">
-      <div class="spinner"></div>
+    <div
+      v-if="status === 'loading'"
+      class="loading"
+    >
+      <div class="spinner" />
       <p>Completing sign in...</p>
     </div>
-    <div v-else-if="status === 'error'" class="error">
+    <div
+      v-else-if="status === 'error'"
+      class="error"
+    >
       <h2>Authentication Failed</h2>
       <p>{{ errorMessage }}</p>
-      <button @click="goHome">Go Home</button>
+      <button @click="goHome">
+        Go Home
+      </button>
     </div>
   </div>
 </template>

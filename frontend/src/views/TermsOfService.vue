@@ -1,8 +1,16 @@
 <template>
   <div class="page-container">
     <div class="page-content">
-      <button class="back-button" @click="goBack">← Back</button>
-      <div class="markdown-content" v-html="htmlContent"></div>
+      <button
+        class="back-button"
+        @click="goBack"
+      >
+        ← Back
+      </button>
+      <div
+        class="markdown-content"
+        v-html="htmlContent"
+      />
     </div>
   </div>
 </template>

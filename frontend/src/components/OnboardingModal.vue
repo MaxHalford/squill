@@ -84,8 +84,12 @@ onUnmounted(() => {
         <div class="onboarding-modal">
           <!-- Header -->
           <div class="modal-header">
-            <h1 id="onboarding-title">Welcome to Squill</h1>
-            <p class="modal-subtitle">Choose how you'd like to get started</p>
+            <h1 id="onboarding-title">
+              Welcome to Squill
+            </h1>
+            <p class="modal-subtitle">
+              Choose how you'd like to get started
+            </p>
           </div>
 
           <!-- Options Grid -->
@@ -100,7 +104,7 @@ onUnmounted(() => {
                 :src="DATABASE_INFO.bigquery.logo"
                 :alt="DATABASE_INFO.bigquery.name"
                 class="option-icon"
-              />
+              >
               <h2>{{ DATABASE_INFO.bigquery.name }}</h2>
               <p>Queries run directly from your browser via OAuth</p>
               <span class="option-badge">{{ DATABASE_INFO.bigquery.badge }}</span>
@@ -116,7 +120,7 @@ onUnmounted(() => {
                 :src="duckdbLogo"
                 :alt="DATABASE_INFO.duckdb.name"
                 class="option-icon"
-              />
+              >
               <h2>{{ DATABASE_INFO.duckdb.name }}</h2>
               <p>Runs in your browser, data never leaves your device</p>
               <span class="option-badge">{{ DATABASE_INFO.duckdb.badge }}</span>
@@ -132,7 +136,7 @@ onUnmounted(() => {
                 src="https://www.iconpacks.net/icons/2/free-csv-icon-1471-thumb.png"
                 alt="CSV"
                 :class="['option-icon', { 'option-icon-invert': settingsStore.resolvedTheme === 'dark' }]"
-              />
+              >
               <h2>Import CSV</h2>
               <p>Loaded into a local DuckDB database in your browser</p>
               <span class="option-badge">Quick start</span>
@@ -148,7 +152,7 @@ onUnmounted(() => {
                 :src="DATABASE_INFO.snowflake.logo"
                 :alt="DATABASE_INFO.snowflake.name"
                 :class="['option-icon', { 'option-icon-disabled': !userStore.isLoggedIn }]"
-              />
+              >
               <h2>{{ DATABASE_INFO.snowflake.name }}</h2>
               <p>Queries proxied through our server, credentials encrypted</p>
               <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
@@ -166,7 +170,7 @@ onUnmounted(() => {
                 :src="DATABASE_INFO.postgres.logo"
                 :alt="DATABASE_INFO.postgres.name"
                 :class="['option-icon', { 'option-icon-disabled': !userStore.isLoggedIn }]"
-              />
+              >
               <h2>{{ DATABASE_INFO.postgres.name }}</h2>
               <p>Queries proxied through our server, credentials encrypted</p>
               <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
@@ -177,7 +181,10 @@ onUnmounted(() => {
 
           <!-- Footer -->
           <div class="modal-footer">
-            <button class="skip-button" @click="emit('close')">
+            <button
+              class="skip-button"
+              @click="emit('close')"
+            >
               Skip for now
             </button>
           </div>

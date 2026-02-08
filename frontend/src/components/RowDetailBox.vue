@@ -37,7 +37,7 @@ const parsedData = computed(() => {
       rowData: parsed,
       columnTypes: {}
     }
-  } catch (e) {
+  } catch {
     return { rowData: {}, columnTypes: {} }
   }
 })
@@ -120,14 +120,29 @@ const formatValue = (value: unknown, columnType?: string): string => {
       >
         <div class="field-header">
           <span class="field-label">{{ field }}</span>
-          <span v-if="columnTypes[field]" class="field-type">{{ simplifyTypeName(columnTypes[field]) }}</span>
+          <span
+            v-if="columnTypes[field]"
+            class="field-type"
+          >{{ simplifyTypeName(columnTypes[field]) }}</span>
         </div>
-        <div class="field-value" :class="{ 'null-value': value === null }">
-          <JsonTree v-if="isComplexValue(value)" :data="getDisplayValue(value)" :default-expand-depth="2" />
-          <template v-else>{{ formatValue(value, columnTypes[field]) }}</template>
+        <div
+          class="field-value"
+          :class="{ 'null-value': value === null }"
+        >
+          <JsonTree
+            v-if="isComplexValue(value)"
+            :data="getDisplayValue(value)"
+            :default-expand-depth="2"
+          />
+          <template v-else>
+            {{ formatValue(value, columnTypes[field]) }}
+          </template>
         </div>
       </div>
-      <div v-if="fields.length === 0" class="empty-state">
+      <div
+        v-if="fields.length === 0"
+        class="empty-state"
+      >
         No data available
       </div>
     </div>

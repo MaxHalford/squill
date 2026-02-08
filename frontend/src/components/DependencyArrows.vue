@@ -201,11 +201,18 @@ const arrows = computed(() => {
         refY="4"
         orient="auto-start-reverse"
       >
-        <path d="M 0 0 L 8 4 L 0 8 z" fill="#000000" />
+        <path
+          d="M 0 0 L 8 4 L 0 8 z"
+          fill="#000000"
+        />
       </marker>
     </defs>
 
-    <g v-for="arrow in arrows" :key="arrow.id" class="arrow-group">
+    <g
+      v-for="arrow in arrows"
+      :key="arrow.id"
+      class="arrow-group"
+    >
       <!-- Orthogonal path with arrowhead -->
       <path
         :d="arrow.path"

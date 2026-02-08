@@ -1,10 +1,19 @@
 <template>
   <div class="not-found-page">
     <div class="not-found-content">
-      <img src="@/assets/birds/where.svg" class="bird-illustration" alt="Birds looking around" />
+      <img
+        src="@/assets/birds/where.svg"
+        class="bird-illustration"
+        alt="Birds looking around"
+      >
       <h1>404</h1>
       <p>Page not found</p>
-      <button class="btn-primary" @click="goHome">Go home</button>
+      <button
+        class="btn-primary"
+        @click="goHome"
+      >
+        Go home
+      </button>
     </div>
   </div>
 </template>

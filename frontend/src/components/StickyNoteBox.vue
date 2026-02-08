@@ -105,14 +105,17 @@ onUnmounted(() => {
     @maximize="emit('maximize')"
     @update:name="emit('update:name', $event)"
   >
-    <div ref="contentRef" class="sticky-note-content">
+    <div
+      ref="contentRef"
+      class="sticky-note-content"
+    >
       <textarea
         ref="textareaRef"
         v-model="noteContent"
         class="note-textarea"
         placeholder="Write your notes here..."
         spellcheck="false"
-      ></textarea>
+      />
     </div>
   </BaseBox>
 </template>

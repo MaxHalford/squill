@@ -176,24 +176,55 @@ onUnmounted(() => {
       zIndex
     }"
   >
-    <header ref="headerRef" class="box-header" @mousedown="handleHeaderMouseDown">
+    <header
+      ref="headerRef"
+      class="box-header"
+      @mousedown="handleHeaderMouseDown"
+    >
       <slot name="header" />
     </header>
 
-    <div class="box-content" @click="handleContentClick">
+    <div
+      class="box-content"
+      @click="handleContentClick"
+    >
       <slot />
     </div>
 
     <!-- Resize handles (only when selected) -->
     <template v-if="isSelected">
-      <div class="resize-handle n" @mousedown="handleResizeStart($event, 'n')" />
-      <div class="resize-handle e" @mousedown="handleResizeStart($event, 'e')" />
-      <div class="resize-handle s" @mousedown="handleResizeStart($event, 's')" />
-      <div class="resize-handle w" @mousedown="handleResizeStart($event, 'w')" />
-      <div class="resize-handle ne" @mousedown="handleResizeStart($event, 'ne')" />
-      <div class="resize-handle se" @mousedown="handleResizeStart($event, 'se')" />
-      <div class="resize-handle sw" @mousedown="handleResizeStart($event, 'sw')" />
-      <div class="resize-handle nw" @mousedown="handleResizeStart($event, 'nw')" />
+      <div
+        class="resize-handle n"
+        @mousedown="handleResizeStart($event, 'n')"
+      />
+      <div
+        class="resize-handle e"
+        @mousedown="handleResizeStart($event, 'e')"
+      />
+      <div
+        class="resize-handle s"
+        @mousedown="handleResizeStart($event, 's')"
+      />
+      <div
+        class="resize-handle w"
+        @mousedown="handleResizeStart($event, 'w')"
+      />
+      <div
+        class="resize-handle ne"
+        @mousedown="handleResizeStart($event, 'ne')"
+      />
+      <div
+        class="resize-handle se"
+        @mousedown="handleResizeStart($event, 'se')"
+      />
+      <div
+        class="resize-handle sw"
+        @mousedown="handleResizeStart($event, 'sw')"
+      />
+      <div
+        class="resize-handle nw"
+        @mousedown="handleResizeStart($event, 'nw')"
+      />
     </template>
   </div>
 </template>

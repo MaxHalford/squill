@@ -122,6 +122,14 @@ const generateCanvasId = (): string => {
   return crypto.randomUUID()
 }
 
+interface CanvasExposed {
+  getViewportCenter: () => Position
+  panToBox: (id: number) => void
+  screenToCanvas: (screenX: number, screenY: number) => Position
+  fitToView: () => void
+  zoom: number
+}
+
 interface UndoRedoState {
   boxes: Box[]
   selectedBoxId: number | null
@@ -140,7 +148,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   const nextBoxId = ref(1)
 
   // Canvas reference for getting viewport center
-  const canvasRef = ref<any>(null)
+  const canvasRef = ref<CanvasExposed | null>(null)
 
   // Multi-selection state
   const selectedBoxIds = ref<Set<number>>(new Set())
@@ -261,7 +269,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         name: parsed.name || 'Untitled',
         createdAt: parsed.createdAt || Date.now(),
         updatedAt: parsed.updatedAt || Date.now(),
-        boxes: (parsed.boxes || []).filter((box: any) => box && box.id != null).map((box: any) => ({
+        boxes: (parsed.boxes || []).filter((box: Record<string, unknown>) => box && box.id != null).map((box: Record<string, unknown>) => ({
           id: box.id,
           type: box.type || 'sql',
           x: box.x || 100,
@@ -631,7 +639,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     return newBox.id
   }
 
-  const setCanvasRef = (ref: any) => {
+  const setCanvasRef = (ref: CanvasExposed | null) => {
     canvasRef.value = ref
   }
 

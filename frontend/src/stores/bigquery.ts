@@ -351,10 +351,14 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   }
 
   // Set active project
-  const setProjectId = (newProjectId: string) => {
+  const setProjectId = (newProjectId: string | null) => {
     projectId.value = newProjectId
     try {
-      localStorage.setItem('squill-project', newProjectId)
+      if (newProjectId) {
+        localStorage.setItem('squill-project', newProjectId)
+      } else {
+        localStorage.removeItem('squill-project')
+      }
     } catch (err) {
       console.error('Failed to save project:', err)
     }

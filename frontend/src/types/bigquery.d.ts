@@ -10,7 +10,7 @@ export interface BigQuerySchema {
 }
 
 export interface BigQueryRow {
-  f: Array<{ v: any }>
+  f: Array<{ v: unknown }>
 }
 
 export interface BigQueryQueryResponse {

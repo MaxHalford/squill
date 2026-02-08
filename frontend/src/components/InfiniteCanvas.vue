@@ -513,7 +513,7 @@ onUnmounted(() => {
       <slot />
 
       <!-- Teleport target for box creation buttons -->
-      <div id="box-creation-buttons-container"></div>
+      <div id="box-creation-buttons-container" />
 
       <div
         v-if="canvasStore.rectangleSelection"

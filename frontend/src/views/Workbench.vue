@@ -271,19 +271,42 @@ onUnmounted(() => {
         <div class="section-header">
           <h2>Query Editor</h2>
           <div class="actions">
-            <button @click="applySuggestions" class="btn">Show Suggestions</button>
-            <button @click="clearSuggestions" class="btn btn-secondary">Clear</button>
+            <button
+              class="btn"
+              @click="applySuggestions"
+            >
+              Show Suggestions
+            </button>
+            <button
+              class="btn btn-secondary"
+              @click="clearSuggestions"
+            >
+              Clear
+            </button>
           </div>
         </div>
-        <div ref="editorRef" class="editor" />
+        <div
+          ref="editorRef"
+          class="editor"
+        />
       </div>
 
-      <div class="suggestions-panel" v-if="suggestions.length > 0">
+      <div
+        v-if="suggestions.length > 0"
+        class="suggestions-panel"
+      >
         <h2>Suggestions</h2>
-        <div v-for="suggestion in suggestions" :key="suggestion.line" class="suggestion-card">
+        <div
+          v-for="suggestion in suggestions"
+          :key="suggestion.line"
+          class="suggestion-card"
+        >
           <div class="suggestion-header">
             <span class="line-badge">Line {{ suggestion.line }}</span>
-            <span class="message" v-if="suggestion.message">{{ suggestion.message }}</span>
+            <span
+              v-if="suggestion.message"
+              class="message"
+            >{{ suggestion.message }}</span>
           </div>
           <div class="suggestion-diff">
             <div class="diff-line diff-remove">
@@ -295,7 +318,10 @@ onUnmounted(() => {
               <code>{{ suggestion.suggested }}</code>
             </div>
           </div>
-          <button @click="acceptSuggestion(suggestion)" class="btn btn-accept">
+          <button
+            class="btn btn-accept"
+            @click="acceptSuggestion(suggestion)"
+          >
             Accept Fix
           </button>
         </div>

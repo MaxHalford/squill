@@ -177,13 +177,24 @@ onUnmounted(() => {
                 :src="DATABASE_INFO.postgres.logo"
                 :alt="DATABASE_INFO.postgres.name"
                 class="postgres-icon"
-              />
-              <h2 id="postgres-modal-title">Connect to {{ DATABASE_INFO.postgres.name }}</h2>
+              >
+              <h2 id="postgres-modal-title">
+                Connect to {{ DATABASE_INFO.postgres.name }}
+              </h2>
             </div>
-            <button class="close-btn" @click="emit('close')" aria-label="Close">&times;</button>
+            <button
+              class="close-btn"
+              aria-label="Close"
+              @click="emit('close')"
+            >
+              &times;
+            </button>
           </div>
 
-          <form @submit.prevent="handleSubmit" class="connection-form">
+          <form
+            class="connection-form"
+            @submit.prevent="handleSubmit"
+          >
             <div class="form-group">
               <label for="conn-name">Connection Name</label>
               <input
@@ -193,7 +204,7 @@ onUnmounted(() => {
                 placeholder="Jazz records"
                 autocomplete="off"
                 required
-              />
+              >
             </div>
 
             <div class="form-row">
@@ -206,7 +217,7 @@ onUnmounted(() => {
                   placeholder="localhost"
                   autocomplete="off"
                   required
-                />
+                >
               </div>
               <div class="form-group port-field">
                 <label for="port">Port</label>
@@ -217,7 +228,7 @@ onUnmounted(() => {
                   min="1"
                   max="65535"
                   required
-                />
+                >
               </div>
             </div>
 
@@ -230,7 +241,7 @@ onUnmounted(() => {
                 placeholder="postgres"
                 autocomplete="off"
                 required
-              />
+              >
             </div>
 
             <div class="form-group">
@@ -242,7 +253,7 @@ onUnmounted(() => {
                 placeholder="postgres"
                 autocomplete="off"
                 required
-              />
+              >
             </div>
 
             <div class="form-group">
@@ -253,28 +264,45 @@ onUnmounted(() => {
                 type="password"
                 placeholder="keep_it_secret_keep_it_safe"
                 autocomplete="new-password"
-              />
+              >
             </div>
 
             <div class="form-group">
               <label for="ssl-mode">SSL Mode</label>
-              <select id="ssl-mode" v-model="form.sslMode">
-                <option v-for="mode in sslModes" :key="mode" :value="mode">
+              <select
+                id="ssl-mode"
+                v-model="form.sslMode"
+              >
+                <option
+                  v-for="mode in sslModes"
+                  :key="mode"
+                  :value="mode"
+                >
                   {{ mode }}
                 </option>
               </select>
             </div>
 
-            <div v-if="testSuccess && testMessage" class="success-message">
+            <div
+              v-if="testSuccess && testMessage"
+              class="success-message"
+            >
               {{ testMessage }}
             </div>
 
-            <div v-if="error" class="error-message">
+            <div
+              v-if="error"
+              class="error-message"
+            >
               {{ error }}
             </div>
 
             <div class="form-actions">
-              <button type="button" class="btn-secondary" @click="emit('close')">
+              <button
+                type="button"
+                class="btn-secondary"
+                @click="emit('close')"
+              >
                 Cancel
               </button>
               <button
@@ -289,10 +317,10 @@ onUnmounted(() => {
                 <span v-else>Test connection</span>
               </button>
               <button
+                v-tooltip="!testSuccess ? 'Test the connection first' : ''"
                 type="submit"
                 class="btn-primary"
                 :disabled="!canConnect"
-                v-tooltip="!testSuccess ? 'Test the connection first' : ''"
               >
                 {{ isConnecting ? 'Connecting...' : 'Connect' }}
               </button>

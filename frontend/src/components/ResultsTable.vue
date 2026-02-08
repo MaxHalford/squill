@@ -31,6 +31,11 @@ const props = withDefaults(defineProps<{
   connectionName?: string
   boxId?: number | null  // For accessing fetch state
 }>(), {
+  tableName: null,
+  stats: null,
+  error: null,
+  boxName: undefined,
+  connectionName: undefined,
   showRowDetail: true,
   showAnalytics: true,
   boxId: null
@@ -49,7 +54,7 @@ const currentPage = ref(1)
 const animationKey = ref(0) // Incremented to trigger row animations
 
 // Data state - fetched from DuckDB
-const pageData = ref<Record<string, any>[]>([])
+const pageData = ref<Record<string, unknown>[]>([])
 const columns = ref<string[]>([])
 const columnTypes = ref<Record<string, string>>({})
 const duckdbRowCount = ref(0) // Row count from DuckDB (for non-paginated queries)
@@ -618,9 +623,18 @@ defineExpose({ resetPagination })
 
 <template>
   <section class="results-section">
-    <div v-if="error" class="error-banner" role="alert">
-      <div class="error-message">{{ error }}</div>
-      <div class="fix-status-wrapper" :class="{ 'has-content': isFetchingFix || noRelevantFix }">
+    <div
+      v-if="error"
+      class="error-banner"
+      role="alert"
+    >
+      <div class="error-message">
+        {{ error }}
+      </div>
+      <div
+        class="fix-status-wrapper"
+        :class="{ 'has-content': isFetchingFix || noRelevantFix }"
+      >
         <div class="fix-status-inner">
           <span v-if="isFetchingFix">Getting fix suggestion...</span>
           <span v-else-if="noRelevantFix">No relevant fix found</span>
@@ -628,21 +642,51 @@ defineExpose({ resetPagination })
       </div>
     </div>
 
-    <div ref="tableContainerRef" class="table-container" role="region" aria-label="Query results" tabindex="0">
-      <table v-if="hasResults && !isBackgroundLoading" ref="tableRef" class="results-table" :style="tableStyle">
+    <div
+      ref="tableContainerRef"
+      class="table-container"
+      role="region"
+      aria-label="Query results"
+      tabindex="0"
+    >
+      <table
+        v-if="hasResults && !isBackgroundLoading"
+        ref="tableRef"
+        class="results-table"
+        :style="tableStyle"
+      >
         <colgroup>
-          <col class="row-number-col" :style="{ width: rowNumberColWidth + 'px' }">
+          <col
+            class="row-number-col"
+            :style="{ width: rowNumberColWidth + 'px' }"
+          >
           <!-- Padding for virtualized columns before visible range -->
-          <col v-if="visibleColumnsData.paddingLeft > 0" :style="{ width: visibleColumnsData.paddingLeft + 'px' }">
-          <col v-for="column in visibleColumns" :key="column" :style="{ width: (columnWidths[column] || 150) + 'px' }">
+          <col
+            v-if="visibleColumnsData.paddingLeft > 0"
+            :style="{ width: visibleColumnsData.paddingLeft + 'px' }"
+          >
+          <col
+            v-for="column in visibleColumns"
+            :key="column"
+            :style="{ width: (columnWidths[column] || 150) + 'px' }"
+          >
           <!-- Padding for virtualized columns after visible range -->
-          <col v-if="visibleColumnsData.paddingRight > 0" :style="{ width: visibleColumnsData.paddingRight + 'px' }">
+          <col
+            v-if="visibleColumnsData.paddingRight > 0"
+            :style="{ width: visibleColumnsData.paddingRight + 'px' }"
+          >
         </colgroup>
         <thead>
           <tr>
-            <th scope="col" class="row-number-col"></th>
+            <th
+              scope="col"
+              class="row-number-col"
+            />
             <!-- Padding cell for virtualized columns before visible range -->
-            <th v-if="visibleColumnsData.paddingLeft > 0" class="virtual-padding-cell"></th>
+            <th
+              v-if="visibleColumnsData.paddingLeft > 0"
+              class="virtual-padding-cell"
+            />
             <th
               v-for="column in visibleColumns"
               :key="column"
@@ -657,54 +701,156 @@ defineExpose({ resetPagination })
                 <!-- Left group: type icon, column name, analytics button -->
                 <span class="column-info">
                   <!-- Type icon -->
-                  <span class="type-icon" v-tooltip="simplifyTypeName(columnTypes[column])">
+                  <span
+                    v-tooltip="simplifyTypeName(columnTypes[column])"
+                    class="type-icon"
+                  >
                     <!-- Number type -->
-                    <svg v-if="getTypeCategory(columnTypes[column] || '') === 'number'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <rect x="2" y="5" width="3" height="8" rx="0.5"/>
-                      <rect x="6.5" y="7" width="3" height="6" rx="0.5"/>
-                      <rect x="11" y="3" width="3" height="10" rx="0.5"/>
+                    <svg
+                      v-if="getTypeCategory(columnTypes[column] || '') === 'number'"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                    >
+                      <rect
+                        x="2"
+                        y="5"
+                        width="3"
+                        height="8"
+                        rx="0.5"
+                      />
+                      <rect
+                        x="6.5"
+                        y="7"
+                        width="3"
+                        height="6"
+                        rx="0.5"
+                      />
+                      <rect
+                        x="11"
+                        y="3"
+                        width="3"
+                        height="10"
+                        rx="0.5"
+                      />
                     </svg>
                     <!-- Text type -->
-                    <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'text'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M2.5 3a.5.5 0 0 0 0 1h11a.5.5 0 0 0 0-1h-11zM2.5 6a.5.5 0 0 0 0 1h9a.5.5 0 0 0 0-1h-9zM2.5 9a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7zM2.5 12a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5z"/>
+                    <svg
+                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'text'"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                    >
+                      <path d="M2.5 3a.5.5 0 0 0 0 1h11a.5.5 0 0 0 0-1h-11zM2.5 6a.5.5 0 0 0 0 1h9a.5.5 0 0 0 0-1h-9zM2.5 9a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7zM2.5 12a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5z" />
                     </svg>
                     <!-- Date type -->
-                    <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'date'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <rect x="2" y="3" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
-                      <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="1.5"/>
-                      <line x1="5" y1="1" x2="5" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                      <line x1="11" y1="1" x2="11" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <svg
+                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'date'"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                    >
+                      <rect
+                        x="2"
+                        y="3"
+                        width="12"
+                        height="11"
+                        rx="1"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                      />
+                      <line
+                        x1="2"
+                        y1="6"
+                        x2="14"
+                        y2="6"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                      />
+                      <line
+                        x1="5"
+                        y1="1"
+                        x2="5"
+                        y2="4"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                      />
+                      <line
+                        x1="11"
+                        y1="1"
+                        x2="11"
+                        y2="4"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                      />
                     </svg>
                     <!-- Boolean type -->
-                    <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'boolean'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
+                    <svg
+                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'boolean'"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                    >
+                      <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z" />
                     </svg>
                     <!-- Binary type -->
-                    <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'binary'" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M5.526 13.09c.976 0 1.524-.79 1.524-2.205 0-1.412-.548-2.203-1.524-2.203-.978 0-1.526.79-1.526 2.203 0 1.415.548 2.206 1.526 2.206zm-.832-2.205c0-1.05.29-1.612.832-1.612.358 0 .607.247.733.721L4.7 11.137a6.749 6.749 0 0 1-.006-.252zm.832 1.614c-.36 0-.606-.246-.732-.718l1.556-1.145c.003.079.005.164.005.258 0 1.05-.29 1.605-.829 1.605zm5.329.501v-.595H9.73V8.772h-.69l-1.19.786v.688L8.986 9.5h.05v2.906h-1.18V13h3z"/>
+                    <svg
+                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'binary'"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                    >
+                      <path d="M5.526 13.09c.976 0 1.524-.79 1.524-2.205 0-1.412-.548-2.203-1.524-2.203-.978 0-1.526.79-1.526 2.203 0 1.415.548 2.206 1.526 2.206zm-.832-2.205c0-1.05.29-1.612.832-1.612.358 0 .607.247.733.721L4.7 11.137a6.749 6.749 0 0 1-.006-.252zm.832 1.614c-.36 0-.606-.246-.732-.718l1.556-1.145c.003.079.005.164.005.258 0 1.05-.29 1.605-.829 1.605zm5.329.501v-.595H9.73V8.772h-.69l-1.19.786v.688L8.986 9.5h.05v2.906h-1.18V13h3z" />
                     </svg>
                     <!-- JSON/struct type - curly braces -->
-                    <svg v-else-if="getTypeCategory(columnTypes[column] || '') === 'json'" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M4 2C2.5 2 2 3 2 4v2.5c0 .5-.5 1.5-1.5 1.5 1 0 1.5 1 1.5 1.5V12c0 1 .5 2 2 2"/>
-                      <path d="M12 2c1.5 0 2 1 2 2v2.5c0 .5.5 1.5 1.5 1.5-1 0-1.5 1-1.5 1.5V12c0 1-.5 2-2 2"/>
+                    <svg
+                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'json'"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M4 2C2.5 2 2 3 2 4v2.5c0 .5-.5 1.5-1.5 1.5 1 0 1.5 1 1.5 1.5V12c0 1 .5 2 2 2" />
+                      <path d="M12 2c1.5 0 2 1 2 2v2.5c0 .5.5 1.5 1.5 1.5-1 0-1.5 1-1.5 1.5V12c0 1-.5 2-2 2" />
                     </svg>
                   </span>
                   <span class="column-name">{{ column }}</span>
                   <!-- Analytics button (right next to column name) -->
                   <button
                     v-if="showAnalytics"
+                    v-tooltip="'View column analytics'"
                     class="analytics-btn"
                     :class="{
                       visible: hoveredColumn === column,
                       hidden: getTypeCategory(columnTypes[column] || '') === 'binary' ||
-                              getTypeCategory(columnTypes[column] || '') === 'json'
+                        getTypeCategory(columnTypes[column] || '') === 'json'
                     }"
-                    @click.stop="handleShowAnalytics($event, column)"
-                    v-tooltip="'View column analytics'"
                     :tabindex="hoveredColumn === column ? 0 : -1"
+                    @click.stop="handleShowAnalytics($event, column)"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M18 20V10M12 20V4M6 20v-6"/>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M18 20V10M12 20V4M6 20v-6" />
                     </svg>
                   </button>
                 </span>
@@ -715,7 +861,10 @@ defineExpose({ resetPagination })
               />
             </th>
             <!-- Padding cell for virtualized columns after visible range -->
-            <th v-if="visibleColumnsData.paddingRight > 0" class="virtual-padding-cell"></th>
+            <th
+              v-if="visibleColumnsData.paddingRight > 0"
+              class="virtual-padding-cell"
+            />
           </tr>
         </thead>
         <tbody :key="animationKey">
@@ -727,25 +876,47 @@ defineExpose({ resetPagination })
             @mouseenter="hoveredRowIndex = index"
             @mouseleave="hoveredRowIndex = null"
           >
-            <th scope="row" class="row-number-col">
-              <span class="row-number" :class="{ hidden: showRowDetail && hoveredRowIndex === index }">
+            <th
+              scope="row"
+              class="row-number-col"
+            >
+              <span
+                class="row-number"
+                :class="{ hidden: showRowDetail && hoveredRowIndex === index }"
+              >
                 {{ (currentPage - 1) * pageSize + index + 1 }}
               </span>
               <button
                 v-if="showRowDetail"
                 class="detail-btn"
                 :class="{ visible: hoveredRowIndex === index }"
-                @click.stop="handleShowDetail($event, row, index)"
                 aria-label="View row details"
+                @click.stop="handleShowDetail($event, row, index)"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                  <circle cx="12" cy="12" r="3"/>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="3"
+                  />
                 </svg>
               </button>
             </th>
             <!-- Padding cell for virtualized columns before visible range -->
-            <td v-if="visibleColumnsData.paddingLeft > 0" class="virtual-padding-cell"></td>
+            <td
+              v-if="visibleColumnsData.paddingLeft > 0"
+              class="virtual-padding-cell"
+            />
             <td
               v-for="column in visibleColumns"
               :key="column"
@@ -757,91 +928,178 @@ defineExpose({ resetPagination })
               {{ formatCellValue(row[column], columnTypes[column] || '') }}
             </td>
             <!-- Padding cell for virtualized columns after visible range -->
-            <td v-if="visibleColumnsData.paddingRight > 0" class="virtual-padding-cell"></td>
+            <td
+              v-if="visibleColumnsData.paddingRight > 0"
+              class="virtual-padding-cell"
+            />
           </tr>
         </tbody>
       </table>
 
-      <div v-else-if="isWaitingForData || isBackgroundLoading" class="loading-state">Fetching...</div>
-      <div v-else-if="isEmpty" class="empty-state">Empty table</div>
+      <div
+        v-else-if="isWaitingForData || isBackgroundLoading"
+        class="loading-state"
+      >
+        Fetching...
+      </div>
+      <div
+        v-else-if="isEmpty"
+        class="empty-state"
+      >
+        Empty table
+      </div>
     </div>
 
-    <footer v-if="hasResults || isLoading || isWaitingForData" class="results-footer">
+    <footer
+      v-if="hasResults || isLoading || isWaitingForData"
+      class="results-footer"
+    >
       <div class="results-meta">
         <span
           v-if="stats?.engine"
+          v-tooltip="connectionName"
           class="engine-badge"
           :style="{
             background: DATABASE_INFO[stats.engine].color,
             color: DATABASE_INFO[stats.engine].textColor
           }"
-          v-tooltip="connectionName"
         >
           {{ DATABASE_INFO[stats.engine].shortName }}
         </span>
-        <span class="stat" v-tooltip="`${columns.length} columns`">
+        <span
+          v-tooltip="`${columns.length} columns`"
+          class="stat"
+        >
           {{ formatRowCount(sourceTotalRows) }}
-          <span v-if="isPartialData" class="partial-indicator" v-tooltip="`${formatRowCount(fetchState?.fetchedRows || 0)} loaded`">
+          <span
+            v-if="isPartialData"
+            v-tooltip="`${formatRowCount(fetchState?.fetchedRows || 0)} loaded`"
+            class="partial-indicator"
+          >
             ({{ loadingProgress }}%)
           </span>
         </span>
-        <span v-if="stats?.executionTimeMs" class="stat">{{ formatTime(stats.executionTimeMs) }}</span>
-        <span v-if="stats?.totalBytesProcessed" class="stat" v-tooltip="'Bytes processed'">{{ formatBytes(stats.totalBytesProcessed) }}</span>
-        <span v-if="stats?.cacheHit" class="stat cache-hit">Cached</span>
-        <span v-if="bigQueryCost" class="stat" v-tooltip="'On-demand pricing, not factoring reservations'">{{ bigQueryCost }}</span>
+        <span
+          v-if="stats?.executionTimeMs"
+          class="stat"
+        >{{ formatTime(stats.executionTimeMs) }}</span>
+        <span
+          v-if="stats?.totalBytesProcessed"
+          v-tooltip="'Bytes processed'"
+          class="stat"
+        >{{ formatBytes(stats.totalBytesProcessed) }}</span>
+        <span
+          v-if="stats?.cacheHit"
+          class="stat cache-hit"
+        >Cached</span>
+        <span
+          v-if="bigQueryCost"
+          v-tooltip="'On-demand pricing, not factoring reservations'"
+          class="stat"
+        >{{ bigQueryCost }}</span>
       </div>
 
       <div class="results-actions">
-        <nav class="pagination" aria-label="Results pagination">
+        <nav
+          class="pagination"
+          aria-label="Results pagination"
+        >
           <button
             class="pagination-btn"
             :disabled="currentPage === 1 || isLoading"
-            @click.stop="prevPage"
             aria-label="Previous page"
+            @click.stop="prevPage"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M15 18l-6-6 6-6"/>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
           <span class="page-info">{{ currentPage.toLocaleString() }} / {{ (totalPages || 1).toLocaleString() }}</span>
           <button
             class="pagination-btn"
             :disabled="currentPage === totalPages || isLoading"
-            @click.stop="nextPage"
             aria-label="Next page"
+            @click.stop="nextPage"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 18l6-6-6-6"/>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 18l6-6-6-6" />
             </svg>
           </button>
         </nav>
 
         <div class="export-dropdown">
           <button
+            v-tooltip="`Download ${formatRowCount(duckdbRowCount)} loaded`"
             class="download-btn"
-            @click.stop="showExportMenu = !showExportMenu"
             :disabled="isLoading || isExporting"
             aria-label="Export data"
             aria-haspopup="true"
             :aria-expanded="showExportMenu"
-            v-tooltip="`Download ${formatRowCount(duckdbRowCount)} loaded`"
+            @click.stop="showExportMenu = !showExportMenu"
           >
-            <svg v-if="!isExporting" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            <svg
+              v-if="!isExporting"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
             </svg>
-            <span v-else class="export-spinner"></span>
+            <span
+              v-else
+              class="export-spinner"
+            />
           </button>
           <Transition name="dropdown-up">
-            <div v-if="showExportMenu" class="export-menu dropdown-menu" role="menu">
-              <button class="export-option dropdown-menu-item" role="menuitem" @click="downloadAs('csv')">
+            <div
+              v-if="showExportMenu"
+              class="export-menu dropdown-menu"
+              role="menu"
+            >
+              <button
+                class="export-option dropdown-menu-item"
+                role="menuitem"
+                @click="downloadAs('csv')"
+              >
                 <span class="format-name">CSV</span>
                 <span class="format-desc">Comma-separated values</span>
               </button>
-              <button class="export-option dropdown-menu-item" role="menuitem" @click="downloadAs('json')">
+              <button
+                class="export-option dropdown-menu-item"
+                role="menuitem"
+                @click="downloadAs('json')"
+              >
                 <span class="format-name">JSON</span>
                 <span class="format-desc">JavaScript Object Notation</span>
               </button>
-              <button class="export-option dropdown-menu-item" role="menuitem" @click="downloadAs('parquet')">
+              <button
+                class="export-option dropdown-menu-item"
+                role="menuitem"
+                @click="downloadAs('parquet')"
+              >
                 <span class="format-name">Parquet</span>
                 <span class="format-desc">Columnar format (compressed)</span>
               </button>

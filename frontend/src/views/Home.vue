@@ -35,7 +35,7 @@ const duckdbStore = useDuckDBStore()
 const connectionsStore = useConnectionsStore()
 const bigqueryStore = useBigQueryStore()
 const postgresStore = usePostgresStore()
-const canvasRef = ref<any>(null)
+const canvasRef = ref<InstanceType<typeof InfiniteCanvas> | null>(null)
 const copiedBoxId = ref<number | null>(null)
 const copiedBoxIds = ref<number[]>([])
 const csvFileInputRef = ref<HTMLInputElement | null>(null)
@@ -56,7 +56,7 @@ const boxExecutors = ref(new Map())
 const sqlBoxRefs = ref(new Map<number, { focusEditor: () => void }>())
 
 // Registry for SchemaBox component refs (to navigate to tables)
-const schemaBoxRefs = ref(new Map<number, { navigateToTable: (info: any) => Promise<void> }>())
+const schemaBoxRefs = ref(new Map<number, { navigateToTable: (info: { connectionType: string; connectionId?: string; tableName: string; projectId?: string; datasetId?: string; databaseName?: string; schemaName?: string }) => Promise<void> }>())
 
 // Register a box's run method
 const registerBoxExecutor = (boxId: number, runFn: () => Promise<void>) => {
@@ -437,9 +437,9 @@ const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
         y: currentPosition.y + 30
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`Failed to load CSV ${file.name}:`, err)
-      alert(`Failed to load ${file.name}: ${err.message}`)
+      alert(`Failed to load ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -510,7 +510,7 @@ const handleQueryTableFromSchema = async (data: {
 }
 
 const handleShowRowDetail = (data: {
-  rowData: Record<string, any>,
+  rowData: Record<string, unknown>,
   columnTypes: Record<string, string>,
   rowIndex: number,
   globalRowIndex: number,
@@ -984,7 +984,7 @@ onUnmounted(() => {
       multiple
       style="display: none"
       @change="handleCsvFileInput"
-    />
+    >
 
     <InfiniteCanvas
       ref="canvasRef"
@@ -1002,7 +1002,10 @@ onUnmounted(() => {
         @create-box-right="handleCreateQueryBoxRight"
       />
 
-      <template v-for="box in canvasStore.visibleBoxes" :key="box.id">
+      <template
+        v-for="box in canvasStore.visibleBoxes"
+        :key="box.id"
+      >
         <!-- SQL Editor Box -->
         <SqlBox
           v-if="box.type === 'sql'"
@@ -1170,7 +1173,10 @@ onUnmounted(() => {
 
     <!-- DuckDB initialization loading indicator -->
     <Transition name="slide">
-      <div v-if="duckdbStore.isInitializing" class="duckdb-loading">
+      <div
+        v-if="duckdbStore.isInitializing"
+        class="duckdb-loading"
+      >
         <div class="progress-bar">
           <div class="progress-bar-indeterminate" />
         </div>

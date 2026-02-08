@@ -326,25 +326,50 @@ onUnmounted(() => {
   >
     <div class="chat-layout">
       <!-- Left: Chat panel -->
-      <div class="chat-panel" :style="{ width: chatPanelWidth + 'px' }">
+      <div
+        class="chat-panel"
+        :style="{ width: chatPanelWidth + 'px' }"
+      >
         <!-- Messages -->
-        <div ref="messagesContainerRef" class="messages">
-          <div class="connection-label">{{ connectionInfo }}</div>
+        <div
+          ref="messagesContainerRef"
+          class="messages"
+        >
+          <div class="connection-label">
+            {{ connectionInfo }}
+          </div>
 
-          <div v-if="messages.length === 0" class="empty-state">
+          <div
+            v-if="messages.length === 0"
+            class="empty-state"
+          >
             Ask a question about your data
           </div>
 
-          <template v-for="(msg, i) in messages" :key="i">
+          <template
+            v-for="(msg, i) in messages"
+            :key="i"
+          >
             <!-- User message -->
-            <div v-if="msg.role === 'user'" class="message user-message">
-              <div class="message-content">{{ msg.content }}</div>
+            <div
+              v-if="msg.role === 'user'"
+              class="message user-message"
+            >
+              <div class="message-content">
+                {{ msg.content }}
+              </div>
             </div>
 
             <!-- Assistant message -->
-            <div v-else-if="msg.role === 'assistant'" class="message assistant-message">
+            <div
+              v-else-if="msg.role === 'assistant'"
+              class="message assistant-message"
+            >
               <!-- Tool calls -->
-              <div v-if="msg.toolCalls" class="tool-calls">
+              <div
+                v-if="msg.toolCalls"
+                class="tool-calls"
+              >
                 <div
                   v-for="tc in msg.toolCalls"
                   :key="tc.id"
@@ -365,29 +390,60 @@ onUnmounted(() => {
           </template>
 
           <!-- Streaming indicator -->
-          <div v-if="isStreaming && streamingText" class="message assistant-message">
-            <div class="message-content markdown" v-html="renderMarkdown(streamingText)" />
+          <div
+            v-if="isStreaming && streamingText"
+            class="message assistant-message"
+          >
+            <div
+              class="message-content markdown"
+              v-html="renderMarkdown(streamingText)"
+            />
           </div>
-          <div v-else-if="isStreaming" class="message assistant-message">
-            <div class="message-content typing">Thinking...</div>
+          <div
+            v-else-if="isStreaming"
+            class="message assistant-message"
+          >
+            <div class="message-content typing">
+              Thinking...
+            </div>
           </div>
 
           <!-- Error -->
-          <div v-if="chatError" class="message error-message">
-            <div class="message-content">{{ chatError }}</div>
+          <div
+            v-if="chatError"
+            class="message error-message"
+          >
+            <div class="message-content">
+              {{ chatError }}
+            </div>
           </div>
         </div>
 
         <!-- Session stats -->
-        <div v-if="hasStats" class="session-stats">
-          <span v-if="chatStats.totalQueries > 0" class="stat">
+        <div
+          v-if="hasStats"
+          class="session-stats"
+        >
+          <span
+            v-if="chatStats.totalQueries > 0"
+            class="stat"
+          >
             {{ chatStats.totalQueries }} {{ chatStats.totalQueries === 1 ? 'query' : 'queries' }}
           </span>
-          <span v-if="chatStats.totalExecutionTimeMs > 0" class="stat">
+          <span
+            v-if="chatStats.totalExecutionTimeMs > 0"
+            class="stat"
+          >
             {{ formatTime(chatStats.totalExecutionTimeMs) }}
           </span>
-          <span v-if="totalCost" class="stat">{{ totalCost }}</span>
-          <span v-if="tokenUsage.totalTokens > 0" class="stat">
+          <span
+            v-if="totalCost"
+            class="stat"
+          >{{ totalCost }}</span>
+          <span
+            v-if="tokenUsage.totalTokens > 0"
+            class="stat"
+          >
             {{ formatTokens(tokenUsage.totalTokens) }} tokens
           </span>
         </div>

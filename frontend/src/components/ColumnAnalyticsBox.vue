@@ -658,56 +658,111 @@ onUnmounted(() => {
     <div class="analytics-wrapper">
       <div class="detail-content">
         <!-- Loading -->
-        <div v-if="isLoading" class="empty-state">
+        <div
+          v-if="isLoading"
+          class="empty-state"
+        >
           Crunching...
         </div>
 
         <!-- Error -->
-        <div v-else-if="error" class="empty-state error">
+        <div
+          v-else-if="error"
+          class="empty-state error"
+        >
           {{ error }}
         </div>
 
         <!-- Needs refresh -->
-        <div v-else-if="needsRefresh" class="empty-state">
-          <button class="refresh-btn" @click="refresh">
+        <div
+          v-else-if="needsRefresh"
+          class="empty-state"
+        >
+          <button
+            class="refresh-btn"
+            @click="refresh"
+          >
             Refresh
           </button>
         </div>
 
         <!-- Numeric/Date Stats (grid layout) -->
-        <div v-else-if="showStatsGrid" class="stats-grid">
+        <div
+          v-else-if="showStatsGrid"
+          class="stats-grid"
+        >
           <div class="stat-card">
-            <div class="stat-label">Min</div>
-            <div class="stat-value">{{ formatStatValue(numericStats!.min) }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Max</div>
-            <div class="stat-value">{{ formatStatValue(numericStats!.max) }}</div>
-          </div>
-          <div v-if="numericStats!.avg !== null" class="stat-card">
-            <div class="stat-label">Average</div>
-            <div class="stat-value">{{ formatNumber(numericStats!.avg) }}</div>
-          </div>
-          <div v-if="numericStats!.stddev !== null" class="stat-card">
-            <div class="stat-label">Std Dev</div>
-            <div class="stat-value">{{ formatNumber(numericStats!.stddev) }}</div>
+            <div class="stat-label">
+              Min
+            </div>
+            <div class="stat-value">
+              {{ formatStatValue(numericStats!.min) }}
+            </div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Count</div>
-            <div class="stat-value">{{ formatNumber(numericStats!.count) }}</div>
+            <div class="stat-label">
+              Max
+            </div>
+            <div class="stat-value">
+              {{ formatStatValue(numericStats!.max) }}
+            </div>
+          </div>
+          <div
+            v-if="numericStats!.avg !== null"
+            class="stat-card"
+          >
+            <div class="stat-label">
+              Average
+            </div>
+            <div class="stat-value">
+              {{ formatNumber(numericStats!.avg) }}
+            </div>
+          </div>
+          <div
+            v-if="numericStats!.stddev !== null"
+            class="stat-card"
+          >
+            <div class="stat-label">
+              Std Dev
+            </div>
+            <div class="stat-value">
+              {{ formatNumber(numericStats!.stddev) }}
+            </div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Null</div>
-            <div class="stat-value">{{ formatNumber(nullCount) }} ({{ nullPercent }}%)</div>
+            <div class="stat-label">
+              Count
+            </div>
+            <div class="stat-value">
+              {{ formatNumber(numericStats!.count) }}
+            </div>
           </div>
-          <div v-if="totalDistinct !== null" class="stat-card">
-            <div class="stat-label">Distinct</div>
-            <div class="stat-value">{{ formatNumber(totalDistinct) }}</div>
+          <div class="stat-card">
+            <div class="stat-label">
+              Null
+            </div>
+            <div class="stat-value">
+              {{ formatNumber(nullCount) }} ({{ nullPercent }}%)
+            </div>
+          </div>
+          <div
+            v-if="totalDistinct !== null"
+            class="stat-card"
+          >
+            <div class="stat-label">
+              Distinct
+            </div>
+            <div class="stat-value">
+              {{ formatNumber(totalDistinct) }}
+            </div>
           </div>
         </div>
 
         <!-- Results Table (for text/boolean/grouped) -->
-        <div v-else-if="showResultsTable" class="results-container">
+        <div
+          v-else-if="showResultsTable"
+          class="results-container"
+        >
           <ResultsTable
             :table-name="analyticsTableName"
             :box-name="initialName"
@@ -721,7 +776,10 @@ onUnmounted(() => {
         </div>
 
         <!-- Empty -->
-        <div v-else-if="!isLoading" class="empty-state">
+        <div
+          v-else-if="!isLoading"
+          class="empty-state"
+        >
           No data available
         </div>
       </div>
@@ -729,19 +787,25 @@ onUnmounted(() => {
       <!-- Footer with engine badge and group by controls -->
       <footer class="analytics-footer">
         <!-- Engine badge + row count (only for stats grid, ResultsTable has its own footer) -->
-        <div v-if="showStatsGrid" class="results-meta">
+        <div
+          v-if="showStatsGrid"
+          class="results-meta"
+        >
           <span
             v-if="analyticsData?.sourceEngine"
+            v-tooltip="connectionName || DATABASE_INFO[analyticsData.sourceEngine].name"
             class="engine-badge"
             :style="{
               background: DATABASE_INFO[analyticsData.sourceEngine].color,
               color: DATABASE_INFO[analyticsData.sourceEngine].textColor
             }"
-            v-tooltip="connectionName || DATABASE_INFO[analyticsData.sourceEngine].name"
           >
             {{ DATABASE_INFO[analyticsData.sourceEngine].shortName }}
           </span>
-          <span v-if="numericStats" class="stat">
+          <span
+            v-if="numericStats"
+            class="stat"
+          >
             {{ formatNumber(numericStats.count) }} rows
           </span>
         </div>
@@ -754,7 +818,10 @@ onUnmounted(() => {
           tooltip="Copy query"
         />
 
-        <div class="group-by-section" ref="dropdownRef">
+        <div
+          ref="dropdownRef"
+          class="group-by-section"
+        >
           <span class="group-by-label">GROUP BY</span>
 
           <!-- Selected columns as chips -->
@@ -766,24 +833,49 @@ onUnmounted(() => {
             {{ col }}
             <button
               class="chip-remove"
-              @click.stop="removeGroupByColumn(col)"
               aria-label="Remove"
+              @click.stop="removeGroupByColumn(col)"
             >×</button>
           </span>
 
           <!-- Add column button with dropdown -->
-          <div v-if="selectableColumns.length > 0" class="add-column-wrapper">
+          <div
+            v-if="selectableColumns.length > 0"
+            class="add-column-wrapper"
+          >
             <button
               class="add-column-btn"
               @click.stop="showColumnDropdown = !showColumnDropdown"
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line
+                  x1="12"
+                  y1="5"
+                  x2="12"
+                  y2="19"
+                />
+                <line
+                  x1="5"
+                  y1="12"
+                  x2="19"
+                  y2="12"
+                />
               </svg>
             </button>
             <Transition name="dropdown-up">
-              <div v-if="showColumnDropdown" class="column-dropdown dropdown-menu">
+              <div
+                v-if="showColumnDropdown"
+                class="column-dropdown dropdown-menu"
+              >
                 <button
                   v-for="col in selectableColumns"
                   :key="col"
