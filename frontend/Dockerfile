@@ -27,7 +27,7 @@ COPY . .
 RUN bun run build
 
 # Production stage
-FROM nginx:1.28.2-alpine AS production
+FROM nginx:alpine AS production
 
 # Copy built assets from build stage
 COPY --from=base /app/dist /usr/share/nginx/html
