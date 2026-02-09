@@ -4,10 +4,12 @@ FROM oven/bun:1.3.9 AS base
 # Build arguments for Vite environment variables
 ARG VITE_BACKEND_URL
 ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_GITHUB_CLIENT_ID
 
 # Set environment variables from build arguments
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_GITHUB_CLIENT_ID=$VITE_GITHUB_CLIENT_ID
 
 # Set working directory
 WORKDIR /app
