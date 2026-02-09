@@ -29,14 +29,14 @@ RUN bun run build
 # Production stage
 FROM nginx:alpine AS production
 
+# Default port (Railway overrides via $PORT)
+ENV PORT=80
+
 # Copy built assets from build stage
 COPY --from=base /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration for SPA routing
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Expose port 80
-EXPOSE 80
+# Copy nginx template (envsubst replaces $PORT at startup)
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
