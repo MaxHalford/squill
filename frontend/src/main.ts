@@ -16,6 +16,7 @@ const RefundPolicy = () => import('./views/RefundPolicy.vue')
 const Workbench = () => import('./views/Workbench.vue')
 const AuthCallback = () => import('./views/AuthCallback.vue')
 const AccountPage = () => import('./views/AccountPage.vue')
+const Changelog = () => import('./views/Changelog.vue')
 const NotFound = () => import('./views/NotFound.vue')
 
 const routes: RouteRecordRaw[] = [
@@ -26,6 +27,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/privacy-policy', component: PrivacyPolicy },
   { path: '/terms-of-service', component: TermsOfService },
   { path: '/refund-policy', component: RefundPolicy },
+  { path: '/changelog', component: Changelog },
   { path: '/workbench', component: Workbench },
   { path: '/:pathMatch(.*)*', component: NotFound },
 ]
@@ -45,7 +47,7 @@ export const createApp = ViteSSG(
         return { el: to.hash }
       }
       // Only scroll to top for policy pages, not the homepage
-      const policyPages = ['/privacy-policy', '/terms-of-service', '/refund-policy']
+      const policyPages = ['/privacy-policy', '/terms-of-service', '/refund-policy', '/changelog']
       if (policyPages.includes(to.path)) {
         return { top: 0 }
       }

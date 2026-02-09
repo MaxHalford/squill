@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     google_client_id: str
     google_client_secret: str
 
+    # GitHub OAuth (optional — leave empty to disable GitHub login)
+    github_client_id: str = ""
+    github_client_secret: str = ""
+
     # Encryption key for refresh tokens (32-byte base64-encoded)
     token_encryption_key: str
 

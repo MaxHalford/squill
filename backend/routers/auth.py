@@ -10,6 +10,7 @@ from database import get_db
 from models import BigQueryConnection, User
 from services.auth import create_session_token
 from services.encryption import TokenEncryption
+from services.github_oauth import GitHubOAuthService
 from services.google_oauth import GoogleOAuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -31,6 +32,13 @@ def get_google_oauth() -> GoogleOAuthService:
     """Get cached Google OAuth service."""
     settings = get_settings()
     return GoogleOAuthService(settings.google_client_id, settings.google_client_secret)
+
+
+@lru_cache
+def get_github_oauth() -> GitHubOAuthService:
+    """Get cached GitHub OAuth service."""
+    settings = get_settings()
+    return GitHubOAuthService(settings.github_client_id, settings.github_client_secret)
 
 
 class GoogleCallbackRequest(BaseModel):
@@ -126,6 +134,83 @@ async def google_login(request: GoogleLoginRequest, db: AsyncSession = Depends(g
     session_token = create_session_token(user.id, user.email)
 
     return GoogleLoginResponse(
+        session_token=session_token,
+        user={
+            "id": user.id,
+            "email": user.email,
+            "plan": user.plan,
+            "is_vip": user.is_vip,
+        },
+    )
+
+
+class GitHubLoginRequest(BaseModel):
+    """Request for GitHub OAuth login flow."""
+
+    code: str
+    redirect_uri: str
+
+
+class GitHubLoginResponse(BaseModel):
+    """Response for GitHub OAuth login flow."""
+
+    session_token: str
+    user: dict
+
+
+@router.post("/github/login", response_model=GitHubLoginResponse)
+async def github_login(request: GitHubLoginRequest, db: AsyncSession = Depends(get_db)):
+    """
+    GitHub OAuth login flow. Creates/updates user account using verified GitHub email.
+
+    Account linking: if the GitHub email matches an existing user (e.g. from Google login),
+    the same account is reused.
+    """
+    github_oauth = get_github_oauth()
+    settings = get_settings()
+
+    if not settings.github_client_id or not settings.github_client_secret:
+        raise HTTPException(status_code=500, detail="GitHub OAuth is not configured")
+
+    try:
+        tokens = await github_oauth.exchange_code(request.code, request.redirect_uri)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to exchange code: {e}")
+
+    access_token = tokens.get("access_token")
+    if not access_token:
+        raise HTTPException(
+            status_code=400, detail="No access token received from GitHub"
+        )
+
+    # Get the user's primary verified email from GitHub
+    try:
+        email = await github_oauth.get_primary_email(access_token)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to get user emails: {e}")
+
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail="No verified email found on your GitHub account. Please verify your email on GitHub and try again.",
+        )
+
+    # Upsert user account (same logic as Google login — links by email)
+    existing_user = await db.execute(select(User).where(User.email == email))
+    user = existing_user.scalar_one_or_none()
+
+    if not user:
+        user = User(email=email, plan="free", is_vip=is_vip_email(email))
+        db.add(user)
+    elif is_vip_email(email) and not user.is_vip:
+        user.is_vip = True
+
+    await db.commit()
+    await db.refresh(user)
+
+    session_token = create_session_token(user.id, user.email)
+
+    return GitHubLoginResponse(
         session_token=session_token,
         user={
             "id": user.id,

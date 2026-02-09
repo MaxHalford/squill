@@ -24,12 +24,20 @@
       >
         <h1>Account</h1>
         <p>You're not signed in. Sign in to access account features.</p>
-        <button
-          class="sign-in-button"
-          @click="handleSignIn"
-        >
-          Sign in with Google
-        </button>
+        <div class="sign-in-buttons">
+          <button
+            class="sign-in-button"
+            @click="handleSignInGoogle"
+          >
+            Sign in with Google
+          </button>
+          <button
+            class="sign-in-button github"
+            @click="handleSignInGitHub"
+          >
+            Sign in with GitHub
+          </button>
+        </div>
       </div>
 
       <!-- Logged in state -->
@@ -53,7 +61,7 @@
                 {{ userStore.user?.email }}
               </div>
               <div class="profile-provider">
-                Signed in with Google
+                Signed in with {{ providerLabel }}
               </div>
             </div>
           </div>
@@ -223,9 +231,12 @@ const goBack = () => {
   router.push('/app')
 }
 
-const handleSignIn = async () => {
-  // Use login-only flow - only requests email permission (incremental auth)
+const handleSignInGoogle = async () => {
   await userStore.loginWithGoogle()
+}
+
+const handleSignInGitHub = async () => {
+  await userStore.loginWithGitHub()
 }
 
 const handleSignOut = async () => {
@@ -291,6 +302,12 @@ const handleDeleteAccount = async () => {
     alert('Failed to delete account. Please try again.')
   }
 }
+
+const providerLabel = computed(() => {
+  const provider = userStore.user?.authProvider
+  if (provider === 'github') return 'GitHub'
+  return 'Google'
+})
 
 const emailInitial = computed(() => {
   const email = userStore.user?.email || '?'
@@ -388,6 +405,12 @@ h1 {
 .not-logged-in p {
   color: var(--text-secondary, #666);
   margin-bottom: var(--space-4, 1rem);
+}
+
+.sign-in-buttons {
+  display: flex;
+  gap: var(--space-3, 0.75rem);
+  justify-content: center;
 }
 
 .sign-in-button {

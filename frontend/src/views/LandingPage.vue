@@ -2,7 +2,9 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@unhead/vue'
+import { marked } from 'marked'
 import { DATABASE_ENGINES, DATABASE_INFO, type DatabaseEngine, type DatabaseInfo } from '../types/database'
+import { changelog } from '../data/changelog'
 
 const router = useRouter()
 
@@ -240,6 +242,15 @@ const openFaq = ref<number | null>(null)
 const toggleFaq = (index: number) => {
   openFaq.value = openFaq.value === index ? null : index
 }
+
+// Changelog
+const latestChangelog = changelog[0]
+const latestChangelogDate = (() => {
+  if (!latestChangelog) return ''
+  const date = new Date(latestChangelog.date + 'T00:00:00')
+  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+})()
+const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as string : ''
 </script>
 
 <template>
@@ -731,7 +742,7 @@ const toggleFaq = (index: number) => {
       <div class="testimonials-grid">
         <div class="testimonial-card testimonial-main">
           <blockquote>
-            "It's very nice, babe."
+            "It's very nice babe."
           </blockquote>
           <cite>
             <span class="author">Sarah</span>
@@ -789,6 +800,29 @@ const toggleFaq = (index: number) => {
       </div>
     </section>
 
+    <!-- What's New Section -->
+    <section
+      v-if="latestChangelog"
+      class="section whats-new"
+    >
+      <h2 class="section-title">
+        WHAT'S NEW
+      </h2>
+      <div class="whats-new-entry">
+        <time class="whats-new-date">{{ latestChangelogDate }}</time>
+        <div
+          class="whats-new-content markdown-content"
+          v-html="latestChangelogHtml"
+        />
+        <router-link
+          to="/changelog"
+          class="whats-new-link"
+        >
+          View all updates →
+        </router-link>
+      </div>
+    </section>
+
     <!-- Footer -->
     <footer class="landing-footer">
       <img
@@ -816,6 +850,10 @@ const toggleFaq = (index: number) => {
           <span class="divider">|</span>
           <router-link to="/refund-policy">
             Refund Policy
+          </router-link>
+          <span class="divider">|</span>
+          <router-link to="/changelog">
+            Changelog
           </router-link>
         </div>
         <p class="footer-tagline">
@@ -1884,6 +1922,71 @@ button.pro-feature {
   margin: 0;
   color: var(--text-secondary);
   line-height: var(--line-height-relaxed);
+}
+
+/* ===== WHAT'S NEW SECTION ===== */
+.whats-new-entry {
+  max-width: 600px;
+  margin: 0 auto;
+  background: var(--surface-primary);
+  border: var(--border-width-thick) solid var(--border-primary);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-5);
+}
+
+.whats-new-date {
+  display: block;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-3);
+}
+
+.whats-new-content :deep(h2) {
+  font-size: var(--font-size-body-lg);
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-2);
+  color: var(--text-primary);
+}
+
+.whats-new-content :deep(h2:first-child) {
+  margin-top: 0;
+}
+
+.whats-new-content :deep(p) {
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+  line-height: var(--line-height-relaxed);
+}
+
+.whats-new-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.whats-new-content :deep(ul) {
+  color: var(--text-secondary);
+  padding-left: var(--space-5);
+  margin-bottom: var(--space-2);
+}
+
+.whats-new-link {
+  display: inline-block;
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+  border: var(--border-width-thin) solid var(--border-primary);
+  transition: all 0.15s;
+}
+
+.whats-new-link:hover {
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
 }
 
 /* ===== FOOTER ===== */

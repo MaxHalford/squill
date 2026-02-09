@@ -122,10 +122,18 @@ const toggleUserDropdown = () => {
   activeDropdown.value = activeDropdown.value === 'user' ? null : 'user'
 }
 
-const handleSignIn = async () => {
+const handleSignInGoogle = async () => {
   closeDropdown()
-  // Use login-only flow - only requests email permission (incremental auth)
   await userStore.loginWithGoogle()
+}
+
+const handleSignInGitHub = async () => {
+  closeDropdown()
+  await userStore.loginWithGitHub()
+}
+
+const toggleSignInDropdown = () => {
+  activeDropdown.value = activeDropdown.value === 'signin' ? null : 'signin'
 }
 
 const handleSignOut = async () => {
@@ -1113,15 +1121,41 @@ onUnmounted(() => {
         </Transition>
       </div>
 
-      <!-- Sign In Button (when not logged in) -->
-      <button
+      <!-- Sign In Dropdown (when not logged in) -->
+      <div
         v-else
-        class="sign-in-btn"
-        :disabled="userStore.isLoading"
-        @click="handleSignIn"
+        class="menu-item sign-in-menu-item"
       >
-        {{ userStore.isLoading ? 'Signing in...' : 'Sign in' }}
-      </button>
+        <button
+          class="sign-in-btn"
+          :disabled="userStore.isLoading"
+          @click.stop="toggleSignInDropdown"
+        >
+          {{ userStore.isLoading ? 'Signing in...' : 'Sign in' }}
+        </button>
+
+        <Transition name="dropdown">
+          <div
+            v-if="activeDropdown === 'signin'"
+            class="dropdown signin-dropdown"
+          >
+            <button
+              class="dropdown-item"
+              @click="handleSignInGoogle"
+            >
+              <img class="provider-icon" src="/logos/google.svg" alt="">
+              <span class="item-text">Continue with Google</span>
+            </button>
+            <button
+              class="dropdown-item"
+              @click="handleSignInGitHub"
+            >
+              <img class="provider-icon" src="/logos/github.svg" alt="">
+              <span class="item-text">Continue with GitHub</span>
+            </button>
+          </div>
+        </Transition>
+      </div>
     </div>
   </div>
 
@@ -1384,6 +1418,27 @@ onUnmounted(() => {
 .sign-in-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.sign-in-menu-item {
+  position: relative;
+}
+
+.signin-dropdown {
+  right: 0;
+  left: auto;
+  min-width: 200px;
+}
+
+.signin-dropdown .dropdown-item {
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+
+.provider-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
 }
 
 /* Error Toast */

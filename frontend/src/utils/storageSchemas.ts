@@ -105,13 +105,16 @@ export type ConnectionsStateData = z.infer<typeof ConnectionsStateSchema>
 // ============================================
 const PlanTypeSchema = z.enum(['free', 'pro'])
 
+const AuthProviderSchema = z.enum(['google', 'github'])
+
 export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
   plan: PlanTypeSchema,
   isVip: z.boolean(),
   planExpiresAt: z.string().nullable().optional().default(null),
-  subscriptionCancelAtPeriodEnd: z.boolean().optional().default(false)
+  subscriptionCancelAtPeriodEnd: z.boolean().optional().default(false),
+  authProvider: AuthProviderSchema.optional()
 })
 
 export type UserData = z.infer<typeof UserSchema>

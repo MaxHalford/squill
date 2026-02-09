@@ -64,6 +64,39 @@ const handleLoginFlow = async (code: string): Promise<void> => {
     isVip: data.user.is_vip ?? false,
     planExpiresAt: data.user.plan_expires_at ?? null,
     subscriptionCancelAtPeriodEnd: data.user.subscription_cancel_at_period_end ?? false,
+    authProvider: 'google',
+  }, data.session_token)
+}
+
+/**
+ * Handle GitHub OAuth login flow.
+ * Creates/updates user account using verified GitHub email.
+ */
+const handleGitHubLoginFlow = async (code: string): Promise<void> => {
+  const response = await fetch(`${BACKEND_URL}/auth/github/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code,
+      redirect_uri: `${window.location.origin}/auth/callback`,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(errorData.detail || 'Failed to authenticate with GitHub')
+  }
+
+  const data = await response.json()
+
+  await userStore.setUser({
+    id: data.user.id,
+    email: data.user.email,
+    plan: data.user.plan,
+    isVip: data.user.is_vip ?? false,
+    planExpiresAt: data.user.plan_expires_at ?? null,
+    subscriptionCancelAtPeriodEnd: data.user.subscription_cancel_at_period_end ?? false,
+    authProvider: 'github',
   }, data.session_token)
 }
 
@@ -96,6 +129,7 @@ const handleBigQueryFlow = async (code: string): Promise<void> => {
     isVip: data.user.is_vip ?? false,
     planExpiresAt: data.user.plan_expires_at ?? null,
     subscriptionCancelAtPeriodEnd: data.user.subscription_cancel_at_period_end ?? false,
+    authProvider: 'google',
   }, data.session_token)
 
   // Add connection with access token (stored in memory)
@@ -171,6 +205,10 @@ onMounted(async () => {
     } else if (flowType === 'login') {
       // Login-only flow (user just wants to sign in without adding BigQuery)
       await handleLoginFlow(code)
+      router.push('/app')
+    } else if (flowType === 'github-login') {
+      // GitHub OAuth login flow
+      await handleGitHubLoginFlow(code)
       router.push('/app')
     } else {
       // BigQuery connection flow (default, including legacy states)

@@ -8,6 +8,7 @@ const STORAGE_KEY = 'squill-user'
 const SESSION_TOKEN_KEY = 'squill-session-token'
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || ''
 const OAUTH_STATE_KEY = 'squill-oauth-state'
 
 // Generate cryptographically secure random state for CSRF protection
@@ -250,6 +251,29 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /**
+   * Login with GitHub OAuth.
+   * Uses standard redirect flow (no JS SDK).
+   */
+  const loginWithGitHub = async (): Promise<void> => {
+    if (!GITHUB_CLIENT_ID) {
+      throw new Error('GitHub Client ID not configured. Please set VITE_GITHUB_CLIENT_ID in your .env file')
+    }
+
+    const csrfToken = generateOAuthState()
+    const state = `${csrfToken}:github-login`
+    sessionStorage.setItem(OAUTH_STATE_KEY, state)
+
+    const params = new URLSearchParams({
+      client_id: GITHUB_CLIENT_ID,
+      redirect_uri: `${window.location.origin}/auth/callback`,
+      scope: 'user:email',
+      state,
+    })
+
+    window.location.href = `https://github.com/login/oauth/authorize?${params.toString()}`
+  }
+
+  /**
    * Delete user account and all associated data
    */
   const deleteAccount = async (): Promise<boolean> => {
@@ -389,6 +413,7 @@ export const useUserStore = defineStore('user', () => {
     fetchProfile,
     logout,
     loginWithGoogle,
+    loginWithGitHub,
     deleteAccount,
     clearError,
     upgradeToProCheckout,

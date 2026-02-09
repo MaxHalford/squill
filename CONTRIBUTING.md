@@ -72,6 +72,10 @@ cd backend
 python -m scripts.benchmarks.hex_remover
 ```
 
+## Useful links
+
+- https://github.com/settings/developers
+
 ## Need help?
 
 Open an issue if you have questions or run into problems.

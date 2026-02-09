@@ -4,6 +4,11 @@
 export type PlanType = 'free' | 'pro'
 
 /**
+ * OAuth provider used for authentication
+ */
+export type AuthProvider = 'google' | 'github'
+
+/**
  * User account identified by email from OAuth provider
  */
 export interface User {
@@ -13,6 +18,7 @@ export interface User {
   isVip: boolean
   planExpiresAt: string | null
   subscriptionCancelAtPeriodEnd: boolean
+  authProvider?: AuthProvider
 }
 
 /**
