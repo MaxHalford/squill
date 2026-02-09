@@ -1,5 +1,5 @@
 # Use bun base image
-FROM oven/bun:1.3.9 AS base
+FROM oven/bun:latest AS base
 
 # Build arguments for Vite environment variables
 ARG VITE_BACKEND_URL
