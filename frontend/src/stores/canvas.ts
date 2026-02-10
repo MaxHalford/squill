@@ -629,7 +629,7 @@ export const useCanvasStore = defineStore('canvas', () => {
             type === 'detail' ? `row_detail_${boxId}` :
             type === 'analytics' ? `analytics_${boxId}` :
             type === 'history' ? 'Query history' :
-            type === 'schema' ? 'Schema explorer' :
+            type === 'schema' ? 'Schema browser' :
             type === 'chat' ? getUniqueWizardName(boxes.value.map(b => b.name)) :
             `box_${boxId}`,
       dependencies: [],

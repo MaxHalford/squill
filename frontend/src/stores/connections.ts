@@ -6,6 +6,7 @@ import {
   fetchConnections as apiFetchConnections,
   type ConnectionData,
 } from '../services/connections'
+import { clearSchemaCache } from '../utils/schemaAdapter'
 
 const STORAGE_KEY = 'squill-connections'
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
@@ -258,22 +259,30 @@ export const useConnectionsStore = defineStore('connections', () => {
 
   // Remove connection
   const removeConnection = (connectionId: string) => {
-    const index = connections.value.findIndex(c => c.id === connectionId)
-    if (index !== -1) {
-      // Remove token from memory
-      accessTokens.value.delete(connectionId)
+    const connection = connections.value.find(c => c.id === connectionId)
+    if (!connection) return
 
-      // Use filter to ensure Vue reactivity triggers
-      connections.value = connections.value.filter(c => c.id !== connectionId)
+    // Remove token from memory
+    accessTokens.value.delete(connectionId)
 
-      // If we deleted the active connection, switch to another or null
-      if (activeConnectionId.value === connectionId) {
-        activeConnectionId.value = connections.value.length > 0
-          ? connections.value[0].id
-          : null
-      }
-      saveState()
+    // Clear stale schema cache for this connection
+    const connType = connection.type
+    if (connType === 'bigquery') {
+      clearSchemaCache('bigquery')
+    } else if (connType === 'postgres' || connType === 'snowflake') {
+      clearSchemaCache(connType, connectionId)
     }
+
+    // Use filter to ensure Vue reactivity triggers
+    connections.value = connections.value.filter(c => c.id !== connectionId)
+
+    // If we deleted the active connection, switch to another or null
+    if (activeConnectionId.value === connectionId) {
+      activeConnectionId.value = connections.value.length > 0
+        ? connections.value[0].id
+        : null
+    }
+    saveState()
   }
 
   // Update connection's project ID (for BigQuery and similar)

@@ -594,7 +594,7 @@ const handleShowColumnAnalytics = (data: {
   }
 }
 
-// Handle Cmd+click navigation from SQL query to table in Schema Explorer
+// Handle Cmd+click navigation from SQL query to table in Schema browser
 const handleNavigateToTable = async (info: {
   connectionType: string
   connectionId?: string

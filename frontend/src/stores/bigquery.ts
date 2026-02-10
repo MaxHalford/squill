@@ -15,8 +15,9 @@ const generateOAuthState = (): string => {
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-// BigQuery OAuth scopes - minimal read-only access (no email scope - that's handled by login)
+// BigQuery OAuth scopes - read-only BigQuery access + email (needed by backend to identify user)
 const BIGQUERY_SCOPES = [
+  'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/bigquery.readonly',
   'https://www.googleapis.com/auth/cloud-platform.read-only'
 ]
@@ -274,45 +275,32 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     if (!accessToken.value) return
 
     try {
-      // Use BigQuery's own projects API which only returns projects with BigQuery enabled
-      const data = await apiCallWithRefresh<{
-        projects?: Array<{ projectReference: { projectId: string } }>
-      }>(
-        (token) => fetch(
-          'https://bigquery.googleapis.com/bigquery/v2/projects?maxResults=1',
-          { headers: { 'Authorization': `Bearer ${token}` } }
-        )
-      )
-
-      if (data.projects && data.projects.length > 0) {
-        projectId.value = data.projects[0].projectReference.projectId
+      // Fetch projects and pick the first one
+      const result = await fetchProjects()
+      if (result.length > 0) {
+        projectId.value = result[0].projectId
       }
     } catch (err) {
       console.warn('Could not fetch default project:', err)
     }
   }
 
-  // Fetch list of available projects (only those with BigQuery enabled)
+  // Fetch projects from Resource Manager v3 search API
+  // Uses projects:search (not projects.list) — matches what Cloud Console uses
+  // and only requires per-project resourcemanager.projects.get permission
   const fetchProjects = async (): Promise<BigQueryProject[]> => {
     try {
-      // Use BigQuery's own projects API which only returns projects with BigQuery enabled
       const data = await apiCallWithRefresh<{
-        projects?: Array<{
-          id: string
-          projectReference: { projectId: string }
-          friendlyName?: string
-        }>
+        projects?: Array<{ projectId: string; displayName?: string; state: string }>
       }>(
         (token) => fetch(
-          'https://bigquery.googleapis.com/bigquery/v2/projects',
+          'https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state:ACTIVE',
           { headers: { 'Authorization': `Bearer ${token}` } }
         )
       )
-
-      // Map BigQuery API response to our BigQueryProject type
       projects.value = (data.projects || []).map(p => ({
-        projectId: p.projectReference.projectId,
-        name: p.friendlyName || p.id
+        projectId: p.projectId,
+        name: p.displayName || p.projectId
       }))
       return projects.value
     } catch (err) {
@@ -326,21 +314,16 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   const fetchProjectsWithAnyConnection = async (): Promise<BigQueryProject[]> => {
     try {
       const data = await apiCallWithAnyBigQueryConnection<{
-        projects?: Array<{
-          id: string
-          projectReference: { projectId: string }
-          friendlyName?: string
-        }>
+        projects?: Array<{ projectId: string; displayName?: string; state: string }>
       }>(
         (token) => fetch(
-          'https://bigquery.googleapis.com/bigquery/v2/projects',
+          'https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state:ACTIVE',
           { headers: { 'Authorization': `Bearer ${token}` } }
         )
       )
-
       projects.value = (data.projects || []).map(p => ({
-        projectId: p.projectReference.projectId,
-        name: p.friendlyName || p.id
+        projectId: p.projectId,
+        name: p.displayName || p.projectId
       }))
       return projects.value
     } catch (err) {

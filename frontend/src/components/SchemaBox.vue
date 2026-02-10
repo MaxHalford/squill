@@ -12,7 +12,7 @@ import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 import type { BigQueryDataset, BigQueryTable } from '../types/bigquery'
 import type { PostgresTableInfo } from '../stores/postgres'
 import type { SnowflakeDatabaseInfo, SnowflakeSchemaInfo, SnowflakeTableInfo } from '../stores/snowflake'
-import { collectSchemaForConnection } from '../utils/schemaAdapter'
+
 
 // Schema browser item types for the column navigation
 interface BrowserItem {
@@ -39,17 +39,7 @@ const schemaStore = useSchemaStore()
 // ResizeObserver for virtual scroll container
 let columnsResizeObserver: ResizeObserver | null = null
 
-// Load BigQuery projects on mount if we have BQ connections but no projects loaded
 onMounted(async () => {
-  const bigqueryConnections = connectionsStore.getConnectionsByType('bigquery')
-  if (bigqueryConnections.length > 0 && bigqueryStore.projects.length === 0) {
-    try {
-      await bigqueryStore.fetchProjectsWithAnyConnection()
-    } catch (err) {
-      console.warn('Failed to load BigQuery projects:', err)
-    }
-  }
-
   // Set up resize observer for virtual scroll container
   columnsResizeObserver = new ResizeObserver(() => {
     updateColumnsContainerHeight()
@@ -84,6 +74,8 @@ const emit = defineEmits(['select', 'update:position', 'update:size', 'delete', 
 const selectedProject = ref<string | null>(null)
 const selectedDataset = ref<string | null>(null)
 const selectedTable = ref<string | null>(null)
+// BigQuery-specific: project selection (between connection and dataset)
+const selectedBigQueryProject = ref<string | null>(null)
 // Snowflake-specific: database and schema selection
 const selectedSnowflakeDatabase = ref<string | null>(null)
 const selectedSnowflakeSchema = ref<string | null>(null)
@@ -92,10 +84,48 @@ const selectedSnowflakeSchema = ref<string | null>(null)
 const datasets = ref<Record<string, BrowserItem[]>>({}) // { projectId: [datasets] }
 const tables = ref<Record<string, BrowserItem[]>>({}) // { datasetId: [tables] }
 const schemas = ref<Record<string, SchemaField[]>>({}) // { tableId: schema }
+// BigQuery-specific cache
+const bigqueryProjectsByConnection = ref<Record<string, { projectId: string; name?: string }[]>>({}) // { connectionId: [projects] }
 // Snowflake-specific caches
 const snowflakeDatabases = ref<Record<string, SnowflakeDatabaseInfo[]>>({}) // { connectionId: [databases] }
 const snowflakeSchemas = ref<Record<string, SnowflakeSchemaInfo[]>>({}) // { connectionId:database: [schemas] }
 const snowflakeTables = ref<Record<string, SnowflakeTableInfo[]>>({}) // { connectionId:database.schema: [tables] }
+
+// Per-column filter state
+const col1Filter = ref('')
+const col2Filter = ref('')
+const col3Filter = ref('')
+const col4Filter = ref('')
+const col5Filter = ref('')
+const col1FilterOpen = ref(false)
+const col2FilterOpen = ref(false)
+const col3FilterOpen = ref(false)
+const col4FilterOpen = ref(false)
+const col5FilterOpen = ref(false)
+
+// Toggle filter and auto-focus the input
+const toggleFilter = (col: number) => {
+  const openRefs = [col1FilterOpen, col2FilterOpen, col3FilterOpen, col4FilterOpen, col5FilterOpen]
+  const filterRefs = [col1Filter, col2Filter, col3Filter, col4Filter, col5Filter]
+  const openRef = openRefs[col - 1]
+  openRef.value = !openRef.value
+  if (!openRef.value) {
+    filterRefs[col - 1].value = ''
+  } else {
+    nextTick(() => {
+      const input = document.querySelector(`.col${col}-filter-input`) as HTMLInputElement
+      input?.focus()
+    })
+  }
+}
+
+// Close filter on Escape
+const closeFilter = (col: number) => {
+  const openRefs = [col1FilterOpen, col2FilterOpen, col3FilterOpen, col4FilterOpen, col5FilterOpen]
+  const filterRefs = [col1Filter, col2Filter, col3Filter, col4Filter, col5Filter]
+  openRefs[col - 1].value = false
+  filterRefs[col - 1].value = ''
+}
 
 // Loading states
 const loadingDatasets = ref<Record<string, boolean>>({})
@@ -121,18 +151,16 @@ const projects = computed(() => {
     { id: 'duckdb', name: DATABASE_INFO.duckdb.name, type: 'duckdb' }
   ]
 
-  // Show all BigQuery projects if we have any BigQuery connections and projects loaded
-  // (projects are loaded during OAuth callback and persist)
+  // Show one entry per BigQuery connection
   const bigqueryConnections = connectionsStore.getConnectionsByType('bigquery')
-  if (bigqueryConnections.length > 0 && bigqueryStore.projects.length > 0) {
-    bigqueryStore.projects.forEach(project => {
-      items.push({
-        id: project.projectId,
-        name: project.name || project.projectId,
-        type: 'bigquery'
-      })
+  bigqueryConnections.forEach(conn => {
+    items.push({
+      id: conn.id,
+      name: conn.email || conn.name || DATABASE_INFO.bigquery.name,
+      type: 'bigquery',
+      connectionId: conn.id
     })
-  }
+  })
 
   // Show all PostgreSQL connections
   const postgresConnections = connectionsStore.getConnectionsByType('postgres')
@@ -198,10 +226,16 @@ const column2Items = computed((): BrowserItem[] => {
       name: db.name,
       type: 'database'
     }))
-  } else {
-    // Show BigQuery datasets
-    return datasets.value[selectedProject.value] || []
+  } else if (selectedProjectType.value === 'bigquery') {
+    // Show BigQuery projects for this connection
+    const cachedProjects = bigqueryProjectsByConnection.value[selectedProject.value!] || []
+    return cachedProjects.map(p => ({
+      id: p.projectId,
+      name: p.projectId,
+      type: 'project'
+    }))
   }
+  return []
 })
 
 // Column 3: Tables (for BigQuery) or Schemas (for Snowflake)
@@ -220,7 +254,13 @@ const column3Items = computed(() => {
     }))
   }
 
-  // BigQuery: show tables when dataset is selected
+  if (selectedProjectType.value === 'bigquery') {
+    // BigQuery: show datasets when project is selected
+    if (!selectedBigQueryProject.value) return []
+    return datasets.value[selectedBigQueryProject.value] || []
+  }
+
+  // Fallback
   if (!selectedDataset.value) return []
   return tables.value[selectedDataset.value] || []
 })
@@ -240,7 +280,13 @@ const column4Items = computed((): BrowserItem[] => {
     }))
   }
 
-  // For other types, show columns (using name as id for consistency)
+  if (selectedProjectType.value === 'bigquery') {
+    // BigQuery: show tables when dataset is selected
+    if (!selectedDataset.value) return []
+    return tables.value[selectedDataset.value] || []
+  }
+
+  // For DuckDB/Postgres, show columns
   if (!selectedTable.value) return []
   let key: string
   if (selectedProject.value === 'duckdb') {
@@ -257,11 +303,17 @@ const column4Items = computed((): BrowserItem[] => {
   }))
 })
 
-// Column 5: Columns (for Snowflake only)
+// Column 5: Columns (for Snowflake and BigQuery)
 const column5Items = computed((): BrowserItem[] => {
-  if (selectedProjectType.value !== 'snowflake') return []
+  if (selectedProjectType.value !== 'snowflake' && selectedProjectType.value !== 'bigquery') return []
   if (!selectedTable.value) return []
-  const key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
+
+  let key: string
+  if (selectedProjectType.value === 'snowflake') {
+    key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
+  } else {
+    key = `${selectedDataset.value}.${selectedTable.value}`
+  }
   return (schemas.value[key] || []).map((f) => ({
     id: f.name,
     name: f.name,
@@ -278,17 +330,32 @@ const columnsContainerRef = ref<HTMLElement | null>(null)
 
 // Get the raw column items (either column4Items for non-Snowflake or column5Items for Snowflake)
 const rawColumnItems = computed(() => {
-  return selectedProjectType.value === 'snowflake' ? column5Items.value : column4Items.value
+  return (selectedProjectType.value === 'snowflake' || selectedProjectType.value === 'bigquery')
+    ? column5Items.value
+    : column4Items.value
 })
+
+// Filtered column items (per-column substring filter)
+const filterItems = <T extends { name: string }>(items: T[], query: string): T[] => {
+  if (!query) return items
+  const q = query.toLowerCase()
+  return items.filter(item => item.name.toLowerCase().includes(q))
+}
+
+const filteredProjects = computed(() => filterItems(projects.value, col1Filter.value))
+const filteredColumn2Items = computed(() => filterItems(column2Items.value, col2Filter.value))
+const filteredColumn3Items = computed(() => filterItems(column3Items.value, col3Filter.value))
+const filteredColumn4Items = computed(() => filterItems(column4Items.value, col4Filter.value))
+const filteredRawColumnItems = computed(() => filterItems(rawColumnItems.value, col5Filter.value))
 
 // Total height of the virtual scroll container
 const columnsTotalHeight = computed(() => {
-  return rawColumnItems.value.length * COLUMN_ITEM_HEIGHT
+  return filteredRawColumnItems.value.length * COLUMN_ITEM_HEIGHT
 })
 
 // Calculate visible items with virtual scrolling
 const visibleColumnItems = computed(() => {
-  const items = rawColumnItems.value
+  const items = filteredRawColumnItems.value
   if (items.length === 0) return []
 
   // For small lists (< 100 items), don't virtualize - the overhead isn't worth it
@@ -318,7 +385,7 @@ const visibleColumnItems = computed(() => {
 })
 
 // Whether to use virtual scrolling (only for large lists)
-const useVirtualScroll = computed(() => rawColumnItems.value.length >= 100)
+const useVirtualScroll = computed(() => filteredRawColumnItems.value.length >= 100)
 
 // Handle scroll events for virtual scrolling
 const handleColumnsScroll = (e: Event) => {
@@ -333,37 +400,64 @@ const updateColumnsContainerHeight = () => {
   }
 }
 
-// Select project
+// Select connection (column 1)
 const selectProject = async (projectId: string) => {
   selectedProject.value = projectId
+  selectedBigQueryProject.value = null
   selectedDataset.value = null
   selectedTable.value = null
-  // Reset Snowflake-specific selections
   selectedSnowflakeDatabase.value = null
   selectedSnowflakeSchema.value = null
+  col2Filter.value = ''; col2FilterOpen.value = false
+  col3Filter.value = ''; col3FilterOpen.value = false
+  col4Filter.value = ''; col4FilterOpen.value = false
+  col5Filter.value = ''; col5FilterOpen.value = false
 
   const project = projects.value.find(p => p.id === projectId)
 
   if (projectId === 'duckdb') {
-    // DuckDB tables already loaded
     return
   }
 
   if (project?.type === 'postgres') {
-    // Load PostgreSQL tables
     if (!tables.value[projectId]) {
       await loadPostgresTables(projectId)
     }
   } else if (project?.type === 'snowflake') {
-    // Load Snowflake databases (hierarchical navigation)
     if (!snowflakeDatabases.value[projectId]) {
       await loadSnowflakeDatabases(projectId)
     }
-  } else {
-    // Load BigQuery datasets
-    if (!datasets.value[projectId]) {
-      await loadDatasets(projectId)
+  } else if (project?.type === 'bigquery') {
+    if (!bigqueryProjectsByConnection.value[projectId]) {
+      await loadBigQueryProjects(projectId)
     }
+  }
+}
+
+// Select BigQuery project (column 2 for BigQuery)
+const selectBigQueryProject = async (projectId: string) => {
+  selectedBigQueryProject.value = projectId
+  selectedDataset.value = null
+  selectedTable.value = null
+  col3Filter.value = ''; col3FilterOpen.value = false
+  col4Filter.value = ''; col4FilterOpen.value = false
+  col5Filter.value = ''; col5FilterOpen.value = false
+
+  if (!datasets.value[projectId]) {
+    await loadDatasets(projectId)
+  }
+}
+
+// Load BigQuery projects for a connection
+const loadBigQueryProjects = async (connectionId: string) => {
+  loadingDatasets.value[connectionId] = true
+  try {
+    const fetchedProjects = await bigqueryStore.fetchProjectsWithAnyConnection()
+    bigqueryProjectsByConnection.value[connectionId] = fetchedProjects
+  } catch (err) {
+    console.error('Failed to load BigQuery projects:', err)
+  } finally {
+    loadingDatasets.value[connectionId] = false
   }
 }
 
@@ -371,6 +465,8 @@ const selectProject = async (projectId: string) => {
 const selectDataset = async (datasetId: string) => {
   selectedDataset.value = datasetId
   selectedTable.value = null
+  col4Filter.value = ''; col4FilterOpen.value = false
+  col5Filter.value = ''; col5FilterOpen.value = false
 
   // Load tables for this dataset
   if (!tables.value[datasetId]) {
@@ -383,6 +479,9 @@ const selectSnowflakeDatabase = async (databaseName: string) => {
   selectedSnowflakeDatabase.value = databaseName
   selectedSnowflakeSchema.value = null
   selectedTable.value = null
+  col3Filter.value = ''; col3FilterOpen.value = false
+  col4Filter.value = ''; col4FilterOpen.value = false
+  col5Filter.value = ''; col5FilterOpen.value = false
 
   // Load schemas for this database
   const cacheKey = `${selectedProject.value}:${databaseName}`
@@ -395,6 +494,8 @@ const selectSnowflakeDatabase = async (databaseName: string) => {
 const selectSnowflakeSchema = async (schemaName: string) => {
   selectedSnowflakeSchema.value = schemaName
   selectedTable.value = null
+  col4Filter.value = ''; col4FilterOpen.value = false
+  col5Filter.value = ''; col5FilterOpen.value = false
 
   // Load tables for this schema
   const cacheKey = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${schemaName}`
@@ -407,6 +508,7 @@ const selectSnowflakeSchema = async (schemaName: string) => {
 const selectTable = async (tableId: string) => {
   selectedTable.value = tableId
   selectedColumn.value = null
+  col5Filter.value = ''; col5FilterOpen.value = false
   // Reset virtual scroll position when switching tables
   columnsScrollTop.value = 0
   if (columnsContainerRef.value) {
@@ -452,12 +554,13 @@ const loadDatasets = async (projectId: string) => {
 
 // Load BigQuery tables
 const loadTables = async (datasetId: string) => {
-  if (!selectedProject.value) return
+  const bqProject = selectedBigQueryProject.value
+  if (!bqProject) return
 
   loadingTables.value[datasetId] = true
   try {
     // Use the helper that works with any BigQuery connection
-    const fetchedTables = await bigqueryStore.fetchTablesWithAnyConnection(datasetId, selectedProject.value)
+    const fetchedTables = await bigqueryStore.fetchTablesWithAnyConnection(datasetId, bqProject)
     tables.value[datasetId] = fetchedTables.map((t: BigQueryTable) => ({
       id: t.tableReference.tableId,
       name: t.tableReference.tableId,
@@ -547,7 +650,7 @@ const loadSchema = async (tableId: string, key: string) => {
     }
   } else if (selectedProjectType.value === 'postgres') {
     // PostgreSQL schema
-    loadingSchema.value[key] = true
+    loadingSchema.value[tableId] = true
     try {
       // tableId is in format schema.table
       const [schemaName, tableName] = tableId.split('.')
@@ -559,12 +662,12 @@ const loadSchema = async (tableId: string, key: string) => {
     } catch (err) {
       console.error('Failed to load PostgreSQL schema:', err)
     } finally {
-      loadingSchema.value[key] = false
+      loadingSchema.value[tableId] = false
     }
   } else if (selectedProjectType.value === 'snowflake') {
     // Snowflake schema - use selected database and schema from hierarchical navigation
     if (!selectedSnowflakeDatabase.value || !selectedSnowflakeSchema.value) return
-    loadingSchema.value[key] = true
+    loadingSchema.value[tableId] = true
     try {
       const columns = await snowflakeStore.fetchColumns(
         selectedProject.value!,
@@ -579,21 +682,21 @@ const loadSchema = async (tableId: string, key: string) => {
     } catch (err) {
       console.error('Failed to load Snowflake schema:', err)
     } finally {
-      loadingSchema.value[key] = false
+      loadingSchema.value[tableId] = false
     }
   } else {
     // BigQuery schema - use helper that works with any BigQuery connection
-    if (!selectedDataset.value || !selectedProject.value) return
+    if (!selectedDataset.value || !selectedBigQueryProject.value) return
 
-    loadingSchema.value[key] = true
+    loadingSchema.value[tableId] = true
     try {
-      const schema = await bigqueryStore.fetchTableSchemaWithAnyConnection(selectedDataset.value, tableId, selectedProject.value)
+      const schema = await bigqueryStore.fetchTableSchemaWithAnyConnection(selectedDataset.value, tableId, selectedBigQueryProject.value)
       schemas.value[key] = schema
 
       // Also populate the schema store for autocompletion
-      if (selectedProject.value && selectedDataset.value) {
+      if (selectedBigQueryProject.value && selectedDataset.value) {
         schemaStore.setTableSchema(
-          selectedProject.value,
+          selectedBigQueryProject.value,
           selectedDataset.value,
           tableId,
           schema
@@ -602,7 +705,7 @@ const loadSchema = async (tableId: string, key: string) => {
     } catch (err) {
       console.error('Failed to load schema:', err)
     } finally {
-      loadingSchema.value[key] = false
+      loadingSchema.value[tableId] = false
     }
   }
 }
@@ -621,8 +724,8 @@ const insertTableName = (item: BrowserItem) => {
     const dbName = selectedSnowflakeDatabase.value || item.databaseName
     const schemaName = selectedSnowflakeSchema.value || item.schemaName
     tableName = `"${dbName}"."${schemaName}"."${item.name}"`
-  } else if (item.type === 'table') {
-    tableName = `\`${selectedProject.value}.${selectedDataset.value}.${item.name}\``
+  } else if (selectedProjectType.value === 'bigquery') {
+    tableName = `\`${selectedBigQueryProject.value}.${selectedDataset.value}.${item.name}\``
   }
 
   if (tableName) {
@@ -664,8 +767,8 @@ const queryTable = (item: BrowserItem) => {
     return
   } else {
     engine = 'bigquery'
-    // BigQuery: project.dataset.table
-    fullTableName = `${selectedProject.value}.${selectedDataset.value}.${item.name}`
+    fullTableName = `${selectedBigQueryProject.value}.${selectedDataset.value}.${item.name}`
+    connectionId = selectedProject.value!
   }
 
   // Emit event to parent with table info
@@ -777,123 +880,172 @@ watch(columnsContainerRef, (newRef, oldRef) => {
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const schemaBrowserRef = ref<HTMLElement | null>(null)
 
-// Computed search results (uses debounced query for performance)
+// Computed search results — searches over what's loaded in the browser, not localStorage cache
 const searchResults = computed<SearchResult[]>(() => {
   const query = debouncedSearchQuery.value.trim().toLowerCase()
   if (!query) return []
 
   const results: SearchResult[] = []
 
-  // Search DuckDB
-  const duckdbSchema = collectSchemaForConnection('duckdb')
-  for (const item of duckdbSchema) {
-    const tableMatches = item.tableName.toLowerCase().includes(query)
-    const matchedColumns = item.columns
-      .filter(col => col.name.toLowerCase().includes(query))
-      .map(col => col.name)
+  for (const conn of projects.value) {
+    const connId = conn.id
+    const connName = conn.name
+    const connType = conn.type as DatabaseEngine
 
-    if (tableMatches || matchedColumns.length > 0) {
-      results.push({
-        connectionId: 'duckdb',
-        connectionName: DATABASE_INFO.duckdb.name,
-        connectionType: 'duckdb',
-        tableName: item.tableName,
-        displayName: item.tableName,
-        matchedColumns
-      })
-    }
-  }
+    if (connType === 'duckdb') {
+      // DuckDB tables are always available from the store
+      for (const [tableName, metadata] of Object.entries(duckdbStore.tables)) {
+        if (tableName.startsWith('_analytics_')) continue
+        const tableMatches = tableName.toLowerCase().includes(query)
+        const cols = metadata.columns || []
+        const matchedColumns = cols.filter(c => c.toLowerCase().includes(query))
+        if (tableMatches || matchedColumns.length > 0) {
+          results.push({
+            connectionId: 'duckdb',
+            connectionName: DATABASE_INFO.duckdb.name,
+            connectionType: 'duckdb',
+            tableName,
+            displayName: tableName,
+            matchedColumns
+          })
+        }
+      }
+    } else if (connType === 'bigquery') {
+      // Search BigQuery hierarchy: projects → datasets → tables → columns
+      const bqProjects = bigqueryProjectsByConnection.value[connId] || []
+      for (const bqProj of bqProjects) {
+        const projMatch = bqProj.projectId.toLowerCase().includes(query)
+        const projDatasets = datasets.value[bqProj.projectId] || []
 
-  // Search BigQuery
-  const bigquerySchema = collectSchemaForConnection('bigquery')
-  for (const item of bigquerySchema) {
-    const parts = item.tableName.split('.')
-    if (parts.length !== 3) continue
-    const [projectId, datasetId, tableOnly] = parts
+        if (projDatasets.length === 0) {
+          // Project loaded but not yet expanded — show if name matches
+          if (projMatch) {
+            results.push({
+              connectionId: connId, connectionName: connName, connectionType: 'bigquery',
+              tableName: bqProj.projectId, displayName: bqProj.projectId,
+              matchedColumns: [], projectId: bqProj.projectId
+            })
+          }
+          continue
+        }
 
-    const tableMatches = tableOnly.toLowerCase().includes(query) ||
-                         item.tableName.toLowerCase().includes(query)
-    const matchedColumns = item.columns
-      .filter(col => col.name.toLowerCase().includes(query))
-      .map(col => col.name)
+        for (const ds of projDatasets) {
+          const dsMatch = ds.name.toLowerCase().includes(query)
+          const dsTables = tables.value[ds.id] || []
 
-    if (tableMatches || matchedColumns.length > 0) {
-      results.push({
-        connectionId: 'bigquery',
-        connectionName: DATABASE_INFO.bigquery.name,
-        connectionType: 'bigquery',
-        tableName: item.tableName,
-        displayName: `${datasetId}.${tableOnly}`,
-        matchedColumns,
-        projectId,
-        datasetId
-      })
-    }
-  }
+          if (dsTables.length === 0) {
+            // Dataset loaded but not expanded
+            if (projMatch || dsMatch) {
+              results.push({
+                connectionId: connId, connectionName: connName, connectionType: 'bigquery',
+                tableName: `${bqProj.projectId}.${ds.name}`, displayName: ds.name,
+                matchedColumns: [], projectId: bqProj.projectId, datasetId: ds.id
+              })
+            }
+            continue
+          }
 
-  // Search PostgreSQL connections
-  const postgresConnections = connectionsStore.getConnectionsByType('postgres')
-  for (const conn of postgresConnections) {
-    const schema = collectSchemaForConnection('postgres', conn.id)
-    for (const item of schema) {
-      const tableMatches = item.tableName.toLowerCase().includes(query)
-      const matchedColumns = item.columns
-        .filter(col => col.name.toLowerCase().includes(query))
-        .map(col => col.name)
+          for (const tbl of dsTables) {
+            const tblMatch = tbl.name.toLowerCase().includes(query)
+            const schemaKey = `${ds.id}.${tbl.id}`
+            const tblSchema = schemas.value[schemaKey] || []
+            const matchedColumns = tblSchema
+              .filter(f => f.name.toLowerCase().includes(query))
+              .map(f => f.name)
 
-      if (tableMatches || matchedColumns.length > 0) {
-        const parts = item.tableName.split('.')
-        const schemaName = parts.length === 2 ? parts[0] : 'public'
+            if (projMatch || dsMatch || tblMatch || matchedColumns.length > 0) {
+              results.push({
+                connectionId: connId, connectionName: connName, connectionType: 'bigquery',
+                tableName: `${bqProj.projectId}.${ds.id}.${tbl.id}`,
+                displayName: `${ds.name}.${tbl.name}`,
+                matchedColumns, projectId: bqProj.projectId, datasetId: ds.id
+              })
+            }
+          }
+        }
+      }
+    } else if (connType === 'postgres') {
+      // Search PostgreSQL: tables → columns
+      const connTables = tables.value[connId] || []
+      for (const tbl of connTables) {
+        const tblMatch = tbl.name.toLowerCase().includes(query) ||
+                         (tbl.schemaName?.toLowerCase().includes(query) ?? false)
+        const schemaKey = `${connId}:${tbl.id}`
+        const tblSchema = schemas.value[schemaKey] || []
+        const matchedColumns = tblSchema
+          .filter(f => f.name.toLowerCase().includes(query))
+          .map(f => f.name)
 
-        results.push({
-          connectionId: conn.id,
-          connectionName: conn.name || conn.database || DATABASE_INFO.postgres.name,
-          connectionType: 'postgres',
-          tableName: item.tableName,
-          displayName: item.tableName,
-          matchedColumns,
-          schemaName
-        })
+        if (tblMatch || matchedColumns.length > 0) {
+          results.push({
+            connectionId: connId, connectionName: connName, connectionType: 'postgres',
+            tableName: tbl.id, displayName: tbl.id,
+            matchedColumns, schemaName: tbl.schemaName
+          })
+        }
+      }
+    } else if (connType === 'snowflake') {
+      // Search Snowflake hierarchy: databases → schemas → tables → columns
+      const connDbs = snowflakeDatabases.value[connId] || []
+      for (const db of connDbs) {
+        const dbMatch = db.name.toLowerCase().includes(query)
+        const sfSchemaKey = `${connId}:${db.name}`
+        const sfSchemas = snowflakeSchemas.value[sfSchemaKey] || []
+
+        if (sfSchemas.length === 0) {
+          if (dbMatch) {
+            results.push({
+              connectionId: connId, connectionName: connName, connectionType: 'snowflake',
+              tableName: db.name, displayName: db.name,
+              matchedColumns: [], databaseName: db.name
+            })
+          }
+          continue
+        }
+
+        for (const sfSchema of sfSchemas) {
+          const schemaMatch = sfSchema.name.toLowerCase().includes(query)
+          const sfTableKey = `${connId}:${db.name}.${sfSchema.name}`
+          const sfTables = snowflakeTables.value[sfTableKey] || []
+
+          if (sfTables.length === 0) {
+            if (dbMatch || schemaMatch) {
+              results.push({
+                connectionId: connId, connectionName: connName, connectionType: 'snowflake',
+                tableName: `${db.name}.${sfSchema.name}`, displayName: `${db.name}.${sfSchema.name}`,
+                matchedColumns: [], databaseName: db.name, schemaName: sfSchema.name
+              })
+            }
+            continue
+          }
+
+          for (const tbl of sfTables) {
+            const tblMatch = tbl.name.toLowerCase().includes(query)
+            const colKey = `${connId}:${db.name}.${sfSchema.name}.${tbl.name}`
+            const tblSchema = schemas.value[colKey] || []
+            const matchedColumns = tblSchema
+              .filter(f => f.name.toLowerCase().includes(query))
+              .map(f => f.name)
+
+            if (dbMatch || schemaMatch || tblMatch || matchedColumns.length > 0) {
+              results.push({
+                connectionId: connId, connectionName: connName, connectionType: 'snowflake',
+                tableName: `${db.name}.${sfSchema.name}.${tbl.name}`,
+                displayName: `${sfSchema.name}.${tbl.name}`,
+                matchedColumns, databaseName: db.name, schemaName: sfSchema.name
+              })
+            }
+          }
+        }
       }
     }
   }
 
-  // Search Snowflake connections
-  const snowflakeConnections = connectionsStore.getConnectionsByType('snowflake')
-  for (const conn of snowflakeConnections) {
-    const schema = collectSchemaForConnection('snowflake', conn.id)
-    for (const item of schema) {
-      const parts = item.tableName.split('.')
-      if (parts.length !== 3) continue
-      const [databaseName, schemaName, tableOnly] = parts
-
-      const tableMatches = tableOnly.toLowerCase().includes(query) ||
-                           item.tableName.toLowerCase().includes(query)
-      const matchedColumns = item.columns
-        .filter(col => col.name.toLowerCase().includes(query))
-        .map(col => col.name)
-
-      if (tableMatches || matchedColumns.length > 0) {
-        results.push({
-          connectionId: conn.id,
-          connectionName: conn.name || conn.database || DATABASE_INFO.snowflake.name,
-          connectionType: 'snowflake',
-          tableName: item.tableName,
-          displayName: `${schemaName}.${tableOnly}`,
-          matchedColumns,
-          databaseName,
-          schemaName
-        })
-      }
-    }
-  }
-
-  // Limit results and sort by table name match first, then column matches
   return results
     .sort((a, b) => {
-      const aTableMatch = a.displayName.toLowerCase().includes(query) ? 1 : 0
-      const bTableMatch = b.displayName.toLowerCase().includes(query) ? 1 : 0
-      if (bTableMatch !== aTableMatch) return bTableMatch - aTableMatch
+      const aMatch = a.displayName.toLowerCase().includes(query) ? 1 : 0
+      const bMatch = b.displayName.toLowerCase().includes(query) ? 1 : 0
+      if (bMatch !== aMatch) return bMatch - aMatch
       return a.displayName.localeCompare(b.displayName)
     })
     .slice(0, 50)
@@ -932,38 +1084,50 @@ const scrollSelectedIntoView = () => {
   }
 }
 
-// Navigate to a search result
+// Navigate to a search result (handles partial paths for project/dataset-level results)
 const navigateToSearchResult = async (result: SearchResult) => {
-  // Clear search
   searchQuery.value = ''
 
   if (result.connectionType === 'duckdb') {
     await selectProject('duckdb')
     await selectTable(result.tableName)
   } else if (result.connectionType === 'bigquery') {
-    await selectProject(result.projectId!)
-    await selectDataset(result.datasetId!)
-    const tableOnly = result.tableName.split('.')[2]
-    await selectTable(tableOnly)
+    await selectProject(result.connectionId)
+    if (result.projectId) {
+      await selectBigQueryProject(result.projectId)
+    }
+    if (result.datasetId) {
+      await selectDataset(result.datasetId)
+    }
+    // Only select table for table-level results (project.dataset.table)
+    const parts = result.tableName.split('.')
+    if (parts.length >= 3) {
+      await selectTable(parts[2])
+    }
   } else if (result.connectionType === 'postgres') {
     await selectProject(result.connectionId)
     await selectTable(result.tableName)
   } else if (result.connectionType === 'snowflake') {
     await selectProject(result.connectionId)
-    await selectSnowflakeDatabase(result.databaseName!)
-    await selectSnowflakeSchema(result.schemaName!)
-    const tableOnly = result.tableName.split('.')[2]
-    await selectTable(tableOnly)
+    if (result.databaseName) {
+      await selectSnowflakeDatabase(result.databaseName)
+    }
+    if (result.schemaName) {
+      await selectSnowflakeSchema(result.schemaName)
+    }
+    // Only select table for table-level results (db.schema.table)
+    const parts = result.tableName.split('.')
+    if (parts.length >= 3) {
+      await selectTable(parts[2])
+    }
   }
 
-  // Select the first matched column if any
   if (result.matchedColumns.length > 0) {
     selectedColumn.value = result.matchedColumns[0]
   } else {
     selectedColumn.value = null
   }
 
-  // Scroll selected items into view after DOM updates
   await nextTick()
   scrollSelectedIntoView()
 }
@@ -1035,13 +1199,9 @@ const buildTableConnectionInfo = () => {
     connectionId = selectedProject.value!
   } else {
     engine = 'bigquery'
-    tableName = `${selectedProject.value}.${selectedDataset.value}.${selectedTable.value}`
+    tableName = `${selectedBigQueryProject.value}.${selectedDataset.value}.${selectedTable.value}`
     quotedTableName = `\`${tableName}\``
-    // Find a BigQuery connection to use
-    const bigqueryConnections = connectionsStore.getConnectionsByType('bigquery')
-    if (bigqueryConnections.length > 0) {
-      connectionId = bigqueryConnections[0].id
-    }
+    connectionId = selectedProject.value!
   }
 
   return {
@@ -1100,8 +1260,13 @@ const navigateToTable = async (info: TableNavigationInfo) => {
     const tableOnly = info.tableName.includes('.') ? info.tableName.split('.').pop()! : info.tableName
     await selectTable(tableOnly)
   } else if (info.connectionType === 'bigquery') {
+    const bqConnections = connectionsStore.getConnectionsByType('bigquery')
+    const connId = info.connectionId || (bqConnections.length > 0 ? bqConnections[0].id : null)
+    if (connId) {
+      await selectProject(connId)
+    }
     if (info.projectId) {
-      await selectProject(info.projectId)
+      await selectBigQueryProject(info.projectId)
     }
     if (info.datasetId) {
       await selectDataset(info.datasetId)
@@ -1151,7 +1316,7 @@ defineExpose({
     :initial-height="initialHeight"
     :initial-z-index="initialZIndex"
     :is-selected="isSelected"
-    initial-name="Schema explorer"
+    initial-name="Schema browser"
     :show-header-name="true"
     @select="emit('select', $event)"
     @update:position="emit('update:position', $event)"
@@ -1261,12 +1426,33 @@ defineExpose({
         class="column"
         :style="{ width: `${col1Width}px` }"
       >
-        <div class="column-header">
-          Connections
+        <div class="column-header-area">
+          <div class="column-header">
+            <span class="column-header-label">Connections</span>
+            <button
+              class="column-filter-toggle"
+              :class="{ active: col1FilterOpen || col1Filter }"
+              @click.stop="toggleFilter(1)"
+              @mousedown.stop
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            </button>
+          </div>
+          <div v-if="col1FilterOpen" class="column-filter-row">
+            <input
+              v-model="col1Filter"
+              class="column-filter-input col1-filter-input"
+              type="text"
+              placeholder="Filter..."
+              @keydown.escape="closeFilter(1)"
+              @mousedown.stop
+              @click.stop
+            >
+          </div>
         </div>
         <div class="column-content">
           <div
-            v-for="project in projects"
+            v-for="project in filteredProjects"
             :key="project.id"
             :class="['item', { selected: selectedProject === project.id }]"
             @click="selectProject(project.id)"
@@ -1297,8 +1483,29 @@ defineExpose({
         class="column"
         :style="{ width: `${col2Width}px` }"
       >
-        <div class="column-header">
-          {{ selectedProjectType === 'bigquery' ? 'Datasets' : selectedProjectType === 'snowflake' ? 'Databases' : 'Tables' }}
+        <div class="column-header-area">
+          <div class="column-header">
+            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Projects' : selectedProjectType === 'snowflake' ? 'Databases' : 'Tables' }}</span>
+            <button
+              class="column-filter-toggle"
+              :class="{ active: col2FilterOpen || col2Filter }"
+              @click.stop="toggleFilter(2)"
+              @mousedown.stop
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            </button>
+          </div>
+          <div v-if="col2FilterOpen" class="column-filter-row">
+            <input
+              v-model="col2Filter"
+              class="column-filter-input col2-filter-input"
+              type="text"
+              placeholder="Filter..."
+              @keydown.escape="closeFilter(2)"
+              @mousedown.stop
+              @click.stop
+            >
+          </div>
         </div>
         <div class="column-content">
           <div
@@ -1308,14 +1515,14 @@ defineExpose({
             Retrieving...
           </div>
           <div
-            v-for="item in column2Items"
+            v-for="item in filteredColumn2Items"
             :key="item.id"
             :class="['item', {
-              selected: selectedProjectType === 'bigquery' ? selectedDataset === item.id :
+              selected: selectedProjectType === 'bigquery' ? selectedBigQueryProject === item.id :
                 selectedProjectType === 'snowflake' ? selectedSnowflakeDatabase === item.id :
                 selectedTable === item.id
             }]"
-            @click="selectedProjectType === 'bigquery' ? selectDataset(item.id) :
+            @click="selectedProjectType === 'bigquery' ? selectBigQueryProject(item.id) :
               selectedProjectType === 'snowflake' ? selectSnowflakeDatabase(item.id) :
               selectTable(item.id)"
             @dblclick="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' ? insertTableName(item) : null"
@@ -1347,18 +1554,39 @@ defineExpose({
         @mousedown="handleResizeStart($event, 2)"
       />
 
-      <!-- Column 3: BigQuery Tables or Snowflake Schemas -->
+      <!-- Column 3: BigQuery Datasets or Snowflake Schemas -->
       <div
-        v-if="(selectedDataset && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')"
+        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')"
         class="column"
         :style="{ width: `${col3Width}px` }"
       >
-        <div class="column-header">
-          {{ selectedProjectType === 'snowflake' ? 'Schemas' : 'Tables' }}
+        <div class="column-header-area">
+          <div class="column-header">
+            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Datasets' : 'Schemas' }}</span>
+            <button
+              class="column-filter-toggle"
+              :class="{ active: col3FilterOpen || col3Filter }"
+              @click.stop="toggleFilter(3)"
+              @mousedown.stop
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            </button>
+          </div>
+          <div v-if="col3FilterOpen" class="column-filter-row">
+            <input
+              v-model="col3Filter"
+              class="column-filter-input col3-filter-input"
+              type="text"
+              placeholder="Filter..."
+              @keydown.escape="closeFilter(3)"
+              @mousedown.stop
+              @click.stop
+            >
+          </div>
         </div>
         <div class="column-content">
           <div
-            v-if="selectedProjectType === 'bigquery' && selectedDataset && loadingTables[selectedDataset]"
+            v-if="selectedProjectType === 'bigquery' && selectedBigQueryProject && loadingDatasets[selectedBigQueryProject]"
             class="loading"
           >
             Retrieving...
@@ -1370,19 +1598,23 @@ defineExpose({
             Retrieving...
           </div>
           <div
-            v-for="item in column3Items"
+            v-for="item in filteredColumn3Items"
             :key="item.id"
             :class="['item', {
-              selected: selectedProjectType === 'snowflake' ? selectedSnowflakeSchema === item.id : selectedTable === item.id
+              selected: selectedProjectType === 'bigquery' ? selectedDataset === item.id :
+                selectedProjectType === 'snowflake' ? selectedSnowflakeSchema === item.id :
+                selectedTable === item.id
             }]"
-            @click="selectedProjectType === 'snowflake' ? selectSnowflakeSchema(item.id) : selectTable(item.id)"
-            @dblclick="selectedProjectType !== 'snowflake' ? insertTableName(item) : null"
+            @click="selectedProjectType === 'bigquery' ? selectDataset(item.id) :
+              selectedProjectType === 'snowflake' ? selectSnowflakeSchema(item.id) :
+              selectTable(item.id)"
+            @dblclick="selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery' ? insertTableName(item) : null"
             @mouseenter="hoveredTableItem = item.id"
             @mouseleave="hoveredTableItem = null"
           >
             <span class="item-name">{{ item.name }}</span>
             <button
-              v-if="selectedProjectType !== 'snowflake'"
+              v-if="selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery'"
               v-tooltip="'Query this table'"
               class="query-button"
               :class="{ visible: hoveredTableItem === item.id }"
@@ -1396,29 +1628,56 @@ defineExpose({
 
       <!-- Resize handle 3 -->
       <div
-        v-if="(selectedDataset && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')"
+        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')"
         class="resize-handle"
         @mousedown="handleResizeStart($event, 3)"
       />
 
-      <!-- Column 4: Snowflake Tables (when schema is selected) -->
+      <!-- Column 4: Tables (Snowflake when schema is selected, BigQuery when dataset is selected) -->
       <div
-        v-if="selectedSnowflakeSchema && selectedProjectType === 'snowflake'"
+        v-if="(selectedSnowflakeSchema && selectedProjectType === 'snowflake') || (selectedDataset && selectedProjectType === 'bigquery')"
         class="column"
         :style="{ width: `${col4Width}px` }"
       >
-        <div class="column-header">
-          Tables
+        <div class="column-header-area">
+          <div class="column-header">
+            <span class="column-header-label">Tables</span>
+            <button
+              class="column-filter-toggle"
+              :class="{ active: col4FilterOpen || col4Filter }"
+              @click.stop="toggleFilter(4)"
+              @mousedown.stop
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            </button>
+          </div>
+          <div v-if="col4FilterOpen" class="column-filter-row">
+            <input
+              v-model="col4Filter"
+              class="column-filter-input col4-filter-input"
+              type="text"
+              placeholder="Filter..."
+              @keydown.escape="closeFilter(4)"
+              @mousedown.stop
+              @click.stop
+            >
+          </div>
         </div>
         <div class="column-content">
           <div
-            v-if="loadingTables[`${selectedProject}:${selectedSnowflakeDatabase}.${selectedSnowflakeSchema}`]"
+            v-if="selectedProjectType === 'snowflake' && loadingTables[`${selectedProject}:${selectedSnowflakeDatabase}.${selectedSnowflakeSchema}`]"
             class="loading"
           >
             Retrieving...
           </div>
           <div
-            v-for="table in column4Items"
+            v-if="selectedProjectType === 'bigquery' && selectedDataset && loadingTables[selectedDataset]"
+            class="loading"
+          >
+            Retrieving...
+          </div>
+          <div
+            v-for="table in filteredColumn4Items"
             :key="table.id"
             :class="['item', { selected: selectedTable === table.id }]"
             @click="selectTable(table.id)"
@@ -1439,20 +1698,41 @@ defineExpose({
         </div>
       </div>
 
-      <!-- Resize handle 4 (between Snowflake Tables and Columns) -->
+      <!-- Resize handle 4 (between Tables and Columns) -->
       <div
-        v-if="selectedSnowflakeSchema && selectedProjectType === 'snowflake'"
+        v-if="(selectedSnowflakeSchema && selectedProjectType === 'snowflake') || (selectedDataset && selectedProjectType === 'bigquery')"
         class="resize-handle"
         @mousedown="handleResizeStart($event, 4)"
       />
 
-      <!-- Column 4 (non-Snowflake) / Column 5 (Snowflake): Columns -->
+      <!-- Column 4 (DuckDB/Postgres) / Column 5 (Snowflake/BigQuery): Columns -->
       <div
         v-if="selectedTable"
         class="column column-schema"
       >
-        <div class="column-header">
-          Columns
+        <div class="column-header-area">
+          <div class="column-header">
+            <span class="column-header-label">Columns</span>
+            <button
+              class="column-filter-toggle"
+              :class="{ active: col5FilterOpen || col5Filter }"
+              @click.stop="toggleFilter(5)"
+              @mousedown.stop
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            </button>
+          </div>
+          <div v-if="col5FilterOpen" class="column-filter-row">
+            <input
+              v-model="col5Filter"
+              class="column-filter-input col5-filter-input"
+              type="text"
+              placeholder="Filter..."
+              @keydown.escape="closeFilter(5)"
+              @mousedown.stop
+              @click.stop
+            >
+          </div>
         </div>
         <div
           ref="columnsContainerRef"
@@ -1570,7 +1850,7 @@ defineExpose({
   max-height: 400px;
   overflow-y: auto;
   background: var(--surface-primary);
-  border: var(--border-width-thin) solid var(--border-primary);
+  border: var(--border-width-thin) solid var(--border-secondary);
   box-shadow: var(--shadow-md);
   z-index: 100;
 }
@@ -1639,7 +1919,7 @@ defineExpose({
   right: var(--space-3);
   padding: var(--space-3);
   background: var(--surface-primary);
-  border: var(--border-width-thin) solid var(--border-primary);
+  border: var(--border-width-thin) solid var(--border-secondary);
   box-shadow: var(--shadow-md);
   text-align: center;
   color: var(--text-secondary);
@@ -1670,7 +1950,7 @@ defineExpose({
 
 .resize-handle {
   flex: 0 0 var(--border-width-thin);
-  background: var(--border-primary);
+  background: var(--border-secondary);
   cursor: col-resize;
   position: relative;
 }
@@ -1685,17 +1965,74 @@ defineExpose({
   right: calc(var(--space-1) * -1);
 }
 
-.column-header {
-  padding: var(--table-cell-padding);
+.column-header-area {
+  flex-shrink: 0;
   background: var(--surface-secondary);
-  border-bottom: var(--table-border-width) solid var(--border-primary);
+  border-bottom: var(--table-border-width) solid var(--border-secondary);
+}
+
+.column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--table-cell-padding);
   font-size: 11px;
   font-weight: 600;
   font-family: var(--font-family-mono);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  flex-shrink: 0;
+}
+
+.column-filter-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.column:hover .column-filter-toggle,
+.column-filter-toggle.active {
+  opacity: 1;
+}
+
+.column-filter-toggle:hover {
+  color: var(--text-primary);
+}
+
+.column-filter-toggle.active {
+  color: var(--color-accent);
+}
+
+.column-filter-row {
+  padding: 0 var(--space-2) var(--space-1);
+}
+
+.column-filter-input {
+  width: 100%;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--border-secondary);
+  background: var(--surface-primary);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.column-filter-input:focus {
+  border-color: var(--color-accent);
+}
+
+.column-filter-input::placeholder {
+  color: var(--text-tertiary);
 }
 
 .column-content {

@@ -23,6 +23,9 @@ import CanvasDropdown from './CanvasDropdown.vue'
 
 const router = useRouter()
 const bigqueryStore = useBigQueryStore()
+const sortedProjects = computed(() =>
+  [...bigqueryStore.projects].sort((a, b) => a.projectId.localeCompare(b.projectId))
+)
 const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
@@ -610,25 +613,25 @@ onUnmounted(() => {
             <!-- Projects Section (BigQuery only) -->
             <div
               v-if="connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired"
-              class="dropdown-section"
+              class="dropdown-section projects-section"
             >
               <div class="section-label">
                 Projects
               </div>
               <div
-                v-if="bigqueryStore.projects.length === 0"
+                v-if="sortedProjects.length === 0"
                 class="dropdown-message"
               >
                 No projects found
               </div>
               <button
-                v-for="project in bigqueryStore.projects"
+                v-for="project in sortedProjects"
                 :key="project.projectId"
                 class="dropdown-item project-item"
                 :class="{ selected: project.projectId === connectionsStore.activeConnection?.projectId }"
                 @click="handleProjectSelect(project.projectId)"
               >
-                <span class="item-text">{{ project.name || project.projectId }}</span>
+                <span class="item-text">{{ project.projectId }}</span>
                 <span
                   v-if="project.projectId === connectionsStore.activeConnection?.projectId"
                   class="item-check"
@@ -1683,6 +1686,11 @@ onUnmounted(() => {
 
 .dropdown-section {
   padding: 0;
+}
+
+.projects-section {
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .section-label {

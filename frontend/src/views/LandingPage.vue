@@ -167,7 +167,7 @@ const webApplicationSchema = {
     'PostgreSQL integration',
     'Snowflake integration',
     'Drag and drop CSV file analysis',
-    'Schema explorer',
+    'Schema browser',
     'Go to definition (Cmd+click)',
     'Hex remover - AI SQL fixer (Pro)',
     'Ask a wizard - AI chat (Pro, coming soon)'
@@ -193,7 +193,7 @@ useHead({
   meta: [
     {
       name: 'description',
-      content: 'Open source SQL editor that runs in your browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. Infinite canvas, drag-and-drop CSV, schema explorer, AI query fixer. No install needed.'
+      content: 'Open source SQL editor that runs in your browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. Infinite canvas, drag-and-drop CSV, schema browser, AI query fixer. No install needed.'
     },
     // Open Graph
     { property: 'og:title', content: 'Squill - Free Online SQL Editor' },
@@ -543,7 +543,7 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
               />
             </svg>
           </div>
-          <h3>Schema explorer</h3>
+          <h3>Schema browser</h3>
           <p>Browse your database structure visually, file explorer style.</p>
         </div>
 
