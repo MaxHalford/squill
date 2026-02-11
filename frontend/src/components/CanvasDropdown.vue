@@ -23,9 +23,9 @@ const editInputRefs = ref<Map<string, HTMLInputElement>>(new Map())
 const canvasList = computed(() => canvasStore.getCanvasList())
 
 // Handle canvas selection
-const handleCanvasSelect = (canvasId: string) => {
+const handleCanvasSelect = async (canvasId: string) => {
   if (editingCanvasId.value === canvasId) return
-  canvasStore.switchCanvas(canvasId)
+  await canvasStore.switchCanvas(canvasId)
   emit('close-dropdown')
 }
 
@@ -36,20 +36,20 @@ const handleCreateCanvas = () => {
 }
 
 // Handle duplicate canvas
-const handleDuplicate = (canvasId: string, event: Event) => {
+const handleDuplicate = async (canvasId: string, event: Event) => {
   event.stopPropagation()
-  canvasStore.duplicateCanvas(canvasId)
+  await canvasStore.duplicateCanvas(canvasId)
   emit('close-dropdown')
 }
 
 // Handle delete canvas
-const handleDelete = (canvasId: string, event: Event) => {
+const handleDelete = async (canvasId: string, event: Event) => {
   event.stopPropagation()
   if (canvasList.value.length <= 1) return
 
   const canvas = canvasList.value.find(c => c.id === canvasId)
   if (canvas && confirm(`Delete "${canvas.name}"? This cannot be undone.`)) {
-    canvasStore.deleteCanvas(canvasId)
+    await canvasStore.deleteCanvas(canvasId)
   }
 }
 

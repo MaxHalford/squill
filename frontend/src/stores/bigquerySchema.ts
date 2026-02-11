@@ -1,68 +1,58 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { SchemaStateSchema } from '../utils/storageSchemas'
+import { loadSchema, saveSchema, clearSchemas as clearSchemasDB } from '../utils/storage'
 
-const STORAGE_KEY = 'squill-schemas'
+type ColumnInfo = { name: string; type: string }
 
 // BigQuery schema structure
 export interface BigQuerySchema {
   project: string
   dataset: string
   table: string
-  columns: Array<{ name: string; type: string }>
-}
-
-interface SchemaState {
-  bigQuerySchemas: Record<string, Array<{ name: string; type: string }>>
+  columns: ColumnInfo[]
 }
 
 export const useSchemaStore = defineStore('schema', () => {
   // Store BigQuery schemas by fully qualified table name
   // Key format: "project.dataset.table"
-  const bigQuerySchemas = ref<Record<string, Array<{ name: string; type: string }>>>({})
+  const bigQuerySchemas = ref<Record<string, ColumnInfo[]>>({})
 
   // Schema version for reactive updates
   const schemaVersion = ref(0)
 
-  // Load state from localStorage
-  const loadState = () => {
+  const loadState = async () => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (!saved) return
-
-      const parsed = JSON.parse(saved)
-      const result = SchemaStateSchema.safeParse(parsed)
-
-      if (result.success) {
-        bigQuerySchemas.value = result.data.bigQuerySchemas
-      } else {
-        console.warn('Invalid schema cache, clearing:', result.error.issues)
-        bigQuerySchemas.value = {}
+      const data = await loadSchema<Record<string, ColumnInfo[]>>('bigQuerySchemas')
+      if (data) {
+        bigQuerySchemas.value = data
       }
     } catch (error) {
       console.error('Failed to load schema state:', error)
     }
   }
 
-  // Save state to localStorage
   const saveState = () => {
-    try {
-      const state: SchemaState = {
-        bigQuerySchemas: bigQuerySchemas.value
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch (error) {
+    saveSchema('bigQuerySchemas', bigQuerySchemas.value).catch(error => {
       console.error('Failed to save schema state:', error)
-    }
+    })
   }
 
-  // Load initial state
-  loadState()
+  const ready = loadState()
 
   // Add or update a table schema
-  const setTableSchema = (project: string, dataset: string, table: string, columns: Array<{ name: string; type: string }>) => {
+  const setTableSchema = (project: string, dataset: string, table: string, columns: ColumnInfo[]) => {
     const key = `${project}.${dataset}.${table}`
     bigQuerySchemas.value[key] = columns
+    schemaVersion.value++
+    saveState()
+  }
+
+  // Bulk-set many table schemas at once (single save + single reactive update)
+  const bulkSetTableSchemas = (entries: Array<{ project: string; dataset: string; table: string; columns: ColumnInfo[] }>) => {
+    for (const entry of entries) {
+      const key = `${entry.project}.${entry.dataset}.${entry.table}`
+      bigQuerySchemas.value[key] = entry.columns
+    }
     schemaVersion.value++
     saveState()
   }
@@ -79,7 +69,9 @@ export const useSchemaStore = defineStore('schema', () => {
   const clearSchemas = () => {
     bigQuerySchemas.value = {}
     schemaVersion.value++
-    saveState()
+    clearSchemasDB().catch(error => {
+      console.error('Failed to clear schema state:', error)
+    })
   }
 
   // Get all table names for a project.dataset
@@ -87,13 +79,15 @@ export const useSchemaStore = defineStore('schema', () => {
     const prefix = `${project}.${dataset}.`
     return Object.keys(bigQuerySchemas.value)
       .filter(key => key.startsWith(prefix))
-      .map(key => key.split('.')[2]) // Extract table name
+      .map(key => key.split('.')[2])
   }
 
   return {
     bigQuerySchemas,
     schemaVersion,
+    ready,
     setTableSchema,
+    bulkSetTableSchemas,
     removeTableSchema,
     clearSchemas,
     getTablesForDataset

@@ -83,9 +83,9 @@ provide('registerBoxExecutor', registerBoxExecutor)
 provide('unregisterBoxExecutor', unregisterBoxExecutor)
 provide('executeBoxQuery', executeBoxQuery)
 
-// Computed: show onboarding when there are no connections and not dismissed
+// Computed: show onboarding when there are no connections, no boxes, and not dismissed
 const showOnboarding = computed(() => {
-  return isStoresReady.value && connectionsStore.connections.length === 0 && !onboardingDismissed.value
+  return isStoresReady.value && connectionsStore.connections.length === 0 && canvasStore.boxes.length === 0 && !onboardingDismissed.value
 })
 
 // Computed: get the currently selected SQL box for creation buttons
@@ -895,13 +895,13 @@ const handleKeyDown = (e: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  // Load saved canvas state
-  canvasStore.loadState()
+  // Await all stores that need hydration before rendering
+  await Promise.all([
+    canvasStore.loadState(),
+    connectionsStore.ready,
+    settingsStore.ready,
+  ])
 
-  // Ensure connections store is loaded
-  connectionsStore.loadState()
-
-  // Mark stores as ready immediately so UI renders
   await nextTick()
   isStoresReady.value = true
 
@@ -924,6 +924,20 @@ onMounted(async () => {
 
   // Restore BigQuery session (refresh access token from backend)
   bigqueryStore.restoreSession()
+
+  // Fetch BigQuery schemas for autocompletion only if cache is empty.
+  // Users can hit "Reset schemas" in the menu to refresh manually.
+  const { useSchemaStore } = await import('../stores/bigquerySchema')
+  const schemaStore = useSchemaStore()
+  await schemaStore.ready
+  if (Object.keys(schemaStore.bigQuerySchemas).length === 0) {
+    const bigqueryConnections = connectionsStore.connections.filter(c => c.type === 'bigquery' && c.projectId)
+    for (const conn of bigqueryConnections) {
+      bigqueryStore.fetchAllSchemas(conn.projectId!, conn.id).catch(err => {
+        console.warn(`Could not fetch schemas for ${conn.projectId}:`, err)
+      })
+    }
+  }
 
   // Restore PostgreSQL schemas for all postgres connections
   const postgresConnections = connectionsStore.connections.filter(c => c.type === 'postgres')

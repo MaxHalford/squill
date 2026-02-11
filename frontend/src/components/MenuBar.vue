@@ -335,7 +335,7 @@ const handleRefreshSchemas = async () => {
 
     // Refresh DuckDB (always available)
     await duckdbStore.loadTablesMetadata()
-    refreshSchemaCache('duckdb') // Update localStorage cache
+    refreshSchemaCache('duckdb')
     refreshedCount++
 
     // Refresh all BigQuery connections with project IDs (token refresh handled automatically)
@@ -353,14 +353,14 @@ const handleRefreshSchemas = async () => {
     // Refresh all PostgreSQL connections
     for (const conn of connections.filter(c => c.type === 'postgres')) {
       await postgresStore.refreshSchemas(conn.id)
-      refreshSchemaCache('postgres', conn.id) // Update localStorage cache
+      refreshSchemaCache('postgres', conn.id)
       refreshedCount++
     }
 
     // Refresh all Snowflake connections
     for (const conn of connections.filter(c => c.type === 'snowflake')) {
       await snowflakeStore.refreshSchemas(conn.id)
-      refreshSchemaCache('snowflake', conn.id) // Update localStorage cache
+      refreshSchemaCache('snowflake', conn.id)
       refreshedCount++
     }
 
@@ -372,11 +372,10 @@ const handleRefreshSchemas = async () => {
 }
 
 // Handle reset all data
-const handleResetAll = () => {
+const handleResetAll = async () => {
   if (confirm('This will clear all data including connections, queries, and cached results. Are you sure?')) {
-    // Clear all localStorage
-    localStorage.clear()
-    // Reload the page to reset application state
+    const { deleteDatabase } = await import('../utils/db')
+    await deleteDatabase()
     window.location.reload()
   }
 }

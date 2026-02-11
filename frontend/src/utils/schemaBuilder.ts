@@ -58,15 +58,9 @@ export function buildBigQuerySchema(
     // Add table with columns (just column names as strings)
     datasetNs[table] = columnNames
 
-    // If this is the active project, also add dataset-level shortcuts
+    // If this is the active project, add dataset.table shortcut so users
+    // can type "dataset.table" without the project prefix
     if (activeProject && project === activeProject) {
-      // Add dataset.table shortcut
-      const datasetTableKey = `${dataset}.${table}`
-      if (!schema[datasetTableKey]) {
-        schema[datasetTableKey] = columnNames
-      }
-
-      // Also add dataset as top-level with its tables
       if (!schema[dataset]) {
         schema[dataset] = {}
       }

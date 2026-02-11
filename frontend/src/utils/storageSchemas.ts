@@ -1,6 +1,6 @@
 /**
- * Zod schemas for localStorage data validation
- * Ensures type safety when loading persisted state
+ * Zod schemas for persisted data validation
+ * Ensures type safety when loading state from IndexedDB
  */
 import { z } from 'zod'
 
@@ -120,20 +120,6 @@ export const UserSchema = z.object({
 export type UserData = z.infer<typeof UserSchema>
 
 // ============================================
-// BigQuery Schema Cache
-// ============================================
-const ColumnSchema = z.object({
-  name: z.string(),
-  type: z.string()
-})
-
-export const SchemaStateSchema = z.object({
-  bigQuerySchemas: z.record(z.string(), z.array(ColumnSchema))
-})
-
-export type SchemaStateData = z.infer<typeof SchemaStateSchema>
-
-// ============================================
 // Query history schema
 // ============================================
 const DatabaseEngineSchema = z.enum(['bigquery', 'duckdb', 'postgres', 'snowflake'])
@@ -159,35 +145,3 @@ export const QueryHistoryStateSchema = z.object({
 
 export type QueryHistoryEntry = z.infer<typeof QueryHistoryEntrySchema>
 export type QueryHistoryState = z.infer<typeof QueryHistoryStateSchema>
-
-// ============================================
-// Safe parse helper
-// ============================================
-
-/**
- * Safely parse JSON from localStorage with Zod validation
- * Returns null if parsing fails or data is invalid
- */
-export function safeParseStorage<T>(
-  key: string,
-  schema: z.ZodType<T>,
-  fallback?: T
-): T | null {
-  try {
-    const saved = localStorage.getItem(key)
-    if (!saved) return fallback ?? null
-
-    const parsed = JSON.parse(saved)
-    const result = schema.safeParse(parsed)
-
-    if (result.success) {
-      return result.data
-    }
-
-    console.warn(`Invalid data in localStorage key "${key}":`, result.error.issues)
-    return fallback ?? null
-  } catch (err) {
-    console.error(`Failed to parse localStorage key "${key}":`, err)
-    return fallback ?? null
-  }
-}

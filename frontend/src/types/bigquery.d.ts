@@ -38,6 +38,7 @@ export interface BigQueryDataset {
     datasetId: string
     projectId: string
   }
+  location?: string
 }
 
 export interface BigQueryTable {

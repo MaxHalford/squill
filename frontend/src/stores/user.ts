@@ -3,9 +3,8 @@ import { computed, ref, watch } from 'vue'
 import type { User } from '../types/user'
 import { createCheckoutSession, openPolarCheckout } from '../services/billing'
 import { UserSchema } from '../utils/storageSchemas'
+import { loadItem, saveItem, deleteItem } from '../utils/storage'
 
-const STORAGE_KEY = 'squill-user'
-const SESSION_TOKEN_KEY = 'squill-session-token'
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || ''
@@ -18,74 +17,10 @@ const generateOAuthState = (): string => {
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-/**
- * Load user from localStorage with validation
- */
-const loadUser = (): User | null => {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (!saved) return null
-
-    const parsed = JSON.parse(saved)
-    const result = UserSchema.safeParse(parsed)
-
-    if (result.success) {
-      return result.data
-    }
-
-    console.warn('Invalid user data in localStorage:', result.error.issues)
-    return null
-  } catch (err) {
-    console.error('Failed to load user:', err)
-    return null
-  }
-}
-
-/**
- * Save user to localStorage
- */
-const saveUser = (user: User | null): void => {
-  try {
-    if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
-    } else {
-      localStorage.removeItem(STORAGE_KEY)
-    }
-  } catch (err) {
-    console.error('Failed to save user:', err)
-  }
-}
-
-/**
- * Load session token from localStorage
- */
-const loadSessionToken = (): string | null => {
-  try {
-    return localStorage.getItem(SESSION_TOKEN_KEY)
-  } catch {
-    return null
-  }
-}
-
-/**
- * Save session token to localStorage
- */
-const saveSessionToken = (token: string | null): void => {
-  try {
-    if (token) {
-      localStorage.setItem(SESSION_TOKEN_KEY, token)
-    } else {
-      localStorage.removeItem(SESSION_TOKEN_KEY)
-    }
-  } catch (err) {
-    console.error('Failed to save session token:', err)
-  }
-}
-
 export const useUserStore = defineStore('user', () => {
-  // State
-  const user = ref<User | null>(loadUser())
-  const sessionToken = ref<string | null>(loadSessionToken())
+  // State — starts empty, hydrated from IDB
+  const user = ref<User | null>(null)
+  const sessionToken = ref<string | null>(null)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
@@ -94,14 +29,47 @@ export const useUserStore = defineStore('user', () => {
   const email = computed(() => user.value?.email ?? null)
   const isPro = computed(() => user.value?.plan === 'pro' || user.value?.isVip === true)
 
-  // Watch for changes and auto-save
-  watch(user, (newUser) => {
-    saveUser(newUser)
+  // ---- Persistence ----
+
+  const loadState = async () => {
+    try {
+      const [userData, token] = await Promise.all([
+        loadItem<User>('user'),
+        loadItem<string>('session-token'),
+      ])
+      if (userData) {
+        const result = UserSchema.safeParse(userData)
+        if (result.success) user.value = result.data
+      }
+      if (token) sessionToken.value = token
+    } catch (err) {
+      console.error('Failed to load user state:', err)
+    }
+  }
+
+  const ready = loadState()
+
+  // Auto-save on changes
+  watch(user, (u) => {
+    if (u) saveItem('user', u).catch(console.error)
+    else deleteItem('user').catch(console.error)
   }, { deep: true })
 
-  watch(sessionToken, (newToken) => {
-    saveSessionToken(newToken)
+  watch(sessionToken, (t) => {
+    if (t) saveItem('session-token', t).catch(console.error)
+    else deleteItem('session-token').catch(console.error)
   })
+
+  // Auto-fetch profile after hydration to sync plan status from backend
+  ready.then(() => {
+    if (sessionToken.value) {
+      fetchProfile().catch(err => {
+        console.error('Failed to fetch profile on init:', err)
+      })
+    }
+  })
+
+  // ---- Actions ----
 
   /**
    * Get authorization headers for API calls
@@ -134,7 +102,6 @@ export const useUserStore = defineStore('user', () => {
         await connectionsStore.syncFromBackend()
       } catch (err) {
         console.warn('Failed to sync connections on login:', err)
-        // Don't throw - localStorage connections still work
       }
     }
   }
@@ -388,14 +355,8 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  // Auto-fetch profile on store creation to sync plan status from backend
-  if (sessionToken.value) {
-    fetchProfile().catch((err) => {
-      console.error('Failed to fetch profile on init:', err)
-    })
-  }
-
   return {
+    ready,
     // State
     user,
     sessionToken,

@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { SettingsSchema } from '../utils/storageSchemas'
-
-const STORAGE_KEY = 'squill-settings'
+import { loadItem, saveItem } from '../utils/storage'
 
 type ThemePreference = 'system' | 'light' | 'dark'
 type CanvasPattern = 'dots' | 'grid' | 'crosshatch' | 'waves' | 'none'
@@ -37,62 +36,69 @@ const DEFAULT_SETTINGS: Settings = {
   canvasPattern: 'dots'  // Default canvas pattern
 }
 
-const loadSettings = (): Settings => {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (!saved) return DEFAULT_SETTINGS
-
-    const parsed = JSON.parse(saved)
-    const result = SettingsSchema.safeParse(parsed)
-
-    if (result.success) {
-      return { ...DEFAULT_SETTINGS, ...result.data }
-    }
-
-    console.warn('Invalid settings in localStorage:', result.error.issues)
-    return DEFAULT_SETTINGS
-  } catch (err) {
-    console.error('Failed to load settings:', err)
-    return DEFAULT_SETTINGS
-  }
-}
-
-const saveSettings = (data: Settings): void => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-  } catch (err) {
-    console.error('Failed to save settings:', err)
-  }
-}
-
 export const useSettingsStore = defineStore('settings', () => {
-  const savedSettings = loadSettings()
+  // Refs start with defaults, hydrate from IDB when ready
+  const fetchBatchSize = ref(DEFAULT_SETTINGS.fetchBatchSize)
+  const fetchPaginationEnabled = ref(DEFAULT_SETTINGS.fetchPaginationEnabled)
+  const paginationSize = ref(DEFAULT_SETTINGS.paginationSize)
+  const panToBoxOnSelect = ref(DEFAULT_SETTINGS.panToBoxOnSelect)
+  const autofixEnabled = ref(DEFAULT_SETTINGS.autofixEnabled)
+  const themePreference = ref<ThemePreference>(DEFAULT_SETTINGS.themePreference)
+  const showEditorLineNumbers = ref(DEFAULT_SETTINGS.showEditorLineNumbers)
+  const editorFontSize = ref(DEFAULT_SETTINGS.editorFontSize)
+  const accentColor = ref(DEFAULT_SETTINGS.accentColor)
+  const canvasPattern = ref<CanvasPattern>(DEFAULT_SETTINGS.canvasPattern)
 
-  // Fetch pagination settings (rows loaded per batch from source)
-  const fetchBatchSize = ref(savedSettings.fetchBatchSize)
-  const fetchPaginationEnabled = ref(savedSettings.fetchPaginationEnabled)
+  const applySettings = (s: Settings) => {
+    fetchBatchSize.value = s.fetchBatchSize
+    fetchPaginationEnabled.value = s.fetchPaginationEnabled
+    paginationSize.value = s.paginationSize
+    panToBoxOnSelect.value = s.panToBoxOnSelect
+    autofixEnabled.value = s.autofixEnabled
+    themePreference.value = s.themePreference
+    showEditorLineNumbers.value = s.showEditorLineNumbers
+    editorFontSize.value = s.editorFontSize
+    accentColor.value = s.accentColor
+    canvasPattern.value = s.canvasPattern
+  }
 
-  // Display pagination settings (rows per page in UI)
-  const paginationSize = ref(savedSettings.paginationSize)
+  const collectSettings = (): Settings => ({
+    fetchBatchSize: fetchBatchSize.value,
+    fetchPaginationEnabled: fetchPaginationEnabled.value,
+    paginationSize: paginationSize.value,
+    panToBoxOnSelect: panToBoxOnSelect.value,
+    autofixEnabled: autofixEnabled.value,
+    themePreference: themePreference.value,
+    showEditorLineNumbers: showEditorLineNumbers.value,
+    editorFontSize: editorFontSize.value,
+    accentColor: accentColor.value,
+    canvasPattern: canvasPattern.value,
+  })
 
-  // Viewport settings
-  const panToBoxOnSelect = ref(savedSettings.panToBoxOnSelect)
+  const loadState = async () => {
+    try {
+      const data = await loadItem<Settings>('settings')
+      if (data) {
+        const result = SettingsSchema.safeParse(data)
+        if (result.success) {
+          applySettings({ ...DEFAULT_SETTINGS, ...result.data })
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load settings:', err)
+    }
+  }
 
-  // AI autofix settings
-  const autofixEnabled = ref(savedSettings.autofixEnabled)
+  const saveState = () => {
+    saveItem('settings', collectSettings()).catch(err => {
+      console.error('Failed to save settings:', err)
+    })
+  }
 
-  // Theme settings
-  const themePreference = ref<ThemePreference>(savedSettings.themePreference)
+  const ready = loadState()
 
-  // Editor settings
-  const showEditorLineNumbers = ref(savedSettings.showEditorLineNumbers)
-  const editorFontSize = ref(savedSettings.editorFontSize)
-
-  // Table link highlight color
-  const accentColor = ref(savedSettings.accentColor)
-
-  // Appearance settings
-  const canvasPattern = ref<CanvasPattern>(savedSettings.canvasPattern)
+  // Watch for changes and auto-save
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, accentColor, canvasPattern], saveState)
 
   // Resolve system preference to actual theme
   const getSystemTheme = (): 'light' | 'dark' => {
@@ -104,22 +110,6 @@ export const useSettingsStore = defineStore('settings', () => {
       return getSystemTheme()
     }
     return themePreference.value
-  })
-
-  // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, accentColor, canvasPattern], () => {
-    saveSettings({
-      fetchBatchSize: fetchBatchSize.value,
-      fetchPaginationEnabled: fetchPaginationEnabled.value,
-      paginationSize: paginationSize.value,
-      panToBoxOnSelect: panToBoxOnSelect.value,
-      autofixEnabled: autofixEnabled.value,
-      themePreference: themePreference.value,
-      showEditorLineNumbers: showEditorLineNumbers.value,
-      editorFontSize: editorFontSize.value,
-      accentColor: accentColor.value,
-      canvasPattern: canvasPattern.value
-    })
   })
 
   // Actions
@@ -183,19 +173,11 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   const resetToDefaults = () => {
-    fetchBatchSize.value = DEFAULT_SETTINGS.fetchBatchSize
-    fetchPaginationEnabled.value = DEFAULT_SETTINGS.fetchPaginationEnabled
-    paginationSize.value = DEFAULT_SETTINGS.paginationSize
-    panToBoxOnSelect.value = DEFAULT_SETTINGS.panToBoxOnSelect
-    autofixEnabled.value = DEFAULT_SETTINGS.autofixEnabled
-    themePreference.value = DEFAULT_SETTINGS.themePreference
-    showEditorLineNumbers.value = DEFAULT_SETTINGS.showEditorLineNumbers
-    editorFontSize.value = DEFAULT_SETTINGS.editorFontSize
-    accentColor.value = DEFAULT_SETTINGS.accentColor
-    canvasPattern.value = DEFAULT_SETTINGS.canvasPattern
+    applySettings(DEFAULT_SETTINGS)
   }
 
   return {
+    ready,
     // Fetch pagination (rows loaded per batch from source)
     fetchBatchSize,
     fetchPaginationEnabled,

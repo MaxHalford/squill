@@ -77,9 +77,9 @@ const missingConnectionType = computed((): string | undefined => {
 // Dependency tracking
 // ---------------------------------------------------------------------------
 
-const updateDependenciesFromQuery = async (query: string) => {
+const updateDependenciesFromQuery = (query: string) => {
   try {
-    const availableTables = await duckdbStore.getFreshTableNames()
+    const availableTables = Object.keys(duckdbStore.tables)
     const connectionType = boxConnection.value?.type
     const engine = getEffectiveEngine(connectionType, query, availableTables)
 

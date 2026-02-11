@@ -296,7 +296,8 @@ const handleDeleteAccount = async () => {
 
   if (success) {
     // Clear all local data
-    localStorage.clear()
+    const { deleteDatabase } = await import('../utils/db')
+    await deleteDatabase()
     router.push('/')
   } else {
     alert('Failed to delete account. Please try again.')

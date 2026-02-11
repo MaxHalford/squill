@@ -2,7 +2,8 @@
  * Schema adapter for collecting and formatting database schemas
  * across BigQuery, DuckDB, and PostgreSQL in a unified format
  *
- * Includes localStorage-backed caching for performance with large schemas.
+ * Uses an in-memory cache for performance with large schemas.
+ * Cache is rebuilt from stores on first access after page load.
  * Schema is only refreshed when explicitly requested by the user.
  */
 
@@ -14,20 +15,13 @@ import type { SchemaItem, ScoredSchemaItem } from './textSimilarity'
 
 export type ConnectionType = 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
 
-// localStorage key for schema cache
-const SCHEMA_CACHE_KEY = 'squill-schema-cache'
-
 interface SchemaCacheEntry {
   items: SchemaItem[]
   timestamp: number
 }
 
-interface SchemaCache {
-  [key: string]: SchemaCacheEntry
-}
-
-// In-memory cache (loaded from localStorage on first access)
-let memoryCache: SchemaCache | null = null
+// In-memory cache (rebuilt from stores on first access)
+const memoryCache: Record<string, SchemaCacheEntry> = {}
 
 /**
  * Get cache key for a connection
@@ -37,43 +31,14 @@ function getCacheKey(connectionType: ConnectionType, connectionId?: string): str
 }
 
 /**
- * Load schema cache from localStorage
- */
-function loadCache(): SchemaCache {
-  if (memoryCache !== null) return memoryCache
-
-  try {
-    const stored = localStorage.getItem(SCHEMA_CACHE_KEY)
-    memoryCache = stored ? JSON.parse(stored) : {}
-  } catch {
-    memoryCache = {}
-  }
-  return memoryCache!
-}
-
-/**
- * Save schema cache to localStorage
- */
-function saveCache(): void {
-  if (!memoryCache) return
-  try {
-    localStorage.setItem(SCHEMA_CACHE_KEY, JSON.stringify(memoryCache))
-  } catch (err) {
-    // localStorage might be full or unavailable
-    console.warn('Failed to save schema cache:', err)
-  }
-}
-
-/**
  * Get cached schema for a connection (returns empty array if not cached)
  */
 export function getCachedSchema(
   connectionType: ConnectionType,
   connectionId?: string
 ): SchemaItem[] {
-  const cache = loadCache()
   const key = getCacheKey(connectionType, connectionId)
-  return cache[key]?.items || []
+  return memoryCache[key]?.items || []
 }
 
 /**
@@ -83,9 +48,8 @@ export function hasSchemaCache(
   connectionType: ConnectionType,
   connectionId?: string
 ): boolean {
-  const cache = loadCache()
   const key = getCacheKey(connectionType, connectionId)
-  return key in cache
+  return key in memoryCache
 }
 
 /**
@@ -97,15 +61,13 @@ export function refreshSchemaCache(
   connectionId?: string
 ): SchemaItem[] {
   const items = doCollectSchema(connectionType, connectionId)
-  const cache = loadCache()
   const key = getCacheKey(connectionType, connectionId)
 
-  cache[key] = {
+  memoryCache[key] = {
     items,
     timestamp: Date.now()
   }
 
-  saveCache()
   return items
 }
 
@@ -116,17 +78,13 @@ export function clearSchemaCache(
   connectionType?: ConnectionType,
   connectionId?: string
 ): void {
-  const cache = loadCache()
-
   if (connectionType) {
     const key = getCacheKey(connectionType, connectionId)
-    delete cache[key]
+    delete memoryCache[key]
   } else {
     // Clear all
-    Object.keys(cache).forEach(key => delete cache[key])
+    Object.keys(memoryCache).forEach(key => delete memoryCache[key])
   }
-
-  saveCache()
 }
 
 /**

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useConnectionsStore } from './connections'
+import { loadItem, saveItem, deleteItem } from '../utils/storage'
 import type { BigQueryProject, BigQueryDataset, BigQueryTable, BigQueryField, BigQueryQueryResponse } from '../types/bigquery'
 import { convertBigQueryRows, extractSimpleSchema } from '../utils/bigqueryConversion'
 
@@ -115,21 +116,18 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   // Delegate to connections store
   const connectionsStore = useConnectionsStore()
 
-  // Load connections on initialization
-  connectionsStore.loadState()
-
-  // Project ID is still managed locally
+  // Project ID
   const projectId = ref<string | null>(null)
 
-  // Load projectId from localStorage
-  try {
-    const saved = localStorage.getItem('squill-project')
+  const loadState = async () => {
+    await connectionsStore.ready
+    const saved = await loadItem<string>('bigquery-project')
     if (saved) {
       projectId.value = saved
     }
-  } catch (err) {
-    console.error('Failed to load project:', err)
   }
+
+  const ready = loadState()
 
   // Computed: get current access token (from in-memory storage)
   const accessToken = computed(() => {
@@ -336,14 +334,14 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   // Set active project
   const setProjectId = (newProjectId: string | null) => {
     projectId.value = newProjectId
-    try {
-      if (newProjectId) {
-        localStorage.setItem('squill-project', newProjectId)
-      } else {
-        localStorage.removeItem('squill-project')
-      }
-    } catch (err) {
-      console.error('Failed to save project:', err)
+    if (newProjectId) {
+      saveItem('bigquery-project', newProjectId).catch(err => {
+        console.error('Failed to save project:', err)
+      })
+    } else {
+      deleteItem('bigquery-project').catch(err => {
+        console.error('Failed to delete project:', err)
+      })
     }
   }
 
@@ -363,7 +361,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     }
 
     projectId.value = null
-    localStorage.removeItem('squill-project')
+    deleteItem('bigquery-project').catch(console.error)
 
     // Tell backend to revoke refresh token
     if (email) {
@@ -379,6 +377,29 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     }
   }
 
+  // Paginated fetch helper for BigQuery list APIs (datasets.list, tables.list).
+  // Follows nextPageToken until all results are collected.
+  const paginatedFetch = async <T>(
+    caller: <R>(apiCall: (token: string) => Promise<Response>) => Promise<R>,
+    baseUrl: string,
+    itemsKey: string,
+  ): Promise<T[]> => {
+    const allItems: T[] = []
+    let pageToken: string | undefined
+
+    do {
+      const url = pageToken ? `${baseUrl}?pageToken=${pageToken}` : baseUrl
+      const data = await caller<Record<string, unknown>>(
+        (token) => fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+      )
+      const items = (data[itemsKey] as T[] | undefined) || []
+      allItems.push(...items)
+      pageToken = data.nextPageToken as string | undefined
+    } while (pageToken)
+
+    return allItems
+  }
+
   // Fetch datasets for a project
   const fetchDatasets = async (targetProjectId: string | null = null) => {
     const project = targetProjectId || projectId.value
@@ -386,26 +407,20 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       throw new Error('No project specified')
     }
 
-    const data = await apiCallWithRefresh<{ datasets?: BigQueryDataset[] }>(
-      (token) => fetch(
-        `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      )
+    return paginatedFetch<BigQueryDataset>(
+      apiCallWithRefresh,
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets`,
+      'datasets',
     )
-
-    return data.datasets || []
   }
 
   // Fetch datasets using any BigQuery connection (for SchemaBox when BigQuery is not active)
   const fetchDatasetsWithAnyConnection = async (targetProjectId: string) => {
-    const data = await apiCallWithAnyBigQueryConnection<{ datasets?: BigQueryDataset[] }>(
-      (token) => fetch(
-        `https://bigquery.googleapis.com/bigquery/v2/projects/${targetProjectId}/datasets`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      )
+    return paginatedFetch<BigQueryDataset>(
+      apiCallWithAnyBigQueryConnection,
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${targetProjectId}/datasets`,
+      'datasets',
     )
-
-    return data.datasets || []
   }
 
   // Fetch tables for a dataset
@@ -415,26 +430,20 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       throw new Error('No project specified')
     }
 
-    const data = await apiCallWithRefresh<{ tables?: BigQueryTable[] }>(
-      (token) => fetch(
-        `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      )
+    return paginatedFetch<BigQueryTable>(
+      apiCallWithRefresh,
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables`,
+      'tables',
     )
-
-    return data.tables || []
   }
 
   // Fetch tables using any BigQuery connection (for SchemaBox when BigQuery is not active)
   const fetchTablesWithAnyConnection = async (datasetId: string, targetProjectId: string) => {
-    const data = await apiCallWithAnyBigQueryConnection<{ tables?: BigQueryTable[] }>(
-      (token) => fetch(
-        `https://bigquery.googleapis.com/bigquery/v2/projects/${targetProjectId}/datasets/${datasetId}/tables`,
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      )
+    return paginatedFetch<BigQueryTable>(
+      apiCallWithAnyBigQueryConnection,
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${targetProjectId}/datasets/${datasetId}/tables`,
+      'tables',
     )
-
-    return data.tables || []
   }
 
   // Fetch table schema
@@ -698,80 +707,105 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     }
   }
 
-  // Fetch all schemas using INFORMATION_SCHEMA
-  // Fetch all schemas using INFORMATION_SCHEMA
-  // Accepts optional connectionId to support refreshing schemas for non-active connections
+  // Fetch all schemas via INFORMATION_SCHEMA.COLUMNS queries.
+  // Uses datasets.list (region-agnostic) to discover datasets and their locations,
+  // then groups datasets by location and runs one UNION ALL query per region.
+  // This avoids per-table API calls while handling multi-region projects correctly.
   const fetchAllSchemas = async (targetProjectId: string | null = null, targetConnectionId?: string): Promise<void> => {
     const project = targetProjectId || projectId.value
-    if (!project) {
-      throw new Error('No project specified')
+    if (!project) throw new Error('No project specified')
+
+    const connectionId = targetConnectionId || connectionsStore.activeConnectionId
+    if (!connectionId) throw new Error('No connection available')
+    let token = connectionsStore.getAccessToken(connectionId)
+    if (!token) token = await connectionsStore.refreshAccessToken(connectionId)
+
+    // Paginated list helper
+    const listAll = async <T>(baseUrl: string, itemsKey: string): Promise<T[]> => {
+      const allItems: T[] = []
+      let pageToken: string | undefined
+      do {
+        const url = pageToken ? `${baseUrl}?pageToken=${pageToken}` : baseUrl
+        const data = await executeWithTokenRefresh<Record<string, unknown>>(connectionId, token!, (t) =>
+          fetch(url, { headers: { 'Authorization': `Bearer ${t}` } })
+        )
+        const items = (data[itemsKey] as T[] | undefined) || []
+        allItems.push(...items)
+        pageToken = data.nextPageToken as string | undefined
+      } while (pageToken)
+      return allItems
     }
 
-    // Import schema store
     const { useSchemaStore } = await import('./bigquerySchema')
     const schemaStore = useSchemaStore()
 
+    // Clear existing schemas so stale entries from a previous project don't linger
+    schemaStore.clearSchemas()
+
     try {
-      // Step 1: Get all datasets using SCHEMATA
-      const datasetsQuery = `
-        SELECT schema_name
-        FROM \`${project}.INFORMATION_SCHEMA.SCHEMATA\`
-        WHERE schema_name NOT IN ('INFORMATION_SCHEMA', 'information_schema')
-      `
+      // Step 1: List all datasets with their locations (paginated)
+      const allDatasets = await listAll<BigQueryDataset>(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets`,
+        'datasets',
+      )
 
-      const datasetsResult = await runQuery(datasetsQuery, null, targetConnectionId)
-      const datasets = datasetsResult.rows.map(row => row.schema_name)
-
-      if (datasets.length === 0) {
+      if (allDatasets.length === 0) {
         console.log('No datasets found in project')
         return
       }
 
-      console.log(`Found ${datasets.length} datasets, fetching schemas...`)
+      // Step 2: Group datasets by location so each query stays within one region
+      const datasetsByLocation = new Map<string, string[]>()
+      for (const ds of allDatasets) {
+        const location = ds.location || 'US'
+        const group = datasetsByLocation.get(location) || []
+        group.push(ds.datasetReference.datasetId)
+        datasetsByLocation.set(location, group)
+      }
 
-      // Step 2: Build a UNION query to get columns from all datasets
-      const columnsQueries = datasets.map(dataset => `
-        SELECT
-          '${project}' as project_id,
-          table_schema as dataset_id,
-          table_name,
-          column_name,
-          data_type
-        FROM \`${project}.${dataset}.INFORMATION_SCHEMA.COLUMNS\`
-      `).join('\nUNION ALL\n')
+      // Step 3: For each region, run one UNION ALL INFORMATION_SCHEMA.COLUMNS query
+      // Collect all results, then bulk-write to schema store once at the end
+      const allEntries: Array<{ project: string; dataset: string; table: string; columns: Array<{ name: string; type: string }> }> = []
 
-      const columnsQuery = `
-        ${columnsQueries}
-        ORDER BY dataset_id, table_name, ordinal_position
-      `
+      await Promise.all(
+        Array.from(datasetsByLocation.entries()).map(async ([_location, datasetIds]) => {
+          try {
+            const unionParts = datasetIds.map(dsId =>
+              `SELECT table_schema, table_name, column_name, data_type FROM \`${project}.${dsId}.INFORMATION_SCHEMA.COLUMNS\``
+            )
+            const query = unionParts.join('\nUNION ALL\n')
+            const result = await runQuery(query, null, connectionId)
 
-      const result = await runQuery(columnsQuery, null, targetConnectionId)
+            // Group columns by table
+            const tableColumns = new Map<string, { name: string; type: string }[]>()
+            for (const row of result.rows) {
+              const dsId = row.table_schema as string
+              const tbl = row.table_name as string
+              const key = `${dsId}\0${tbl}`
+              if (!tableColumns.has(key)) tableColumns.set(key, [])
+              tableColumns.get(key)!.push({ name: row.column_name as string, type: row.data_type as string })
+            }
 
-      // Group columns by table
-      const tableSchemas: Record<string, Array<{ name: string; type: string }>> = {}
-
-      for (const row of result.rows) {
-        const tableKey = `${row.project_id}.${row.dataset_id}.${row.table_name}`
-
-        if (!tableSchemas[tableKey]) {
-          tableSchemas[tableKey] = []
-        }
-
-        tableSchemas[tableKey].push({
-          name: row.column_name as string,
-          type: row.data_type as string
+            for (const [key, columns] of tableColumns) {
+              const [dsId, tbl] = key.split('\0')
+              allEntries.push({ project, dataset: dsId, table: tbl, columns })
+            }
+          } catch (err) {
+            console.warn(`Could not fetch schemas for datasets [${datasetIds.join(', ')}]:`, err)
+          }
         })
-      }
+      )
 
-      // Populate schema store
-      for (const [tableKey, columns] of Object.entries(tableSchemas)) {
-        const [proj, dataset, table] = tableKey.split('.')
-        schemaStore.setTableSchema(proj, dataset, table, columns)
-      }
+      // Single bulk write: one IDB save + one reactive update
+      schemaStore.bulkSetTableSchemas(allEntries)
 
-      console.log(`Loaded ${Object.keys(tableSchemas).length} table schemas from INFORMATION_SCHEMA`)
+      // Invalidate the autocompletion cache so it rebuilds from fresh schema data
+      const { clearSchemaCache } = await import('../utils/schemaAdapter')
+      clearSchemaCache('bigquery')
+
+      console.log(`Loaded ${allEntries.length} table schemas via INFORMATION_SCHEMA (${datasetsByLocation.size} region(s))`)
     } catch (error) {
-      console.error('Failed to fetch schemas from INFORMATION_SCHEMA:', error)
+      console.error('Failed to fetch schemas:', error)
       throw error
     }
   }
@@ -918,6 +952,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   }
 
   return {
+    ready,
     accessToken,
     userEmail,
     userName,

@@ -7,8 +7,8 @@ import {
   type ConnectionData,
 } from '../services/connections'
 import { clearSchemaCache } from '../utils/schemaAdapter'
+import { loadItem, saveItem } from '../utils/storage'
 
-const STORAGE_KEY = 'squill-connections'
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 /**
@@ -31,7 +31,7 @@ interface ConnectionsState {
   activeConnectionId: string | null
 }
 
-// In-memory token storage (not persisted to localStorage)
+// In-memory token storage (not persisted)
 interface TokenEntry {
   token: string
   expiresAt: number
@@ -76,74 +76,34 @@ export const useConnectionsStore = defineStore('connections', () => {
     })
   }
 
-  // Load state from localStorage
-  const loadState = () => {
+  // ---- Persistence ----
+
+  const loadState = async () => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (!saved) {
-        // Migrate from old auth format
-        migrateFromLegacyAuth()
-        return
-      }
-
-      const parsed = JSON.parse(saved)
-      const result = ConnectionsStateSchema.safeParse(parsed)
-
-      if (result.success) {
-        connections.value = deduplicateConnections(result.data.connections)
-        activeConnectionId.value = result.data.activeConnectionId
-      } else {
-        console.warn('Invalid connections state, attempting recovery:', result.error.issues)
-        // Fallback: try lenient parsing
-        const state = parsed as ConnectionsState
-        connections.value = deduplicateConnections(state.connections || [])
-        activeConnectionId.value = state.activeConnectionId || null
+      const data = await loadItem<ConnectionsState>('connections')
+      if (data) {
+        const result = ConnectionsStateSchema.safeParse(data)
+        if (result.success) {
+          connections.value = deduplicateConnections(result.data.connections)
+          activeConnectionId.value = result.data.activeConnectionId
+        }
       }
     } catch (error) {
       console.error('Failed to load connections:', error)
     }
   }
 
-  // Migrate from legacy single-connection format
-  const migrateFromLegacyAuth = () => {
-    try {
-      const oldAuth = localStorage.getItem('squill-auth')
-      if (oldAuth) {
-        const auth = JSON.parse(oldAuth)
-        if (auth.token && auth.user) {
-          // Create connection without token (user will need to re-authenticate)
-          const connection: Connection = {
-            id: `bigquery-${auth.user.email}-${Date.now()}`,
-            type: 'bigquery',
-            email: auth.user.email,
-            name: auth.user.email,
-            createdAt: Date.now()
-          }
-          connections.value = [connection]
-          activeConnectionId.value = connection.id
-          saveState()
-          // Remove old format
-          localStorage.removeItem('squill-auth')
-          console.log('Migrated from legacy auth. Please re-authenticate to continue.')
-        }
-      }
-    } catch (error) {
-      console.error('Failed to migrate legacy auth:', error)
+  const saveState = () => {
+    const state: ConnectionsState = {
+      connections: connections.value,
+      activeConnectionId: activeConnectionId.value
     }
+    saveItem('connections', state).catch(error => {
+      console.error('Failed to save connections:', error)
+    })
   }
 
-  // Save state to localStorage (session info only, no tokens)
-  const saveState = () => {
-    try {
-      const state: ConnectionsState = {
-        connections: connections.value,
-        activeConnectionId: activeConnectionId.value
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch (error) {
-      console.error('Failed to save connections:', error)
-    }
-  }
+  const ready = loadState()
 
   // Set access token for a connection (in-memory only)
   const setAccessToken = (connectionId: string, token: string, expiresIn: number) => {
@@ -357,7 +317,7 @@ export const useConnectionsStore = defineStore('connections', () => {
   }
 
   /**
-   * Fetch connections from backend and merge with localStorage.
+   * Fetch connections from backend and merge with local state.
    * Called on login for Pro/VIP users.
    * Backend connections (BigQuery, Postgres) are merged with local connections (DuckDB).
    */
@@ -368,7 +328,7 @@ export const useConnectionsStore = defineStore('connections', () => {
 
       const backendConnections = await apiFetchConnections(userStore.sessionToken)
 
-      // Keep DuckDB connections from localStorage (they're local-only)
+      // Keep DuckDB connections from local state (they're local-only)
       const localDuckDBConnections = connections.value.filter(c => c.type === 'duckdb')
 
       // Convert backend connections to frontend format
@@ -387,16 +347,16 @@ export const useConnectionsStore = defineStore('connections', () => {
       console.log(`Synced ${remoteConnections.length} connections from backend (+ ${localDuckDBConnections.length} local)`)
     } catch (error) {
       console.warn('Failed to sync connections from backend:', error)
-      // Don't throw - localStorage still works
+      // Don't throw - local state still works
     }
   }
 
   return {
+    ready,
     connections,
     activeConnectionId,
     activeConnection,
     isActiveTokenExpired,
-    loadState,
     saveState,
     setAccessToken,
     getAccessToken,

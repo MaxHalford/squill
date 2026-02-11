@@ -19,6 +19,7 @@
     "@duckdb/duckdb-wasm": "^1.28.0",
     "@polar-sh/checkout": "^0.2.0",
     "codemirror": "^6.0.2",
+    "dexie": "^4.3.0",
     "marked": "^17.0.1",
     "pinia": "^3.0.4",
     "vue": "^3.5.24",

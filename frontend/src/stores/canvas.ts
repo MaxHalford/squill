@@ -4,6 +4,7 @@ import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasI
 import type { DatabaseEngine } from '../types/database'
 import { getDefaultQuery } from '../constants/defaultQueries'
 import { CanvasDataSchema, MultiCanvasIndexSchema } from '../utils/storageSchemas'
+import { loadItem, saveItem, deleteItem } from '../utils/storage'
 
 // Debounce utility for auto-save
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
@@ -23,10 +24,6 @@ const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => 
   }
   return debounced
 }
-
-// Storage keys
-const INDEX_KEY = 'squill_canvas_index'
-const CANVAS_KEY_PREFIX = 'squill_canvas_'
 
 // Short, memorable painting names for new canvases
 const PAINTING_NAMES = [
@@ -201,27 +198,22 @@ export const useCanvasStore = defineStore('canvas', () => {
   // ============================================
 
   const saveIndex = () => {
-    try {
-      const index: MultiCanvasIndex = {
-        version: 1,
-        activeCanvasId: activeCanvasId.value!,
-        canvases: canvasIndex.value
-      }
-      localStorage.setItem(INDEX_KEY, JSON.stringify(index))
-    } catch (error) {
-      console.error('Failed to save canvas index:', error)
+    const index: MultiCanvasIndex = {
+      version: 1,
+      activeCanvasId: activeCanvasId.value!,
+      canvases: canvasIndex.value
     }
+    saveItem('canvas:index', index).catch(error => {
+      console.error('Failed to save canvas index:', error)
+    })
   }
 
-  const loadIndex = (): MultiCanvasIndex | null => {
+  const loadIndex = async (): Promise<MultiCanvasIndex | null> => {
     try {
-      const saved = localStorage.getItem(INDEX_KEY)
-      if (!saved) return null
-      const parsed = JSON.parse(saved)
-      const result = MultiCanvasIndexSchema.safeParse(parsed)
-      if (result.success) {
-        return result.data
-      }
+      const data = await loadItem<MultiCanvasIndex>('canvas:index')
+      if (!data) return null
+      const result = MultiCanvasIndexSchema.safeParse(data)
+      if (result.success) return result.data
       console.warn('Canvas index validation failed:', result.error.issues)
       return null
     } catch (error) {
@@ -231,59 +223,34 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   const saveCanvasData = (canvasId: string) => {
-    try {
-      const canvas = canvasIndex.value.find(c => c.id === canvasId)
-      if (!canvas) return
+    const canvas = canvasIndex.value.find(c => c.id === canvasId)
+    if (!canvas) return
 
-      const data: CanvasData = {
-        id: canvasId,
-        name: canvas.name,
-        createdAt: canvas.createdAt,
-        updatedAt: Date.now(),
-        boxes: boxes.value,
-        nextBoxId: nextBoxId.value
-      }
-      localStorage.setItem(CANVAS_KEY_PREFIX + canvasId, JSON.stringify(data))
-
-      // Update timestamp in index
-      canvas.updatedAt = data.updatedAt
-      saveIndex()
-    } catch (error) {
-      console.error('Failed to save canvas data:', error)
+    const data: CanvasData = {
+      id: canvasId,
+      name: canvas.name,
+      createdAt: canvas.createdAt,
+      updatedAt: Date.now(),
+      boxes: boxes.value,
+      nextBoxId: nextBoxId.value
     }
+    saveItem(`canvas:${canvasId}`, data).catch(error => {
+      console.error('Failed to save canvas data:', error)
+    })
+
+    // Update timestamp in index
+    canvas.updatedAt = data.updatedAt
+    saveIndex()
   }
 
-  const loadCanvasData = (canvasId: string): CanvasData | null => {
+  const loadCanvasData = async (canvasId: string): Promise<CanvasData | null> => {
     try {
-      const saved = localStorage.getItem(CANVAS_KEY_PREFIX + canvasId)
-      if (!saved) return null
-      const parsed = JSON.parse(saved)
-      const result = CanvasDataSchema.safeParse(parsed)
-      if (result.success) {
-        return result.data
-      }
+      const data = await loadItem<CanvasData>(`canvas:${canvasId}`)
+      if (!data) return null
+      const result = CanvasDataSchema.safeParse(data)
+      if (result.success) return result.data
       console.warn('Canvas data validation failed:', result.error.issues)
-      // Fallback recovery
-      return {
-        id: canvasId,
-        name: parsed.name || 'Untitled',
-        createdAt: parsed.createdAt || Date.now(),
-        updatedAt: parsed.updatedAt || Date.now(),
-        boxes: (parsed.boxes || []).filter((box: Record<string, unknown>) => box && box.id != null).map((box: Record<string, unknown>) => ({
-          id: box.id,
-          type: box.type || 'sql',
-          x: box.x || 100,
-          y: box.y || 100,
-          width: box.width || 600,
-          height: box.height || 500,
-          zIndex: box.zIndex || 1,
-          query: box.query || '',
-          name: box.name || `query_${box.id}`,
-          dependencies: box.dependencies || [],
-          connectionId: box.connectionId
-        })),
-        nextBoxId: parsed.nextBoxId || 1
-      }
+      return null
     } catch (error) {
       console.error('Failed to load canvas data:', error)
       return null
@@ -291,23 +258,25 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   const deleteCanvasData = (canvasId: string) => {
-    localStorage.removeItem(CANVAS_KEY_PREFIX + canvasId)
+    deleteItem(`canvas:${canvasId}`).catch(error => {
+      console.error('Failed to delete canvas data:', error)
+    })
   }
 
   // ============================================
   // Load state (main entry point)
   // ============================================
 
-  const loadState = () => {
+  const loadState = async () => {
     // Load index
-    const index = loadIndex()
+    const index = await loadIndex()
 
     if (index && index.canvases.length > 0) {
       canvasIndex.value = index.canvases
       activeCanvasId.value = index.activeCanvasId
 
       // Load active canvas data
-      const data = loadCanvasData(index.activeCanvasId)
+      const data = await loadCanvasData(index.activeCanvasId)
       if (data) {
         boxes.value = data.boxes
         nextBoxId.value = data.nextBoxId
@@ -333,7 +302,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
-  // Debounced auto-save to prevent localStorage thrashing during drag operations
+  // Debounced auto-save to prevent IDB thrashing during drag operations
   const debouncedSaveState = debounce(saveState, 500)
 
   // Watch for changes and auto-save (debounced)
@@ -378,7 +347,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       boxes: [],
       nextBoxId: 1
     }
-    localStorage.setItem(CANVAS_KEY_PREFIX + canvasId, JSON.stringify(data))
+    saveItem(`canvas:${canvasId}`, data).catch(console.error)
 
     // Switch to new canvas
     activeCanvasId.value = canvasId
@@ -394,8 +363,11 @@ export const useCanvasStore = defineStore('canvas', () => {
     return canvasId
   }
 
-  const switchCanvas = (canvasId: string) => {
+  const switchCanvas = async (canvasId: string) => {
     if (canvasId === activeCanvasId.value) return
+
+    // Flush pending saves before switching
+    debouncedSaveState.flush()
 
     // Save current canvas
     if (activeCanvasId.value) {
@@ -403,7 +375,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
 
     // Load new canvas
-    const data = loadCanvasData(canvasId)
+    const data = await loadCanvasData(canvasId)
     if (data) {
       activeCanvasId.value = canvasId
       boxes.value = data.boxes
@@ -417,7 +389,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
-  const deleteCanvas = (canvasId: string) => {
+  const deleteCanvas = async (canvasId: string) => {
     const index = canvasIndex.value.findIndex(c => c.id === canvasId)
     if (index === -1) return
 
@@ -436,17 +408,17 @@ export const useCanvasStore = defineStore('canvas', () => {
     // If deleting active canvas, switch to another
     if (canvasId === activeCanvasId.value) {
       const newActive = canvasIndex.value[0]
-      switchCanvas(newActive.id)
+      await switchCanvas(newActive.id)
     } else {
       saveIndex()
     }
   }
 
-  const duplicateCanvas = (canvasId: string): string | null => {
+  const duplicateCanvas = async (canvasId: string): Promise<string | null> => {
     const sourceMeta = canvasIndex.value.find(c => c.id === canvasId)
     if (!sourceMeta) return null
 
-    const sourceData = loadCanvasData(canvasId)
+    const sourceData = await loadCanvasData(canvasId)
     if (!sourceData) return null
 
     // Save current canvas first
@@ -490,7 +462,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       boxes: newBoxes,
       nextBoxId: newNextBoxId
     }
-    localStorage.setItem(CANVAS_KEY_PREFIX + newCanvasId, JSON.stringify(data))
+    saveItem(`canvas:${newCanvasId}`, data).catch(console.error)
 
     // Switch to new canvas
     activeCanvasId.value = newCanvasId
@@ -506,7 +478,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     return newCanvasId
   }
 
-  const renameCanvas = (canvasId: string, newName: string) => {
+  const renameCanvas = async (canvasId: string, newName: string) => {
     const meta = canvasIndex.value.find(c => c.id === canvasId)
     if (!meta) return
 
@@ -518,11 +490,11 @@ export const useCanvasStore = defineStore('canvas', () => {
       saveCanvasData(canvasId)
     } else {
       // Update stored canvas data name
-      const data = loadCanvasData(canvasId)
+      const data = await loadCanvasData(canvasId)
       if (data) {
         data.name = newName
         data.updatedAt = meta.updatedAt
-        localStorage.setItem(CANVAS_KEY_PREFIX + canvasId, JSON.stringify(data))
+        saveItem(`canvas:${canvasId}`, data).catch(console.error)
       }
     }
 

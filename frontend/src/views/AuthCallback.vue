@@ -139,13 +139,20 @@ const handleBigQueryFlow = async (code: string): Promise<void> => {
     data.expires_in
   )
 
-  // Fetch projects and auto-select the first one
+  // Fetch projects, auto-select the first one, and load schemas for autocompletion
   try {
     const projects = await bigqueryStore.fetchProjects()
     if (projects.length > 0) {
       const firstProjectId = projects[0].projectId
       bigqueryStore.setProjectId(firstProjectId)
       connectionsStore.setConnectionProjectId(connectionId, firstProjectId)
+
+      // Populate schema store so SQL autocompletion works immediately
+      try {
+        await bigqueryStore.fetchAllSchemas(firstProjectId)
+      } catch (schemaErr) {
+        console.warn('Could not fetch schemas:', schemaErr)
+      }
     }
   } catch (err) {
     console.warn('Could not auto-select project:', err)

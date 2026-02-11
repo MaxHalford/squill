@@ -1,12 +1,13 @@
 /**
  * Query history store for tracking executed queries
- * - Persists to localStorage for history browsing
+ * - Persists to IndexedDB for history browsing
  * - Provides sample queries as context for the AI fixer
  */
 
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { QueryHistoryStateSchema, type QueryHistoryEntry } from '../utils/storageSchemas'
+import { loadItem, saveItem } from '../utils/storage'
 
 // Simple debounce utility
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
@@ -18,7 +19,6 @@ const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => 
   return debounced
 }
 
-const STORAGE_KEY = 'squill_query_history'
 const MAX_HISTORY_ENTRIES = 100
 const MAX_SAMPLE_QUERIES = 5 // For AI fixer compatibility
 
@@ -37,57 +37,48 @@ export interface RecordQueryParams {
 }
 
 export const useQueryHistoryStore = defineStore('queryHistory', () => {
-  // Full history entries
   const historyEntries = ref<QueryHistoryEntry[]>([])
 
-  // Generate UUID for entries
   function generateId(): string {
     return crypto.randomUUID()
   }
 
-  // Load state from localStorage
-  function loadState(): void {
+  // ---- Persistence ----
+
+  const loadState = async () => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (!saved) return
-
-      const parsed = JSON.parse(saved)
-      const result = QueryHistoryStateSchema.safeParse(parsed)
-
-      if (result.success) {
-        historyEntries.value = result.data.entries
-      } else {
-        console.warn('Invalid query history in localStorage:', result.error.issues)
+      const data = await loadItem<{ version: number; entries: QueryHistoryEntry[]; maxEntries: number }>('query-history')
+      if (data) {
+        const result = QueryHistoryStateSchema.safeParse(data)
+        if (result.success) {
+          historyEntries.value = result.data.entries
+        }
       }
     } catch (err) {
       console.error('Failed to load query history:', err)
     }
   }
 
-  // Save state to localStorage
-  function saveState(): void {
-    try {
-      const state = {
-        version: 1 as const,
-        entries: historyEntries.value,
-        maxEntries: MAX_HISTORY_ENTRIES
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch (err) {
-      console.error('Failed to save query history:', err)
+  const saveState = () => {
+    const state = {
+      version: 1 as const,
+      entries: historyEntries.value,
+      maxEntries: MAX_HISTORY_ENTRIES,
     }
+    saveItem('query-history', state).catch(err => {
+      console.error('Failed to save query history:', err)
+    })
   }
 
-  // Debounced save
   const debouncedSave = debounce(saveState, 500)
 
-  // Watch for changes and save
   watch(historyEntries, () => {
     debouncedSave()
   }, { deep: true })
 
-  // Load on initialization
-  loadState()
+  const ready = loadState()
+
+  // ---- Actions ----
 
   /**
    * Record a query execution (success or failure)
@@ -226,6 +217,7 @@ export const useQueryHistoryStore = defineStore('queryHistory', () => {
   })
 
   return {
+    ready,
     historyEntries,
     connectionIds,
     recordQuery,
