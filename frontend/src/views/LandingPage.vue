@@ -1238,7 +1238,6 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
 
 .icon-grid span {
   background: var(--surface-inverse);
-  border-radius: 0;
 }
 
 /* SQL brackets icon */
@@ -1271,15 +1270,12 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
   width: 32px;
   height: 8px;
   background: var(--surface-inverse);
-  border-radius: 2px;
 }
 
 .db-layer:first-child {
-  border-radius: 4px 4px 2px 2px;
 }
 
 .db-layer:last-child {
-  border-radius: 2px 2px 4px 4px;
 }
 
 /* CSV drag & drop icon */
@@ -1296,7 +1292,6 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
   width: 24px;
   height: 30px;
   background: var(--surface-inverse);
-  border-radius: 2px;
 }
 
 .csv-lines {
@@ -1309,7 +1304,6 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
 .csv-lines span {
   height: 2px;
   background: var(--surface-primary);
-  border-radius: 1px;
 }
 
 .csv-lines span:nth-child(1) { width: 100%; }
@@ -1339,7 +1333,6 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
 .analytics-bar {
   flex: 1;
   background: var(--surface-inverse);
-  border-radius: 2px 2px 0 0;
 }
 
 /* Pages/pagination icon - stacked pages */
@@ -1355,7 +1348,6 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
   height: 28px;
   background: var(--surface-tertiary);
   border: 2px solid var(--surface-inverse);
-  border-radius: 2px;
 }
 
 .page-layer:nth-child(1) {
@@ -1462,7 +1454,6 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
 .database-badge {
   font-size: var(--font-size-caption);
   padding: 2px 8px;
-  border-radius: 2px;
   font-weight: 500;
 }
 
@@ -1545,7 +1536,6 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
 .modal-badge {
   font-size: var(--font-size-caption);
   padding: 2px 8px;
-  border-radius: 2px;
   font-weight: 500;
   width: fit-content;
 }
@@ -1659,11 +1649,11 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
   display: flex;
   gap: var(--space-4);
   padding: var(--space-4);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: var(--border-width-thin) solid var(--border-on-inverse);
 }
 
 .pro-feature.available {
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: var(--border-on-inverse-strong);
 }
 
 .pro-feature.coming-soon {
@@ -1678,7 +1668,7 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
 .pro-feature.clickable:hover {
   transform: translate(-2px, -2px);
   box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.6);
+  border-color: var(--border-on-inverse-strong);
 }
 
 button.pro-feature {

@@ -23,9 +23,16 @@ import CanvasDropdown from './CanvasDropdown.vue'
 
 const router = useRouter()
 const bigqueryStore = useBigQueryStore()
+const projectSearch = ref('')
+const projectsLoading = ref(false)
 const sortedProjects = computed(() =>
   [...bigqueryStore.projects].sort((a, b) => a.projectId.localeCompare(b.projectId))
 )
+const filteredProjects = computed(() => {
+  const q = projectSearch.value.toLowerCase()
+  if (!q) return sortedProjects.value
+  return sortedProjects.value.filter(p => p.projectId.toLowerCase().includes(q))
+})
 const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
@@ -186,7 +193,10 @@ const toggleDropdown = (dropdown: string) => {
 
     // Load projects when opening connection dropdown (BigQuery only)
     if (dropdown === 'connection' && connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired) {
-      bigqueryStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
+      projectsLoading.value = true
+      bigqueryStore.fetchProjects()
+        .catch(err => console.error('Failed to load projects:', err))
+        .finally(() => { projectsLoading.value = false })
     }
   }
 }
@@ -195,6 +205,8 @@ const toggleDropdown = (dropdown: string) => {
 const closeDropdown = () => {
   activeDropdown.value = null
   addDatabaseMenuOpen.value = false
+  projectSearch.value = ''
+  projectsLoading.value = false
 }
 
 // Handle connection selection
@@ -618,13 +630,32 @@ onUnmounted(() => {
                 Projects
               </div>
               <div
-                v-if="sortedProjects.length === 0"
+                v-if="sortedProjects.length > 5"
+                class="project-search-wrapper"
+              >
+                <input
+                  v-model="projectSearch"
+                  type="text"
+                  class="project-search"
+                  placeholder="Filter projects..."
+                  @click.stop
+                  @keydown.stop
+                >
+              </div>
+              <div
+                v-if="projectsLoading && sortedProjects.length === 0"
                 class="dropdown-message"
               >
-                No projects found
+                Retrieving projects...
+              </div>
+              <div
+                v-else-if="filteredProjects.length === 0"
+                class="dropdown-message"
+              >
+                {{ sortedProjects.length === 0 ? 'No projects found' : 'No matching projects' }}
               </div>
               <button
-                v-for="project in sortedProjects"
+                v-for="project in filteredProjects"
                 :key="project.projectId"
                 class="dropdown-item project-item"
                 :class="{ selected: project.projectId === connectionsStore.activeConnection?.projectId }"
@@ -1366,7 +1397,6 @@ onUnmounted(() => {
 /* User Button */
 .user-button {
   padding: 2px 6px;
-  border-radius: 3px;
   border: var(--border-width-thin) solid var(--border-primary);
   background: var(--surface-primary);
   cursor: pointer;
@@ -1403,7 +1433,6 @@ onUnmounted(() => {
   padding: 0 var(--space-3);
   background: var(--surface-primary);
   border: var(--border-width-thin) solid var(--border-primary);
-  border-radius: 4px;
   font-size: var(--font-size-caption);
   font-weight: 500;
   color: var(--text-primary);
@@ -1456,7 +1485,6 @@ onUnmounted(() => {
   font-size: var(--font-size-caption);
   box-shadow: var(--shadow-md);
   z-index: 2001;
-  border-radius: 4px;
 }
 
 /* Settings Dropdown */
@@ -1492,7 +1520,6 @@ onUnmounted(() => {
   padding: 2px 6px;
   background: var(--text-primary);
   color: var(--surface-primary);
-  border-radius: 3px;
 }
 
 .menu-pro-badge {
@@ -1546,7 +1573,6 @@ onUnmounted(() => {
   text-align: right;
   outline: none;
   transition: border-color 0.15s;
-  border-radius: 4px;
 }
 
 .setting-input-number:focus {
@@ -1566,7 +1592,6 @@ onUnmounted(() => {
   font-family: var(--font-family-ui);
   color: var(--text-primary);
   outline: none;
-  border-radius: 4px;
   cursor: pointer;
 }
 
@@ -1587,7 +1612,6 @@ onUnmounted(() => {
   background: #007bff;
   color: white;
   border: none;
-  border-radius: 4px;
   font-size: var(--font-size-body-sm);
   font-weight: 600;
   cursor: pointer;
@@ -1615,7 +1639,6 @@ onUnmounted(() => {
   background: #dc3545;
   color: white;
   border: none;
-  border-radius: 4px;
   font-size: var(--font-size-body-sm);
   font-weight: 600;
   cursor: pointer;
@@ -1644,7 +1667,6 @@ onUnmounted(() => {
 .color-swatch {
   width: 24px;
   height: 24px;
-  border-radius: 50%;
   border: none;
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s;
@@ -1753,7 +1775,6 @@ onUnmounted(() => {
   color: inherit;
   cursor: pointer;
   padding: 0;
-  border-radius: 2px;
   transition: all 0.2s;
 }
 
@@ -1870,6 +1891,33 @@ onUnmounted(() => {
   height: 16px;
 }
 
+.project-search-wrapper {
+  padding: var(--space-2) var(--space-3);
+  position: sticky;
+  top: 0;
+  background: var(--surface-primary);
+  z-index: 1;
+}
+
+.project-search {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-body-sm);
+  font-family: var(--font-family-mono);
+  border: var(--border-width-thin) solid var(--border-secondary);
+  background: var(--surface-primary);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.project-search:focus {
+  border-color: var(--border-primary);
+}
+
+.project-search::placeholder {
+  color: var(--text-tertiary);
+}
+
 .project-item {
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body-sm);
@@ -1922,7 +1970,6 @@ onUnmounted(() => {
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  border-radius: 8px;
 }
 
 .modal-header {
@@ -1949,7 +1996,6 @@ onUnmounted(() => {
   height: 28px;
   background: transparent;
   border: none;
-  border-radius: 4px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;

@@ -411,7 +411,6 @@ const toggleDropdown = () => {
   font-family: var(--font-family-ui);
   color: var(--text-primary);
   outline: none;
-  border-radius: 2px;
 }
 
 .canvas-actions {
@@ -431,7 +430,6 @@ const toggleDropdown = () => {
   color: inherit;
   cursor: pointer;
   padding: 0;
-  border-radius: 2px;
   transition: all 0.15s;
 }
 

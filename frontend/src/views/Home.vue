@@ -1221,7 +1221,7 @@ onUnmounted(() => {
   align-items: center;
   padding: 8px 16px;
   background: rgba(255, 255, 255, 0.9);
-  border-top: 1px solid #e0e0e0;
+  border-top: var(--border-width-thin) solid var(--border-secondary);
   font-size: 12px;
   color: #666;
   z-index: 100;
@@ -1264,7 +1264,6 @@ onUnmounted(() => {
 .duckdb-loading .progress-bar {
   height: 4px;
   background: var(--surface-secondary);
-  border-radius: 2px;
   overflow: hidden;
 }
 
@@ -1272,7 +1271,6 @@ onUnmounted(() => {
   height: 100%;
   width: 30%;
   background: var(--color-duckdb);
-  border-radius: 2px;
   animation: indeterminate 1.5s ease-in-out infinite;
 }
 

@@ -363,7 +363,7 @@ const formatDate = (dateStr: string | null | undefined): string => {
 
 .back-button {
   background: transparent;
-  border: 1.5px solid var(--border-primary, black);
+  border: var(--border-width-thin) solid var(--border-primary);
   color: var(--text-primary, black);
   padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
   cursor: pointer;
@@ -377,7 +377,7 @@ const formatDate = (dateStr: string | null | undefined): string => {
 
 .sign-out-button {
   background: transparent;
-  border: 1.5px solid var(--border-primary, black);
+  border: var(--border-width-thin) solid var(--border-primary);
   color: var(--text-primary, black);
   padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
   cursor: pointer;
@@ -454,7 +454,7 @@ h1 {
   align-items: center;
   gap: var(--space-4, 1rem);
   padding: var(--space-4, 1rem);
-  border: 1.5px solid var(--border-secondary, #ddd);
+  border: var(--border-width-thin) solid var(--border-secondary);
   background: var(--surface-secondary, #f9f9f9);
 }
 
@@ -465,7 +465,6 @@ h1 {
 .avatar-placeholder {
   width: 48px;
   height: 48px;
-  border-radius: 50%;
   border: 2px solid var(--border-primary, black);
   background: var(--surface-inverse, black);
   color: var(--text-inverse, white);
@@ -495,7 +494,7 @@ h1 {
 /* Plan Card */
 .plan-card {
   padding: var(--space-4, 1rem);
-  border: 1.5px solid var(--border-secondary, #ddd);
+  border: var(--border-width-thin) solid var(--border-secondary);
   background: var(--surface-secondary, #f9f9f9);
 }
 
@@ -509,7 +508,7 @@ h1 {
   font-size: var(--font-size-caption, 0.75rem);
   font-weight: 600;
   text-transform: uppercase;
-  border: 1.5px solid var(--border-primary, black);
+  border: var(--border-width-thin) solid var(--border-primary);
 }
 
 .plan-badge.free {
@@ -575,7 +574,7 @@ h1 {
 
 .success-banner {
   background: var(--color-success-bg);
-  border: 1.5px solid var(--color-success);
+  border: var(--border-width-thin) solid var(--color-success);
   padding: var(--space-3, 0.75rem);
   margin-bottom: var(--space-4, 1rem);
   color: var(--color-success);
@@ -605,7 +604,7 @@ h1 {
 .support-button {
   background: transparent;
   color: var(--text-secondary, #666);
-  border: 1.5px dashed var(--border-secondary, #ccc);
+  border: var(--border-width-thin) dashed var(--border-secondary);
   padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
   font-size: 14px;
   cursor: pointer;
@@ -626,7 +625,7 @@ h1 {
 .cancel-button {
   background: transparent;
   color: var(--text-secondary, #666);
-  border: 1.5px solid var(--border-secondary, #ddd);
+  border: var(--border-width-thin) solid var(--border-secondary);
   padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
   font-size: 14px;
   cursor: pointer;
@@ -650,7 +649,7 @@ h1 {
 
 .danger-card {
   padding: var(--space-4, 1rem);
-  border: 1.5px solid var(--color-error, #c62828);
+  border: var(--border-width-thin) solid var(--color-error);
   background: var(--color-error-bg);
 }
 

@@ -138,7 +138,6 @@ const handleClickRight = () => {
   pointer-events: auto;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
   border: 1px solid var(--border-secondary);
   background: var(--surface-tertiary);
   color: var(--text-secondary);

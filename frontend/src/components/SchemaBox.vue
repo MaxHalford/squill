@@ -1908,7 +1908,6 @@ defineExpose({
 :deep(.search-highlight) {
   background: var(--color-accent);
   color: var(--text-primary);
-  border-radius: 2px;
   padding: 0 1px;
 }
 
@@ -2148,7 +2147,6 @@ defineExpose({
   padding: 2px 6px;
   background: var(--surface-secondary);
   border: none;
-  border-radius: 3px;
   cursor: pointer;
   font-size: 10px;
   color: var(--text-primary);
@@ -2176,7 +2174,6 @@ defineExpose({
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 2px;
   color: var(--text-tertiary);
   cursor: pointer;
   flex-shrink: 0;

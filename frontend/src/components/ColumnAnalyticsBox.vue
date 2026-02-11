@@ -1045,7 +1045,6 @@ onUnmounted(() => {
   letter-spacing: 0.05em;
   background: var(--surface-secondary);
   padding: 2px 5px;
-  border-radius: 3px;
   flex-shrink: 0;
 }
 
@@ -1058,7 +1057,6 @@ onUnmounted(() => {
   padding: 0 4px 0 6px;
   background: var(--surface-secondary);
   border: var(--border-width-thin) solid var(--border-secondary);
-  border-radius: 3px;
   font-size: 9px;
   line-height: 1;
   font-family: var(--font-family-mono);
@@ -1074,7 +1072,6 @@ onUnmounted(() => {
   padding: 0;
   background: none;
   border: none;
-  border-radius: 2px;
   color: var(--text-tertiary);
   cursor: pointer;
   font-size: 10px;
@@ -1100,7 +1097,6 @@ onUnmounted(() => {
   padding: 0;
   background: var(--surface-secondary);
   border: none;
-  border-radius: 3px;
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.1s, color 0.1s;

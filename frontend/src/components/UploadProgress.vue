@@ -47,7 +47,6 @@ defineProps<{
 .progress-bar {
   height: 4px;
   background: var(--surface-secondary);
-  border-radius: 2px;
   overflow: hidden;
 }
 
@@ -55,7 +54,6 @@ defineProps<{
   height: 100%;
   width: 30%;
   background: var(--color-accent);
-  border-radius: 2px;
   animation: indeterminate 1.5s ease-in-out infinite;
 }
 

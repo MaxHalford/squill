@@ -298,7 +298,6 @@ export default {
   cursor: pointer;
   user-select: none;
   display: inline;
-  border-radius: 2px;
 }
 
 .json-toggle:hover .json-chevron {

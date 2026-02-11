@@ -129,18 +129,16 @@ const htmlContent = computed(() => {
   max-width: 800px;
   margin: 0 auto;
   background: var(--surface-primary, white);
-  border: 1px solid var(--border-primary, #e0e0e0);
-  border-radius: var(--radius-lg, 8px);
+  border: 1px solid var(--border-primary);
   padding: var(--space-6, 2rem);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .back-button {
   background: transparent;
-  border: 1px solid var(--border-primary, #e0e0e0);
+  border: 1px solid var(--border-primary);
   color: var(--text-primary, #333);
   padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-  border-radius: var(--radius-md, 4px);
   cursor: pointer;
   font-size: 14px;
   margin-bottom: var(--space-4, 1rem);
@@ -149,7 +147,7 @@ const htmlContent = computed(() => {
 
 .back-button:hover {
   background: var(--surface-secondary, #f5f5f5);
-  border-color: var(--border-hover, #999);
+  border-color: var(--border-primary);
 }
 
 .markdown-content {
@@ -161,7 +159,7 @@ const htmlContent = computed(() => {
   font-size: 2rem;
   margin-bottom: var(--space-4, 1rem);
   color: var(--text-primary, #333);
-  border-bottom: 2px solid var(--border-primary, #e0e0e0);
+  border-bottom: 2px solid var(--border-primary);
   padding-bottom: var(--space-2, 0.5rem);
 }
 
@@ -210,7 +208,6 @@ const htmlContent = computed(() => {
 .markdown-content :deep(code) {
   background: var(--surface-secondary, #f5f5f5);
   padding: 2px 6px;
-  border-radius: 3px;
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 0.9em;
 }
@@ -218,13 +215,12 @@ const htmlContent = computed(() => {
 .markdown-content :deep(pre) {
   background: var(--surface-secondary, #f5f5f5);
   padding: var(--space-3, 0.75rem);
-  border-radius: var(--radius-md, 4px);
   overflow-x: auto;
   margin-bottom: var(--space-3, 0.75rem);
 }
 
 .markdown-content :deep(blockquote) {
-  border-left: 4px solid var(--border-primary, #e0e0e0);
+  border-left: 4px solid var(--border-primary);
   padding-left: var(--space-3, 0.75rem);
   margin-left: 0;
   color: var(--text-secondary, #666);

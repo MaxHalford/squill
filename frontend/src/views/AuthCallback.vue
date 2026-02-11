@@ -274,7 +274,6 @@ const goHome = () => {
   height: 48px;
   border: 4px solid var(--border-secondary);
   border-top-color: var(--color-bigquery);
-  border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 16px;
 }
@@ -298,7 +297,6 @@ const goHome = () => {
   color: white;
   border: none;
   padding: 12px 24px;
-  border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
 }

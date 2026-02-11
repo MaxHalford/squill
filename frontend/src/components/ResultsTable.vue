@@ -1277,7 +1277,6 @@ defineExpose({ resetPagination })
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 2px;
   color: var(--text-tertiary);
   cursor: pointer;
   flex-shrink: 0;
@@ -1414,7 +1413,6 @@ defineExpose({ resetPagination })
   justify-content: center;
   background: none;
   border: none;
-  border-radius: 0;
   box-shadow: none;
   cursor: pointer;
   color: var(--text-tertiary);
@@ -1444,7 +1442,7 @@ defineExpose({ resetPagination })
   gap: var(--space-2);
   padding: 4px 8px;
   background: var(--table-header-bg);
-  border-block-start: 1px solid var(--text-tertiary);
+  border-block-start: 1px solid var(--border-secondary);
   flex-shrink: 0;
   font-family: var(--font-family-mono);
 }
@@ -1505,7 +1503,6 @@ defineExpose({ resetPagination })
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 2px;
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -1600,7 +1597,6 @@ defineExpose({ resetPagination })
   height: 10px;
   border: 1px solid var(--text-tertiary);
   border-top-color: var(--text-primary);
-  border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
