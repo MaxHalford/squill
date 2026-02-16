@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, onMounted, onUnmounted } from 'vue'
+import { watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSettingsStore } from './stores/settings'
 
@@ -20,34 +20,13 @@ const applyAccentColor = () => {
   document.documentElement.style.setProperty('--color-accent', settingsStore.accentColor)
 }
 
-// Handle system theme change
-const handleSystemThemeChange = () => {
-  if (settingsStore.themePreference === 'system') {
-    applyTheme()
-  }
-}
-
-// Media query for system theme detection
-let mediaQuery: MediaQueryList | null = null
-
 onMounted(() => {
-  // Apply initial theme (in case flash prevention script missed something)
   applyTheme()
-
-  // Apply initial accent color
   applyAccentColor()
-
-  // Listen for system preference changes
-  mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-  mediaQuery.addEventListener('change', handleSystemThemeChange)
 })
 
-onUnmounted(() => {
-  mediaQuery?.removeEventListener('change', handleSystemThemeChange)
-})
-
-// Watch for theme preference changes
-watch(() => settingsStore.themePreference, () => {
+// Watch resolved theme (reacts to both preference changes and OS theme changes)
+watch(() => settingsStore.resolvedTheme, () => {
   applyTheme()
 })
 

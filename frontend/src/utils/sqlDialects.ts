@@ -210,6 +210,11 @@ const bigqueryCompletions: Completion[] = [
   { label: 'PARSE_DATE', type: 'function', boost: 17 },
   { label: 'PARSE_TIMESTAMP', type: 'function', boost: 17 },
 
+  // BigQuery string functions
+  { label: 'STARTS_WITH', type: 'function', boost: 20 },
+  { label: 'ENDS_WITH', type: 'function', boost: 20 },
+  { label: 'CONTAINS_SUBSTR', type: 'function', boost: 20 },
+
   // BigQuery regex functions
   { label: 'REGEXP_CONTAINS', type: 'function', boost: 20 },
   { label: 'REGEXP_EXTRACT', type: 'function', boost: 20 },

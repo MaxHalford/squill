@@ -100,14 +100,18 @@ export const useSettingsStore = defineStore('settings', () => {
   // Watch for changes and auto-save
   watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, accentColor, canvasPattern], saveState)
 
-  // Resolve system preference to actual theme
-  const getSystemTheme = (): 'light' | 'dark' => {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  }
+  // Reactive system theme tracking
+  const systemTheme = ref<'light' | 'dark'>(
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  )
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  mediaQuery.addEventListener('change', (e) => {
+    systemTheme.value = e.matches ? 'dark' : 'light'
+  })
 
   const resolvedTheme = computed((): 'light' | 'dark' => {
     if (themePreference.value === 'system') {
-      return getSystemTheme()
+      return systemTheme.value
     }
     return themePreference.value
   })
