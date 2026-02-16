@@ -739,8 +739,8 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     const { useSchemaStore } = await import('./bigquerySchema')
     const schemaStore = useSchemaStore()
 
-    // Clear existing schemas so stale entries from a previous project don't linger
-    schemaStore.clearSchemas()
+    // Clear existing schemas for this project so stale entries don't linger
+    schemaStore.clearProjectSchemas(project)
 
     try {
       // Step 1: List all datasets with their locations (paginated)

@@ -183,6 +183,8 @@ const isEngineLoading = computed(() => {
 const editorSchema = computed(() => {
   const duckdbSchema = buildDuckDBSchema(duckdbStore.tables)
   const projectId = boxConnection.value?.projectId
+  // Track schemaVersion to re-evaluate when schemas are bulk-loaded
+  void schemaStore.schemaVersion
   const bigquerySchema = buildBigQuerySchema(schemaStore.bigQuerySchemas, projectId)
 
   let postgresSchema = {}

@@ -24,6 +24,7 @@ import CanvasDropdown from './CanvasDropdown.vue'
 const router = useRouter()
 const bigqueryStore = useBigQueryStore()
 const projectSearch = ref('')
+const projectSearchRef = ref<HTMLInputElement | null>(null)
 const projectsLoading = ref(false)
 const sortedProjects = computed(() =>
   [...bigqueryStore.projects].sort((a, b) => a.projectId.localeCompare(b.projectId))
@@ -197,6 +198,7 @@ const toggleDropdown = (dropdown: string) => {
       bigqueryStore.fetchProjects()
         .catch(err => console.error('Failed to load projects:', err))
         .finally(() => { projectsLoading.value = false })
+      // Auto-focus handled by watch on projectSearchRef below
     }
   }
 }
@@ -455,6 +457,13 @@ watch(() => settingsStore.editorFontSize, (newValue) => {
   editorFontSizeInputValue.value = newValue
 })
 
+// Auto-focus the project filter input when it appears (after projects load)
+watch(projectSearchRef, (el) => {
+  if (el && activeDropdown.value === 'connection') {
+    el.focus()
+  }
+})
+
 // Close dropdown when clicking outside
 const handleClickOutside = (e: Event) => {
   if (!(e.target as HTMLElement).closest('.menu-item')) {
@@ -634,6 +643,7 @@ onUnmounted(() => {
                 class="project-search-wrapper"
               >
                 <input
+                  ref="projectSearchRef"
                   v-model="projectSearch"
                   type="text"
                   class="project-search"

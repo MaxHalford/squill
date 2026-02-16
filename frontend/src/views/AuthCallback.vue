@@ -139,17 +139,22 @@ const handleBigQueryFlow = async (code: string): Promise<void> => {
     data.expires_in
   )
 
-  // Fetch projects, auto-select the first one, and load schemas for autocompletion
+  // Fetch projects, restore previous selection or pick first, and load schemas
   try {
+    await bigqueryStore.ready
     const projects = await bigqueryStore.fetchProjects()
     if (projects.length > 0) {
-      const firstProjectId = projects[0].projectId
-      bigqueryStore.setProjectId(firstProjectId)
-      connectionsStore.setConnectionProjectId(connectionId, firstProjectId)
+      // Prefer the previously selected project if it still exists
+      const savedProjectId = bigqueryStore.projectId
+      const targetProjectId = savedProjectId && projects.some(p => p.projectId === savedProjectId)
+        ? savedProjectId
+        : projects[0].projectId
+      bigqueryStore.setProjectId(targetProjectId)
+      connectionsStore.setConnectionProjectId(connectionId, targetProjectId)
 
       // Populate schema store so SQL autocompletion works immediately
       try {
-        await bigqueryStore.fetchAllSchemas(firstProjectId)
+        await bigqueryStore.fetchAllSchemas(targetProjectId)
       } catch (schemaErr) {
         console.warn('Could not fetch schemas:', schemaErr)
       }

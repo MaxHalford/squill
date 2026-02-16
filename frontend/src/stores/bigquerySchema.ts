@@ -65,6 +65,22 @@ export const useSchemaStore = defineStore('schema', () => {
     saveState()
   }
 
+  // Clear schemas for a specific project only
+  const clearProjectSchemas = (project: string) => {
+    const prefix = `${project}.`
+    let changed = false
+    for (const key of Object.keys(bigQuerySchemas.value)) {
+      if (key.startsWith(prefix)) {
+        delete bigQuerySchemas.value[key]
+        changed = true
+      }
+    }
+    if (changed) {
+      schemaVersion.value++
+      saveState()
+    }
+  }
+
   // Clear all schemas
   const clearSchemas = () => {
     bigQuerySchemas.value = {}
@@ -89,6 +105,7 @@ export const useSchemaStore = defineStore('schema', () => {
     setTableSchema,
     bulkSetTableSchemas,
     removeTableSchema,
+    clearProjectSchemas,
     clearSchemas,
     getTablesForDataset
   }

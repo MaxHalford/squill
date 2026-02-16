@@ -446,6 +446,17 @@ const selectBigQueryProject = async (projectId: string) => {
   if (!datasets.value[projectId]) {
     await loadDatasets(projectId)
   }
+
+  // Fetch all schemas for this project if not already loaded (populates schema store
+  // for autocomplete and search). Fire-and-forget to avoid blocking navigation.
+  const hasProjectSchemas = Object.keys(schemaStore.bigQuerySchemas).some(
+    key => key.startsWith(`${projectId}.`)
+  )
+  if (!hasProjectSchemas) {
+    bigqueryStore.fetchAllSchemas(projectId, selectedProject.value!).catch(err => {
+      console.warn(`Could not fetch schemas for ${projectId}:`, err)
+    })
+  }
 }
 
 // Load BigQuery projects for a connection
@@ -911,56 +922,47 @@ const searchResults = computed<SearchResult[]>(() => {
         }
       }
     } else if (connType === 'bigquery') {
-      // Search BigQuery hierarchy: projects → datasets → tables → columns
+      // Search BigQuery using the schema store (single source of truth).
+      // This finds all tables whose schemas have been loaded via fetchAllSchemas,
+      // regardless of whether the user has clicked through the hierarchy.
+      for (const [fullTableName, columns] of Object.entries(schemaStore.bigQuerySchemas)) {
+        const parts = fullTableName.split('.')
+        if (parts.length !== 3) continue
+        const [project, dataset, table] = parts
+
+        const projMatch = project.toLowerCase().includes(query)
+        const dsMatch = dataset.toLowerCase().includes(query)
+        const tblMatch = table.toLowerCase().includes(query)
+        const matchedColumns = columns
+          .filter(c => c.name.toLowerCase().includes(query))
+          .map(c => c.name)
+
+        if (projMatch || dsMatch || tblMatch || matchedColumns.length > 0) {
+          results.push({
+            connectionId: connId, connectionName: connName, connectionType: 'bigquery',
+            tableName: fullTableName,
+            displayName: `${dataset}.${table}`,
+            matchedColumns, projectId: project, datasetId: dataset
+          })
+        }
+      }
+
+      // Also search locally-loaded projects/datasets for name-level matches
+      // (handles projects whose schemas haven't been fetched yet)
       const bqProjects = bigqueryProjectsByConnection.value[connId] || []
       for (const bqProj of bqProjects) {
         const projMatch = bqProj.projectId.toLowerCase().includes(query)
         const projDatasets = datasets.value[bqProj.projectId] || []
 
-        if (projDatasets.length === 0) {
-          // Project loaded but not yet expanded — show if name matches
-          if (projMatch) {
+        // Show project-level match if no table-level results exist for it
+        if (projDatasets.length === 0 && projMatch) {
+          const alreadyHasResults = results.some(r => r.projectId === bqProj.projectId)
+          if (!alreadyHasResults) {
             results.push({
               connectionId: connId, connectionName: connName, connectionType: 'bigquery',
               tableName: bqProj.projectId, displayName: bqProj.projectId,
               matchedColumns: [], projectId: bqProj.projectId
             })
-          }
-          continue
-        }
-
-        for (const ds of projDatasets) {
-          const dsMatch = ds.name.toLowerCase().includes(query)
-          const dsTables = tables.value[ds.id] || []
-
-          if (dsTables.length === 0) {
-            // Dataset loaded but not expanded
-            if (projMatch || dsMatch) {
-              results.push({
-                connectionId: connId, connectionName: connName, connectionType: 'bigquery',
-                tableName: `${bqProj.projectId}.${ds.name}`, displayName: ds.name,
-                matchedColumns: [], projectId: bqProj.projectId, datasetId: ds.id
-              })
-            }
-            continue
-          }
-
-          for (const tbl of dsTables) {
-            const tblMatch = tbl.name.toLowerCase().includes(query)
-            const schemaKey = `${ds.id}.${tbl.id}`
-            const tblSchema = schemas.value[schemaKey] || []
-            const matchedColumns = tblSchema
-              .filter(f => f.name.toLowerCase().includes(query))
-              .map(f => f.name)
-
-            if (projMatch || dsMatch || tblMatch || matchedColumns.length > 0) {
-              results.push({
-                connectionId: connId, connectionName: connName, connectionType: 'bigquery',
-                tableName: `${bqProj.projectId}.${ds.id}.${tbl.id}`,
-                displayName: `${ds.name}.${tbl.name}`,
-                matchedColumns, projectId: bqProj.projectId, datasetId: ds.id
-              })
-            }
           }
         }
       }
