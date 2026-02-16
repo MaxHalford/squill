@@ -925,18 +925,13 @@ onMounted(async () => {
   // Restore BigQuery session (refresh access token from backend)
   bigqueryStore.restoreSession()
 
-  // Fetch BigQuery schemas for autocompletion only if cache is empty.
-  // Users can hit "Reset schemas" in the menu to refresh manually.
-  const { useSchemaStore } = await import('../stores/bigquerySchema')
-  const schemaStore = useSchemaStore()
-  await schemaStore.ready
-  if (Object.keys(schemaStore.bigQuerySchemas).length === 0) {
-    const bigqueryConnections = connectionsStore.connections.filter(c => c.type === 'bigquery' && c.projectId)
-    for (const conn of bigqueryConnections) {
-      bigqueryStore.fetchAllSchemas(conn.projectId!, conn.id).catch(err => {
-        console.warn(`Could not fetch schemas for ${conn.projectId}:`, err)
-      })
-    }
+  // Fetch BigQuery schemas for autocompletion.
+  // IDB cache provides instant data; this background refresh keeps it fresh.
+  const bigqueryConnections = connectionsStore.connections.filter(c => c.type === 'bigquery' && c.projectId)
+  for (const conn of bigqueryConnections) {
+    bigqueryStore.fetchAllSchemas(conn.projectId!, conn.id).catch(err => {
+      console.warn(`Could not fetch schemas for ${conn.projectId}:`, err)
+    })
   }
 
   // Restore PostgreSQL schemas for all postgres connections

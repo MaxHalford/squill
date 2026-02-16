@@ -739,9 +739,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     const { useSchemaStore } = await import('./bigquerySchema')
     const schemaStore = useSchemaStore()
 
-    // Clear existing schemas for this project so stale entries don't linger
-    schemaStore.clearProjectSchemas(project)
-
     try {
       // Step 1: List all datasets with their locations (paginated)
       const allDatasets = await listAll<BigQueryDataset>(
@@ -796,8 +793,8 @@ export const useBigQueryStore = defineStore('bigquery', () => {
         })
       )
 
-      // Single bulk write: one IDB save + one reactive update
-      schemaStore.bulkSetTableSchemas(allEntries)
+      // Atomic replace: clear old schemas for this project and write new ones in one update
+      schemaStore.replaceProjectSchemas(project, allEntries)
 
       // Invalidate the autocompletion cache so it rebuilds from fresh schema data
       const { clearSchemaCache } = await import('../utils/schemaAdapter')

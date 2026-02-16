@@ -81,6 +81,22 @@ export const useSchemaStore = defineStore('schema', () => {
     }
   }
 
+  // Atomically replace all schemas for a project (clear old + write new in one update)
+  const replaceProjectSchemas = (project: string, entries: Array<{ project: string; dataset: string; table: string; columns: ColumnInfo[] }>) => {
+    const prefix = `${project}.`
+    for (const key of Object.keys(bigQuerySchemas.value)) {
+      if (key.startsWith(prefix)) {
+        delete bigQuerySchemas.value[key]
+      }
+    }
+    for (const entry of entries) {
+      const key = `${entry.project}.${entry.dataset}.${entry.table}`
+      bigQuerySchemas.value[key] = entry.columns
+    }
+    schemaVersion.value++
+    saveState()
+  }
+
   // Clear all schemas
   const clearSchemas = () => {
     bigQuerySchemas.value = {}
@@ -104,6 +120,7 @@ export const useSchemaStore = defineStore('schema', () => {
     ready,
     setTableSchema,
     bulkSetTableSchemas,
+    replaceProjectSchemas,
     removeTableSchema,
     clearProjectSchemas,
     clearSchemas,

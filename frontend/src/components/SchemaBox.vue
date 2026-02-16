@@ -436,6 +436,8 @@ const selectProject = async (projectId: string) => {
 
 // Select BigQuery project (column 2 for BigQuery)
 const selectBigQueryProject = async (projectId: string) => {
+  if (selectedBigQueryProject.value === projectId) return
+
   selectedBigQueryProject.value = projectId
   selectedDataset.value = null
   selectedTable.value = null
@@ -448,7 +450,7 @@ const selectBigQueryProject = async (projectId: string) => {
   }
 
   // Fetch all schemas for this project if not already loaded (populates schema store
-  // for autocomplete and search). Fire-and-forget to avoid blocking navigation.
+  // for autocomplete). Fire-and-forget to avoid blocking navigation.
   const hasProjectSchemas = Object.keys(schemaStore.bigQuerySchemas).some(
     key => key.startsWith(`${projectId}.`)
   )
