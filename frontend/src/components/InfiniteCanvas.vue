@@ -99,17 +99,24 @@ const viewportStyle = computed(() => {
 provide('canvasZoom', zoom)
 
 // Viewport bounds in canvas coordinates (for culling)
-const updateViewportBounds = () => {
-  if (!canvasRef.value) return
+let viewportRAF: number | null = null
 
-  const rect = canvasRef.value.getBoundingClientRect()
-  const bounds: ViewportBounds = {
-    left: -pan.value.x / zoom.value,
-    top: -pan.value.y / zoom.value,
-    right: (rect.width - pan.value.x) / zoom.value,
-    bottom: (rect.height - pan.value.y) / zoom.value
-  }
-  canvasStore.setViewportBounds(bounds)
+const updateViewportBounds = () => {
+  // Throttle to once per frame to avoid redundant recalculations during zoom/pan
+  if (viewportRAF) return
+  viewportRAF = requestAnimationFrame(() => {
+    viewportRAF = null
+    if (!canvasRef.value) return
+
+    const rect = canvasRef.value.getBoundingClientRect()
+    const bounds: ViewportBounds = {
+      left: -pan.value.x / zoom.value,
+      top: -pan.value.y / zoom.value,
+      right: (rect.width - pan.value.x) / zoom.value,
+      bottom: (rect.height - pan.value.y) / zoom.value
+    }
+    canvasStore.setViewportBounds(bounds)
+  })
 }
 
 // Watch pan and zoom changes to update viewport bounds
@@ -489,6 +496,12 @@ onUnmounted(() => {
   if (zoomIdleTimer) {
     clearTimeout(zoomIdleTimer)
     zoomIdleTimer = null
+  }
+
+  // Clean up viewport bounds RAF
+  if (viewportRAF) {
+    cancelAnimationFrame(viewportRAF)
+    viewportRAF = null
   }
 })
 </script>

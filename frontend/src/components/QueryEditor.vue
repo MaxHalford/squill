@@ -8,10 +8,9 @@ import { defaultKeymap, history, historyKeymap, insertNewline } from '@codemirro
 import { syntaxHighlighting, HighlightStyle, bracketMatching, indentUnit } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, acceptCompletion } from '@codemirror/autocomplete'
-import { schemaCompletionSource } from '@codemirror/lang-sql'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { getCodeMirrorDialect, type SqlDialect } from '../utils/sqlDialects'
-import { boostedSqlKeywords, filterExactMatches } from '../utils/sqlKeywordCompletions'
+import { boostedSqlKeywords, substringSchemaCompletions } from '../utils/sqlKeywordCompletions'
 import { useSettingsStore } from '../stores/settings'
 import { useBigQueryStore, type DryRunResult } from '../stores/bigquery'
 import { createTableLinkExtension } from '../utils/tableLinkExtension'
@@ -437,17 +436,11 @@ const buildSQLExtension = (dialect: string, _schema: SchemaNamespace) => {
   return [sqlLang]
 }
 
-// Build completion sources with exact match filtering
+// Build completion sources with substring matching for schema items
 const buildCompletionSources = (dialect: string, schema: SchemaNamespace, connectionType?: string) => {
-  const sqlDialect = getCodeMirrorDialect(dialect as SqlDialect)
-
-  // Wrap schema completions to filter out exact matches
-  // We only use boostedSqlKeywords for keywords (not keywordCompletionSource) to avoid duplicates
-  const filteredSchema = filterExactMatches(schemaCompletionSource({ dialect: sqlDialect, schema }))
-
   // Use connectionType for keyword completions (more specific, includes snowflake)
   const keywordDialect = (connectionType || dialect) as SqlDialect
-  return [boostedSqlKeywords(keywordDialect), filteredSchema]
+  return [boostedSqlKeywords(keywordDialect), substringSchemaCompletions(schema)]
 }
 
 watch([() => props.dialect, () => props.schema, () => props.connectionType], ([newDialect, newSchema, newConnectionType]) => {

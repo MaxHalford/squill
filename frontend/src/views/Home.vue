@@ -1007,7 +1007,7 @@ onUnmounted(() => {
       @csv-drop="handleCsvDrop"
     >
       <!-- Dependency arrows (rendered behind boxes) -->
-      <DependencyArrows :boxes="canvasStore.boxes" />
+      <DependencyArrows :boxes="canvasStore.visibleBoxes" />
 
       <!-- Box creation buttons (floating near selected SQL box) -->
       <BoxCreationButtons

@@ -1,5 +1,6 @@
-import type { CompletionContext, CompletionSource } from '@codemirror/autocomplete'
+import type { Completion, CompletionContext, CompletionSource } from '@codemirror/autocomplete'
 import { getDialectCompletions, type SqlDialect } from './sqlDialects'
+import type { SchemaNamespace } from './schemaBuilder'
 
 /**
  * Creates a completion source that provides boosted SQL keywords for a specific dialect.
@@ -25,29 +26,78 @@ export function boostedSqlKeywords(dialect: SqlDialect = 'duckdb') {
 }
 
 /**
- * Wraps a completion source to filter out completions that exactly match the typed word.
- * This prevents the autocomplete popup from showing when the user has already typed
- * the complete word, allowing Tab to work normally.
+ * Schema completion source with substring matching.
+ * Unlike CodeMirror's built-in schemaCompletionSource (prefix-only),
+ * typing "orders" will suggest "customer_orders", "orders_detail", etc.
+ *
+ * Dot-path navigation still works: typing "dataset." shows tables in that dataset.
+ * The substring matching applies to the component after the last dot.
  */
-export function filterExactMatches(source: CompletionSource): CompletionSource {
-  return async (context: CompletionContext) => {
-    const result = await source(context)
-    if (!result) return null
+export function substringSchemaCompletions(schema: SchemaNamespace): CompletionSource {
+  return (context: CompletionContext) => {
+    // Match qualified identifiers: word chars, dots, hyphens (BQ project names)
+    const word = context.matchBefore(/[\w\-.]*/);
+    if (!word || (word.from === word.to && !context.explicit)) return null;
 
-    const word = context.matchBefore(/\w*/)
-    if (!word) return result
+    const typed = context.state.sliceDoc(word.from, word.to);
+    const parts = typed.split('.');
+    const prefix = parts.slice(0, -1);
+    const query = parts[parts.length - 1].toLowerCase();
 
-    const typedWord = context.state.sliceDoc(word.from, word.to).toLowerCase()
-    if (!typedWord) return result
+    // Navigate schema hierarchy using the prefix parts
+    // e.g. "my-project.my_dataset." → navigate to the dataset level
+    let current: SchemaNamespace | string[] = schema;
+    for (const part of prefix) {
+      if (Array.isArray(current)) return null;
+      const key = Object.keys(current).find(k => k.toLowerCase() === part.toLowerCase());
+      if (!key) return null;
+      const next: string[] | SchemaNamespace = current[key] as string[] | SchemaNamespace;
+      if (Array.isArray(next)) {
+        current = next;
+        break;
+      } else if (typeof next === 'object') {
+        current = next;
+      } else {
+        return null;
+      }
+    }
 
-    // Filter out options that exactly match the typed word
-    const filteredOptions = result.options.filter(
-      opt => opt.label.toLowerCase() !== typedWord
-    )
+    // `from` is the position after the last dot (where the current component starts)
+    const lastDotIdx = typed.lastIndexOf('.');
+    const from = lastDotIdx >= 0 ? word.from + lastDotIdx + 1 : word.from;
 
-    // If no options left after filtering, return null to hide autocomplete
-    if (filteredOptions.length === 0) return null
+    let options: Completion[];
 
-    return { ...result, options: filteredOptions }
-  }
+    if (Array.isArray(current)) {
+      // Column level
+      options = current
+        .filter(col => !query || col.toLowerCase().includes(query))
+        .filter(col => col.toLowerCase() !== query)
+        .map(col => ({ label: col, type: 'property' }));
+    } else {
+      // Namespace level (projects, datasets, tables)
+      options = Object.keys(current)
+        .filter(key => !query || key.toLowerCase().includes(query))
+        .filter(key => key.toLowerCase() !== query)
+        .map(key => ({
+          label: key,
+          type: Array.isArray(current[key]) ? 'property' : 'class',
+        }));
+    }
+
+    if (options.length === 0) return null;
+
+    // Sort: prefix matches first, then substring matches, alphabetical within
+    if (query) {
+      options.sort((a, b) => {
+        const aPrefix = a.label.toLowerCase().startsWith(query) ? 0 : 1;
+        const bPrefix = b.label.toLowerCase().startsWith(query) ? 0 : 1;
+        if (aPrefix !== bPrefix) return aPrefix - bPrefix;
+        return a.label.localeCompare(b.label);
+      });
+    }
+
+    // filter: false — we handle filtering ourselves, skip CodeMirror's prefix filter
+    return { from, options, filter: false };
+  };
 }

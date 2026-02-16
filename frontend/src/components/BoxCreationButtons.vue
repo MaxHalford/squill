@@ -146,7 +146,6 @@ const handleClickRight = () => {
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
-  backdrop-filter: blur(4px);
   opacity: 0.85;
 }
 

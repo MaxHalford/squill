@@ -241,31 +241,24 @@ onUnmounted(() => {
   isolation: isolate;
   /* Strong containment: isolate layout calculations from parent zoom changes */
   contain: layout style paint;
-  will-change: left, top, width, height;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  transform: translateZ(0);
   /* Entry animation */
   animation: box-enter 0.12s ease-out;
-  /* Smooth arrow key movement */
-  transition: left 0.12s ease-out, top 0.12s ease-out;
 }
 
 @keyframes box-enter {
   from {
     opacity: 0;
-    transform: scale(0.95) translateZ(0);
+    transform: scale(0.95);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateZ(0);
+    transform: scale(1);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .resizable-box {
     animation: none;
-    transition: none;
   }
   .resizable-box.deleting {
     animation: none;
@@ -281,11 +274,11 @@ onUnmounted(() => {
 @keyframes box-leave {
   from {
     opacity: 1;
-    transform: scale(1) translateZ(0);
+    transform: scale(1);
   }
   to {
     opacity: 0;
-    transform: scale(0.95) translateZ(0);
+    transform: scale(0.95);
   }
 }
 
@@ -299,7 +292,8 @@ onUnmounted(() => {
   /* Simplified shadow during drag for smooth movement */
   box-shadow: var(--shadow-sm) !important;
   outline: none !important;
-  transition: none !important;
+  /* GPU-accelerate during drag only */
+  will-change: left, top;
 }
 
 .box-header {

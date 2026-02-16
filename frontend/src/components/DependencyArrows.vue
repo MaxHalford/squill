@@ -236,17 +236,11 @@ const arrows = computed(() => {
   pointer-events: none;
   z-index: 0;
   overflow: visible;
-  /* GPU acceleration for SVG */
-  will-change: transform;
   shape-rendering: geometricPrecision;
 }
 
 .arrow-group {
   pointer-events: none;
-}
-
-.arrow-path {
-  transition: opacity 0.2s, stroke-width 0.2s;
 }
 
 .arrow-path:hover {
