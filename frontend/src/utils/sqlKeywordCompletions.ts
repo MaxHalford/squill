@@ -69,16 +69,16 @@ export function substringSchemaCompletions(schema: SchemaNamespace): CompletionS
     let options: Completion[];
 
     if (Array.isArray(current)) {
-      // Column level
+      // Column level — exclude exact matches (nothing to complete)
       options = current
         .filter(col => !query || col.toLowerCase().includes(query))
         .filter(col => col.toLowerCase() !== query)
         .map(col => ({ label: col, type: 'property' }));
     } else {
       // Namespace level (projects, datasets, tables)
+      // Keep exact matches — user may want to append a dot to navigate deeper
       options = Object.keys(current)
         .filter(key => !query || key.toLowerCase().includes(query))
-        .filter(key => key.toLowerCase() !== query)
         .map(key => ({
           label: key,
           type: Array.isArray(current[key]) ? 'property' : 'class',
@@ -88,14 +88,14 @@ export function substringSchemaCompletions(schema: SchemaNamespace): CompletionS
     if (options.length === 0) return null;
 
     // Sort: prefix matches first, then substring matches, alphabetical within
-    if (query) {
-      options.sort((a, b) => {
+    options.sort((a, b) => {
+      if (query) {
         const aPrefix = a.label.toLowerCase().startsWith(query) ? 0 : 1;
         const bPrefix = b.label.toLowerCase().startsWith(query) ? 0 : 1;
         if (aPrefix !== bPrefix) return aPrefix - bPrefix;
-        return a.label.localeCompare(b.label);
-      });
-    }
+      }
+      return a.label.localeCompare(b.label);
+    });
 
     // filter: false — we handle filtering ourselves, skip CodeMirror's prefix filter
     return { from, options, filter: false };

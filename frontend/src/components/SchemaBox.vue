@@ -402,6 +402,8 @@ const updateColumnsContainerHeight = () => {
 
 // Select connection (column 1)
 const selectProject = async (projectId: string) => {
+  if (selectedProject.value === projectId) return
+
   selectedProject.value = projectId
   selectedBigQueryProject.value = null
   selectedDataset.value = null
@@ -476,6 +478,8 @@ const loadBigQueryProjects = async (connectionId: string) => {
 
 // Select dataset
 const selectDataset = async (datasetId: string) => {
+  if (selectedDataset.value === datasetId) return
+
   selectedDataset.value = datasetId
   selectedTable.value = null
   col4Filter.value = ''; col4FilterOpen.value = false
@@ -489,6 +493,8 @@ const selectDataset = async (datasetId: string) => {
 
 // Select Snowflake database
 const selectSnowflakeDatabase = async (databaseName: string) => {
+  if (selectedSnowflakeDatabase.value === databaseName) return
+
   selectedSnowflakeDatabase.value = databaseName
   selectedSnowflakeSchema.value = null
   selectedTable.value = null
@@ -505,6 +511,8 @@ const selectSnowflakeDatabase = async (databaseName: string) => {
 
 // Select Snowflake schema
 const selectSnowflakeSchema = async (schemaName: string) => {
+  if (selectedSnowflakeSchema.value === schemaName) return
+
   selectedSnowflakeSchema.value = schemaName
   selectedTable.value = null
   col4Filter.value = ''; col4FilterOpen.value = false
