@@ -1713,15 +1713,20 @@ onUnmounted(() => {
   min-width: 300px;
   max-width: 400px;
   overflow: visible; /* Allow flyout submenu to extend outside */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 60px);
 }
 
 .dropdown-section {
   padding: 0;
+  flex-shrink: 0;
 }
 
 .projects-section {
-  max-height: 300px;
   overflow-y: auto;
+  flex-shrink: 1;
+  min-height: 0;
 }
 
 .section-label {

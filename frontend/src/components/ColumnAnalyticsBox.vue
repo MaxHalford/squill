@@ -14,6 +14,7 @@ import { buildAnalyticsQuery, type TypeCategory } from '../utils/analyticsQueryB
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 import { formatDateValue } from '../utils/typeUtils'
 import { getConnectionDisplayName } from '../utils/connectionHelpers'
+import { formatNumber } from '../utils/formatUtils'
 
 interface AnalyticsData {
   tableName: string
@@ -561,15 +562,6 @@ const handleRequestMoreData = async (_neededRows: number) => {
   } finally {
     queryResultsStore.setBackgroundLoading(props.boxId, false)
   }
-}
-
-// Format helpers
-const formatNumber = (val: number | null | unknown): string => {
-  if (val === null || val === undefined) return 'NULL'
-  const num = Number(val)
-  if (isNaN(num)) return String(val)
-  if (Number.isInteger(num)) return num.toLocaleString()
-  return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
 }
 
 // Format stat value based on type category

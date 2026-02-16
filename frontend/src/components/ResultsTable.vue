@@ -4,7 +4,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useQueryResultsStore } from '../stores/queryResults'
 import { getTypeCategory, simplifyTypeName, formatDateValue } from '../utils/typeUtils'
-import { formatRowCount } from '../utils/formatUtils'
+import { formatRowCount, formatNumber } from '../utils/formatUtils'
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 
 interface QueryStats {
@@ -352,6 +352,10 @@ const formatCellValue = (value: unknown, columnType: string): string => {
 
   if (typeCategory === 'date') {
     return formatDateValue(value)
+  }
+
+  if (typeCategory === 'number') {
+    return formatNumber(value)
   }
 
   return String(value)

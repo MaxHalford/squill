@@ -44,6 +44,21 @@ export function formatExecutionTime(ms: number | undefined): string {
 }
 
 /**
+ * Format a numeric value with locale-aware grouping (e.g. 1,234,567)
+ * Integers get no decimals; floats keep 2-4 decimal places.
+ */
+export function formatNumber(val: number | null | unknown): string {
+  if (val === null || val === undefined) return 'NULL'
+  const num = Number(val)
+  if (isNaN(num)) return String(val)
+  if (Number.isInteger(num)) {
+    if (Math.abs(num) < 10000) return String(num)
+    return num.toLocaleString()
+  }
+  return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+}
+
+/**
  * Get first line of text, truncated if needed
  */
 export function getFirstLine(text: string, maxLength: number = 50): string {
