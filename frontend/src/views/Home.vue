@@ -990,7 +990,7 @@ onUnmounted(() => {
       @csv-drop="handleCsvDrop"
     >
       <!-- Dependency arrows (rendered behind boxes) -->
-      <DependencyArrows :boxes="canvasStore.visibleBoxes" />
+      <DependencyArrows :boxes="canvasStore.boxes" />
 
       <!-- Box creation buttons (floating near selected SQL box) -->
       <BoxCreationButtons
@@ -1000,7 +1000,7 @@ onUnmounted(() => {
       />
 
       <template
-        v-for="box in canvasStore.visibleBoxes"
+        v-for="box in canvasStore.boxes"
         :key="box.id"
       >
         <!-- SQL Editor Box -->
@@ -1017,7 +1017,7 @@ onUnmounted(() => {
           :initial-name="box.name"
           :connection-id="box.connectionId"
           :initial-editor-height="box.editorHeight"
-          :is-selected="canvasStore.isBoxSelected(box.id)"
+          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
           @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
@@ -1045,7 +1045,7 @@ onUnmounted(() => {
           :initial-height="box.height"
           :initial-z-index="box.zIndex"
           :initial-name="box.name"
-          :is-selected="canvasStore.isBoxSelected(box.id)"
+          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
           @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
@@ -1068,7 +1068,7 @@ onUnmounted(() => {
           :initial-z-index="box.zIndex"
           :initial-content="box.query"
           :initial-name="box.name"
-          :is-selected="canvasStore.isBoxSelected(box.id)"
+          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
           @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
@@ -1089,7 +1089,7 @@ onUnmounted(() => {
           :initial-z-index="box.zIndex"
           :initial-row-data="box.query"
           :initial-name="box.name"
-          :is-selected="canvasStore.isBoxSelected(box.id)"
+          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
           @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
@@ -1109,7 +1109,7 @@ onUnmounted(() => {
           :initial-z-index="box.zIndex"
           :initial-data="box.query"
           :initial-name="box.name"
-          :is-selected="canvasStore.isBoxSelected(box.id)"
+          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
           @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
@@ -1129,7 +1129,7 @@ onUnmounted(() => {
           :initial-height="box.height"
           :initial-z-index="box.zIndex"
           :initial-name="box.name"
-          :is-selected="canvasStore.isBoxSelected(box.id)"
+          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
           @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
@@ -1151,7 +1151,7 @@ onUnmounted(() => {
           :initial-name="box.name"
           :initial-query="box.query"
           :connection-id="box.connectionId"
-          :is-selected="canvasStore.isBoxSelected(box.id)"
+          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
           @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
