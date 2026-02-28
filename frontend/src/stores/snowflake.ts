@@ -85,9 +85,6 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
   const isExecutingQuery = ref(false)
   const isTesting = ref(false)
 
-  // Schema version for reactivity (incremented when schema changes)
-  const schemaVersion = ref(0)
-
   // Track in-flight fetchAllColumns requests to prevent duplicates
   const allColumnsLoading = new Map<string, Promise<void>>()
 
@@ -514,11 +511,6 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     }
 
     const promise = (async () => {
-      // Ensure tables are fetched first (needed for buildSnowflakeSchema)
-      if (!tablesCache.value.has(connectionId)) {
-        await fetchTables(connectionId)
-      }
-
       const response = await fetch(
         `${BACKEND_URL}/snowflake/schema/${connectionId}/all-columns`,
         { headers: userStore.getAuthHeaders() }
@@ -531,14 +523,29 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
       const data = await response.json()
       const columnsByTable: Record<string, SnowflakeColumnInfo[]> = data.columns
 
-      // Populate cache with all columns
-      for (const [tableKey, columns] of Object.entries(columnsByTable)) {
-        const cacheKey = `${connectionId}:${tableKey}`
-        columnsCache.value.set(cacheKey, columns)
-      }
+      // Convert to SchemaRow[] and write to DuckDB _schemas table
+      const { useDuckDBStore } = await import('./duckdb')
+      const duckdbStore = useDuckDBStore()
 
-      // Increment schema version to trigger reactive updates
-      schemaVersion.value++
+      const schemaRows = Object.entries(columnsByTable).flatMap(([tableKey, columns]) => {
+        // tableKey is "database.schema.table"
+        const parts = tableKey.split('.')
+        const dbName = parts[0]
+        const schemaName = parts[1]
+        const tableName = parts.slice(2).join('.')
+        return columns.map(col => ({
+          connection_type: 'snowflake',
+          connection_id: connectionId,
+          catalog: dbName,
+          schema_name: schemaName,
+          table_name: tableName,
+          column_name: col.name,
+          column_type: col.type,
+          is_nullable: col.nullable,
+        }))
+      })
+
+      await duckdbStore.replaceConnectionSchemas('snowflake', connectionId, schemaRows)
     })()
 
     allColumnsLoading.set(connectionId, promise)
@@ -617,8 +624,6 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     isConnecting,
     isExecutingQuery,
     isTesting,
-    schemaVersion,
-
     // Methods
     testConnection,
     createConnection,

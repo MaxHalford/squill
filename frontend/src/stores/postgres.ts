@@ -73,9 +73,6 @@ export const usePostgresStore = defineStore('postgres', () => {
   const isExecutingQuery = ref(false)
   const isTesting = ref(false)
 
-  // Schema version for reactivity (incremented when schema changes)
-  const schemaVersion = ref(0)
-
   // Track in-flight fetchAllColumns requests to prevent duplicates
   const allColumnsLoading = new Map<string, Promise<void>>()
 
@@ -401,11 +398,6 @@ export const usePostgresStore = defineStore('postgres', () => {
     }
 
     const promise = (async () => {
-      // Ensure tables are fetched first (needed for buildPostgresSchema)
-      if (!tablesCache.value.has(connectionId)) {
-        await fetchTables(connectionId)
-      }
-
       const response = await fetch(
         `${BACKEND_URL}/postgres/schema/${connectionId}/all-columns`,
         { headers: userStore.getAuthHeaders() }
@@ -418,14 +410,28 @@ export const usePostgresStore = defineStore('postgres', () => {
       const data = await response.json()
       const columnsByTable: Record<string, PostgresColumnInfo[]> = data.columns
 
-      // Populate cache with all columns
-      for (const [tableKey, columns] of Object.entries(columnsByTable)) {
-        const cacheKey = `${connectionId}:${tableKey}`
-        columnsCache.value.set(cacheKey, columns)
-      }
+      // Convert to SchemaRow[] and write to DuckDB _schemas table
+      const { useDuckDBStore } = await import('./duckdb')
+      const duckdbStore = useDuckDBStore()
 
-      // Increment schema version to trigger reactive updates
-      schemaVersion.value++
+      const schemaRows = Object.entries(columnsByTable).flatMap(([tableKey, columns]) => {
+        // tableKey is "schema.table"
+        const dotIdx = tableKey.indexOf('.')
+        const schemaName = tableKey.substring(0, dotIdx)
+        const tableName = tableKey.substring(dotIdx + 1)
+        return columns.map(col => ({
+          connection_type: 'postgres',
+          connection_id: connectionId,
+          catalog: null,
+          schema_name: schemaName,
+          table_name: tableName,
+          column_name: col.name,
+          column_type: col.type,
+          is_nullable: col.nullable,
+        }))
+      })
+
+      await duckdbStore.replaceConnectionSchemas('postgres', connectionId, schemaRows)
     })()
 
     allColumnsLoading.set(connectionId, promise)
@@ -502,8 +508,6 @@ export const usePostgresStore = defineStore('postgres', () => {
     isConnecting,
     isExecutingQuery,
     isTesting,
-    schemaVersion,
-
     // Methods
     testConnection,
     createConnection,

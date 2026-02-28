@@ -38,14 +38,14 @@ export interface FixContext {
  * Build schema context for the fix request
  * Uses n-gram similarity to find relevant tables/columns
  */
-function buildSchemaContext(
+async function buildSchemaContext(
   query: string,
   connectionType: ConnectionType,
   connectionId?: string,
   projectId?: string,
   threshold: number = DEFAULT_SCHEMA_THRESHOLD
-): string {
-  const schema = collectSchemaForConnection(connectionType, connectionId)
+): Promise<string> {
+  const schema = await collectSchemaForConnection(connectionType, connectionId)
 
   if (schema.length === 0) return ''
 
@@ -84,7 +84,7 @@ export async function suggestFix(
   let sampleQueriesContext: string | undefined
 
   if (context?.connectionType) {
-    schemaContext = buildSchemaContext(
+    schemaContext = await buildSchemaContext(
       request.query,
       context.connectionType,
       context.connectionId,

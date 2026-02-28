@@ -926,7 +926,9 @@ defineExpose({ resetPagination })
               :key="column"
               :class="{
                 'null-value': row[column] === null,
-                'number-cell': getTypeCategory(columnTypes[column] || '') === 'number'
+                'number-cell': getTypeCategory(columnTypes[column] || '') === 'number',
+                'bool-true': getTypeCategory(columnTypes[column] || '') === 'boolean' && row[column] === true,
+                'bool-false': getTypeCategory(columnTypes[column] || '') === 'boolean' && row[column] === false
               }"
             >
               {{ formatCellValue(row[column], columnTypes[column] || '') }}
@@ -1365,6 +1367,15 @@ defineExpose({ resetPagination })
 .number-cell {
   text-align: end;
   font-variant-numeric: tabular-nums;
+}
+
+/* Boolean cells - color coded */
+.bool-true {
+  color: var(--color-success);
+}
+
+.bool-false {
+  color: var(--color-error);
 }
 
 /* Row Number Column - compact TUI style */

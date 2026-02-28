@@ -19,6 +19,7 @@ export const SettingsSchema = z.object({
   themePreference: ThemePreferenceSchema,
   showEditorLineNumbers: z.boolean(),
   editorFontSize: z.number().min(8).max(24),
+  tableLinkEnabled: z.boolean(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   canvasPattern: CanvasPatternSchema
 }).partial() // All fields optional since we merge with defaults
@@ -41,7 +42,8 @@ const BoxSchema = z.object({
   query: z.string(),
   name: z.string(),
   dependencies: z.array(z.number()),
-  connectionId: z.string().optional()
+  connectionId: z.string().optional(),
+  editorHeight: z.number().positive().optional()
 })
 
 export const CanvasStateSchema = z.object({
@@ -81,7 +83,7 @@ export type MultiCanvasIndexData = z.infer<typeof MultiCanvasIndexSchema>
 // ============================================
 // Connection Schema
 // ============================================
-const ConnectionTypeSchema = z.enum(['bigquery', 'duckdb', 'postgres'])
+const ConnectionTypeSchema = z.enum(['bigquery', 'duckdb', 'postgres', 'snowflake'])
 
 const ConnectionSchema = z.object({
   id: z.string(),
@@ -90,6 +92,7 @@ const ConnectionSchema = z.object({
   createdAt: z.number(),
   email: z.string().optional(),
   projectId: z.string().optional(),
+  schemaProjectIds: z.array(z.string()).optional(),
   database: z.string().optional()
 })
 

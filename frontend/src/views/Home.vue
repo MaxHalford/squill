@@ -25,7 +25,6 @@ import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
-import { usePostgresStore } from '../stores/postgres'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
 import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
 
@@ -34,7 +33,6 @@ const settingsStore = useSettingsStore()
 const duckdbStore = useDuckDBStore()
 const connectionsStore = useConnectionsStore()
 const bigqueryStore = useBigQueryStore()
-const postgresStore = usePostgresStore()
 const canvasRef = ref<InstanceType<typeof InfiniteCanvas> | null>(null)
 const copiedBoxId = ref<number | null>(null)
 const copiedBoxIds = ref<number[]>([])
@@ -323,6 +321,10 @@ const handleUpdateName = (id: number, name: string) => {
 
 const handleUpdateQuery = (id: number, query: string) => {
   canvasStore.updateBoxQuery(id, query)
+}
+
+const handleUpdateEditorHeight = (id: number, height: number) => {
+  canvasStore.updateBoxEditorHeight(id, height)
 }
 
 const handleDragStart = () => {
@@ -895,12 +897,17 @@ const handleKeyDown = (e: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  // Await all stores that need hydration before rendering
+  // Await all stores that need hydration before rendering.
+  // DuckDB is included because it hosts the _schemas table (persisted via IDB).
   await Promise.all([
     canvasStore.loadState(),
     connectionsStore.ready,
     settingsStore.ready,
+    duckdbStore.initialize(),
   ])
+
+  // Ensure DuckDB local connection always exists in the selector
+  connectionsStore.addDuckDBConnection()
 
   await nextTick()
   isStoresReady.value = true
@@ -918,27 +925,8 @@ onMounted(async () => {
     canvasRef.value.fitToView()
   }
 
-  // Background initialization (don't block UI)
-  // Start DuckDB initialization early - ensures WASM is ready for first query
-  duckdbStore.initialize()
-
   // Restore BigQuery session (refresh access token from backend)
   bigqueryStore.restoreSession()
-
-  // Fetch BigQuery schemas for autocompletion.
-  // IDB cache provides instant data; this background refresh keeps it fresh.
-  const bigqueryConnections = connectionsStore.connections.filter(c => c.type === 'bigquery' && c.projectId)
-  for (const conn of bigqueryConnections) {
-    bigqueryStore.fetchAllSchemas(conn.projectId!, conn.id).catch(err => {
-      console.warn(`Could not fetch schemas for ${conn.projectId}:`, err)
-    })
-  }
-
-  // Restore PostgreSQL schemas for all postgres connections
-  const postgresConnections = connectionsStore.connections.filter(c => c.type === 'postgres')
-  Promise.all(
-    postgresConnections.map(conn => postgresStore.fetchAllColumns(conn.id))
-  )
 })
 
 onUnmounted(() => {
@@ -1028,12 +1016,14 @@ onUnmounted(() => {
           :initial-query="box.query"
           :initial-name="box.name"
           :connection-id="box.connectionId"
+          :initial-editor-height="box.editorHeight"
           :is-selected="canvasStore.isBoxSelected(box.id)"
           @select="selectBox(box.id, $event)"
           @update:position="handleUpdatePosition(box.id, $event)"
           @update:size="handleUpdateSize(box.id, $event)"
           @update:name="handleUpdateName(box.id, $event)"
           @update:query="handleUpdateQuery(box.id, $event)"
+          @update:editor-height="handleUpdateEditorHeight(box.id, $event)"
           @update:multi-position="handleUpdateMultiPosition"
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
@@ -1180,17 +1170,17 @@ onUnmounted(() => {
       :current-index="uploadCurrentIndex"
     />
 
-    <!-- DuckDB initialization loading indicator -->
+    <!-- Bottom progress bar for DuckDB init and schema refresh -->
     <Transition name="slide">
       <div
-        v-if="duckdbStore.isInitializing"
-        class="duckdb-loading"
+        v-if="duckdbStore.isInitializing || duckdbStore.schemaRefreshMessage"
+        class="bottom-progress"
       >
         <div class="progress-bar">
           <div class="progress-bar-indeterminate" />
         </div>
         <div class="progress-info">
-          <span class="progress-text">Initializing DuckDB...</span>
+          <span class="progress-text">{{ duckdbStore.schemaRefreshMessage || 'Initializing DuckDB...' }}</span>
         </div>
       </div>
     </Transition>
@@ -1241,8 +1231,8 @@ onUnmounted(() => {
   text-decoration: underline;
 }
 
-/* DuckDB loading indicator */
-.duckdb-loading {
+/* Bottom progress bar (DuckDB init + schema refresh) */
+.bottom-progress {
   position: fixed;
   bottom: 0;
   left: 0;
@@ -1256,16 +1246,16 @@ onUnmounted(() => {
   gap: var(--space-2);
 }
 
-.duckdb-loading .progress-bar {
+.bottom-progress .progress-bar {
   height: 4px;
   background: var(--surface-secondary);
   overflow: hidden;
 }
 
-.duckdb-loading .progress-bar-indeterminate {
+.bottom-progress .progress-bar-indeterminate {
   height: 100%;
   width: 30%;
-  background: var(--color-duckdb);
+  background: var(--text-primary);
   animation: indeterminate 1.5s ease-in-out infinite;
 }
 
@@ -1278,13 +1268,13 @@ onUnmounted(() => {
   }
 }
 
-.duckdb-loading .progress-info {
+.bottom-progress .progress-info {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.duckdb-loading .progress-text {
+.bottom-progress .progress-text {
   font-size: var(--font-size-body-sm);
   color: var(--text-primary);
 }

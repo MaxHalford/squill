@@ -151,6 +151,7 @@ const handleBigQueryFlow = async (code: string): Promise<void> => {
         : projects[0].projectId
       bigqueryStore.setProjectId(targetProjectId)
       connectionsStore.setConnectionProjectId(connectionId, targetProjectId)
+      connectionsStore.addSchemaProject(connectionId, targetProjectId)
 
       // Populate schema store so SQL autocompletion works immediately
       try {

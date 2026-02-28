@@ -241,21 +241,75 @@ const handleConnectionSelect = async (connectionId: string) => {
   closeDropdown()
 }
 
-// Handle project selection - stores project on the active connection
-const handleProjectSelect = async (projectId: string) => {
-  const activeConnectionId = connectionsStore.activeConnectionId
-  if (activeConnectionId) {
-    connectionsStore.setConnectionProjectId(activeConnectionId, projectId)
-  }
-  bigqueryStore.setProjectId(projectId)
-  closeDropdown()
+// Check if a project is selected for schema loading
+const isProjectSelected = (projectId: string): boolean => {
+  const conn = connectionsStore.activeConnection
+  if (!conn) return false
+  return connectionsStore.getSchemaProjectIds(conn.id).includes(projectId)
+}
 
-  // Fetch all schemas using INFORMATION_SCHEMA
-  try {
-    await bigqueryStore.fetchAllSchemas()
-  } catch (error) {
-    console.error('Failed to fetch schemas:', error)
+// Check if a project is the billing/active project
+const isBillingProject = (projectId: string): boolean => {
+  return connectionsStore.activeConnection?.projectId === projectId
+}
+
+// Count of extra selected projects beyond the billing project
+const extraProjectCount = computed(() => {
+  const conn = connectionsStore.activeConnection
+  if (!conn) return 0
+  const schemaIds = connectionsStore.getSchemaProjectIds(conn.id)
+  // Subtract 1 for the billing project (if it's in the list)
+  return Math.max(0, schemaIds.length - 1)
+})
+
+// Handle project toggle — add/remove from schemaProjectIds
+const handleProjectToggle = async (projectId: string) => {
+  const connectionId = connectionsStore.activeConnectionId
+  if (!connectionId) return
+
+  if (isProjectSelected(projectId)) {
+    // Deselect: remove schemas and from list
+    connectionsStore.removeSchemaProject(connectionId, projectId)
+    try {
+      await duckdbStore.removeConnectionCatalogSchemas('bigquery', connectionId, projectId)
+      const { clearSchemaCache } = await import('../utils/schemaAdapter')
+      clearSchemaCache('bigquery')
+    } catch (err) {
+      console.warn(`Failed to remove schemas for ${projectId}:`, err)
+    }
+    // If it was the billing project, set to first remaining or undefined
+    if (isBillingProject(projectId)) {
+      const remaining = connectionsStore.getSchemaProjectIds(connectionId)
+      const newBilling = remaining.length > 0 ? remaining[0] : undefined
+      connectionsStore.setConnectionProjectId(connectionId, newBilling)
+      bigqueryStore.setProjectId(newBilling || null)
+    }
+  } else {
+    // Select: add to list and fetch schemas
+    connectionsStore.addSchemaProject(connectionId, projectId)
+    // If no billing project set, make this one the billing project
+    if (!connectionsStore.activeConnection?.projectId) {
+      connectionsStore.setConnectionProjectId(connectionId, projectId)
+      bigqueryStore.setProjectId(projectId)
+    }
+    try {
+      duckdbStore.schemaRefreshMessage = `Refreshing BigQuery schemas (${projectId})...`
+      await bigqueryStore.fetchAllSchemas(projectId, connectionId)
+    } catch (err) {
+      console.warn(`Failed to fetch schemas for ${projectId}:`, err)
+    } finally {
+      duckdbStore.schemaRefreshMessage = null
+    }
   }
+}
+
+// Set billing/active project (for query execution)
+const handleSetBillingProject = (projectId: string, event: Event) => {
+  event.stopPropagation()
+  const connectionId = connectionsStore.activeConnectionId
+  if (!connectionId) return
+  connectionsStore.setConnectionProjectId(connectionId, projectId)
+  bigqueryStore.setProjectId(projectId)
 }
 
 // Handle add database
@@ -286,7 +340,7 @@ const handleAddDatabase = async (databaseType: string) => {
 
       // Auto-select first project if available
       if (bigqueryStore.projects.length > 0) {
-        handleProjectSelect(bigqueryStore.projects[0].projectId)
+        handleProjectToggle(bigqueryStore.projects[0].projectId)
       }
     } catch (error) {
       console.error('Failed to add database:', error)
@@ -341,47 +395,57 @@ const addBox = (boxType: BoxType) => {
   closeDropdown()
 }
 
-// Handle refresh schemas for all connections
+// Handle refresh schemas for all connections (resilient — skip failures, warn in console)
 const handleRefreshSchemas = async () => {
   try {
     const connections = connectionsStore.connections
-    let refreshedCount = 0
 
     // Refresh DuckDB (always available)
+    duckdbStore.schemaRefreshMessage = 'Refreshing DuckDB tables...'
     await duckdbStore.loadTablesMetadata()
-    refreshSchemaCache('duckdb')
-    refreshedCount++
+    await refreshSchemaCache('duckdb')
 
-    // Refresh all BigQuery connections with project IDs (token refresh handled automatically)
+    // Refresh all BigQuery connections — loop per schema project
     for (const conn of connections.filter(c => c.type === 'bigquery')) {
-      if (conn.projectId) {
-        await bigqueryStore.fetchAllSchemas(conn.projectId, conn.id)
-        refreshedCount++
+      const projectIds = connectionsStore.getSchemaProjectIds(conn.id)
+      for (const pid of projectIds) {
+        try {
+          duckdbStore.schemaRefreshMessage = `Refreshing BigQuery schemas (${pid})...`
+          await bigqueryStore.fetchAllSchemas(pid, conn.id)
+        } catch (err) {
+          console.warn(`Schema refresh failed for BigQuery project ${pid}:`, err)
+        }
       }
     }
-    // Update BigQuery cache once after all connections refreshed
     if (connections.some(c => c.type === 'bigquery')) {
-      refreshSchemaCache('bigquery')
+      await refreshSchemaCache('bigquery')
     }
 
     // Refresh all PostgreSQL connections
     for (const conn of connections.filter(c => c.type === 'postgres')) {
-      await postgresStore.refreshSchemas(conn.id)
-      refreshSchemaCache('postgres', conn.id)
-      refreshedCount++
+      try {
+        duckdbStore.schemaRefreshMessage = `Refreshing PostgreSQL schemas (${conn.name || conn.id})...`
+        await postgresStore.refreshSchemas(conn.id)
+        await refreshSchemaCache('postgres', conn.id)
+      } catch (err) {
+        console.warn(`Schema refresh failed for PostgreSQL ${conn.name || conn.id}:`, err)
+      }
     }
 
     // Refresh all Snowflake connections
     for (const conn of connections.filter(c => c.type === 'snowflake')) {
-      await snowflakeStore.refreshSchemas(conn.id)
-      refreshSchemaCache('snowflake', conn.id)
-      refreshedCount++
+      try {
+        duckdbStore.schemaRefreshMessage = `Refreshing Snowflake schemas (${conn.name || conn.id})...`
+        await snowflakeStore.refreshSchemas(conn.id)
+        await refreshSchemaCache('snowflake', conn.id)
+      } catch (err) {
+        console.warn(`Schema refresh failed for Snowflake ${conn.name || conn.id}:`, err)
+      }
     }
-
-    alert(`Schemas refreshed successfully! (${refreshedCount} connection${refreshedCount !== 1 ? 's' : ''})`)
   } catch (error) {
     console.error('Failed to refresh schemas:', error)
-    alert('Failed to refresh schemas. Please check the console for details.')
+  } finally {
+    duckdbStore.schemaRefreshMessage = null
   }
 }
 
@@ -510,7 +574,10 @@ onUnmounted(() => {
             v-if="connectionsStore.activeConnection?.type === 'bigquery' && connectionsStore.activeConnection?.projectId"
             class="menu-text"
           >
-            {{ getConnectionDisplayName(connectionsStore.activeConnection) }} / {{ connectionsStore.activeConnection.projectId }}
+            {{ getConnectionDisplayName(connectionsStore.activeConnection) }} / {{ connectionsStore.activeConnection.projectId }}<span
+              v-if="extraProjectCount > 0"
+              class="extra-projects-badge"
+            > (+{{ extraProjectCount }})</span>
             <span
               v-if="shouldShowActiveExpired"
               class="token-expired-indicator"
@@ -668,12 +735,11 @@ onUnmounted(() => {
                 v-for="project in filteredProjects"
                 :key="project.projectId"
                 class="dropdown-item project-item"
-                :class="{ selected: project.projectId === connectionsStore.activeConnection?.projectId }"
-                @click="handleProjectSelect(project.projectId)"
+                :class="{ selected: isProjectSelected(project.projectId) }"
+                @click="handleProjectToggle(project.projectId)"
               >
-                <span class="item-text">{{ project.projectId }}</span>
                 <span
-                  v-if="project.projectId === connectionsStore.activeConnection?.projectId"
+                  v-if="isProjectSelected(project.projectId)"
                   class="item-check"
                 >
                   <svg
@@ -689,6 +755,30 @@ onUnmounted(() => {
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                 </span>
+                <span
+                  v-else
+                  class="item-check-placeholder"
+                />
+                <span class="item-text">{{ project.projectId }}</span>
+                <button
+                  v-tooltip="isProjectSelected(project.projectId) ? (isBillingProject(project.projectId) ? 'Billing project' : 'Set as billing project') : undefined"
+                  class="billing-pin-btn"
+                  :class="{ active: isBillingProject(project.projectId), hidden: !isProjectSelected(project.projectId) }"
+                  @click="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    :fill="isBillingProject(project.projectId) ? 'currentColor' : 'none'"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                </button>
               </button>
             </div>
 
@@ -977,6 +1067,18 @@ onUnmounted(() => {
                     @change="settingsStore.toggleEditorLineNumbers"
                   >
                   <span>Show line numbers</span>
+                </label>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <input
+                    type="checkbox"
+                    :checked="settingsStore.tableLinkEnabled"
+                    class="setting-checkbox"
+                    @change="settingsStore.toggleTableLink"
+                  >
+                  <span>⌘+click table navigation</span>
                 </label>
               </div>
             </div>
@@ -1530,6 +1632,7 @@ onUnmounted(() => {
   padding: 2px 6px;
   background: var(--text-primary);
   color: var(--surface-primary);
+  border-radius: 3px;
 }
 
 .menu-pro-badge {
@@ -1936,6 +2039,45 @@ onUnmounted(() => {
 .project-item {
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body-sm);
+  gap: var(--space-2);
+}
+
+.item-check-placeholder {
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.billing-pin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.billing-pin-btn.hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.billing-pin-btn:hover {
+  color: var(--color-accent);
+}
+
+.billing-pin-btn.active {
+  color: var(--color-accent);
+}
+
+.extra-projects-badge {
+  color: var(--text-secondary);
+  font-weight: 400;
 }
 
 .placeholder-text {

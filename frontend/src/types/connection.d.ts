@@ -19,9 +19,12 @@ export interface Connection {
   email?: string
 
   // Context within the connection
-  // For BigQuery: the selected project
+  // For BigQuery: the billing/active project for query execution
   // For Postgres/Snowflake: could be database/schema
   projectId?: string
+
+  // BigQuery: additional projects whose schemas are loaded for autocomplete
+  schemaProjectIds?: string[]
 
   // PostgreSQL specific
   database?: string

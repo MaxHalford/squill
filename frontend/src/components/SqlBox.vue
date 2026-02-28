@@ -39,11 +39,12 @@ const props = defineProps({
   initialQuery: { type: String, default: 'SELECT *\nFROM bigquery-public-data.chicago_taxi_trips.taxi_trips' },
   initialName: { type: String, default: 'SQL Query' },
   connectionId: { type: String, default: undefined },
+  initialEditorHeight: { type: Number, default: 150 },
 })
 
 const emit = defineEmits([
   'select', 'update:position', 'update:size', 'delete', 'maximize',
-  'update:name', 'update:query', 'show-row-detail', 'show-column-analytics',
+  'update:name', 'update:query', 'update:editorHeight', 'show-row-detail', 'show-column-analytics',
   'drag-start', 'drag-end', 'navigate-to-table',
 ])
 
@@ -320,11 +321,13 @@ defineExpose({
       :connection-id="connectionId"
       :box-id="boxId"
       :box-name="baseBoxRef?.boxName || initialName"
+      :initial-editor-height="initialEditorHeight"
       @query-complete="handleQueryComplete"
       @query-error="handleQueryError"
       @navigate-to-table="handleNavigateToTable"
       @show-row-detail="emit('show-row-detail', $event)"
       @show-column-analytics="emit('show-column-analytics', $event)"
+      @update:editor-height="emit('update:editorHeight', $event)"
     />
   </BaseBox>
 </template>

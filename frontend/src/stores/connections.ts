@@ -84,7 +84,14 @@ export const useConnectionsStore = defineStore('connections', () => {
       if (data) {
         const result = ConnectionsStateSchema.safeParse(data)
         if (result.success) {
-          connections.value = deduplicateConnections(result.data.connections)
+          // Migrate: backfill schemaProjectIds from projectId for BigQuery connections
+          const migrated = result.data.connections.map(c => {
+            if (c.type === 'bigquery' && c.projectId && !c.schemaProjectIds?.length) {
+              return { ...c, schemaProjectIds: [c.projectId] }
+            }
+            return c
+          })
+          connections.value = deduplicateConnections(migrated)
           activeConnectionId.value = result.data.activeConnectionId
         }
       }
@@ -198,14 +205,24 @@ export const useConnectionsStore = defineStore('connections', () => {
     return connectionId
   }
 
-  // Add DuckDB connection (no OAuth required)
+  // Ensure DuckDB connection exists (no OAuth required).
+  // Only sets it active if there is no current active connection.
   const addDuckDBConnection = (): string => {
-    return upsertConnection({
-      id: 'duckdb-local',
-      type: 'duckdb',
-      name: 'DuckDB Local',
-      createdAt: Date.now()
-    })
+    const id = 'duckdb-local'
+    const existing = connections.value.find(c => c.id === id)
+    if (!existing) {
+      connections.value = [...connections.value, {
+        id,
+        type: 'duckdb',
+        name: 'DuckDB Local',
+        createdAt: Date.now()
+      }]
+    }
+    if (!activeConnectionId.value) {
+      activeConnectionId.value = id
+    }
+    saveState()
+    return id
   }
 
   // Set active connection
@@ -255,6 +272,40 @@ export const useConnectionsStore = defineStore('connections', () => {
       return c
     })
     saveState()
+  }
+
+  // Add a project to the schema project list (BigQuery multi-project)
+  const addSchemaProject = (connectionId: string, projectId: string) => {
+    connections.value = connections.value.map(c => {
+      if (c.id === connectionId) {
+        const existing = c.schemaProjectIds || []
+        if (!existing.includes(projectId)) {
+          return { ...c, schemaProjectIds: [...existing, projectId] }
+        }
+      }
+      return c
+    })
+    saveState()
+  }
+
+  // Remove a project from the schema project list
+  const removeSchemaProject = (connectionId: string, projectId: string) => {
+    connections.value = connections.value.map(c => {
+      if (c.id === connectionId) {
+        return { ...c, schemaProjectIds: (c.schemaProjectIds || []).filter(p => p !== projectId) }
+      }
+      return c
+    })
+    saveState()
+  }
+
+  // Get deduped union of schemaProjectIds and projectId
+  const getSchemaProjectIds = (connectionId: string): string[] => {
+    const conn = connections.value.find(c => c.id === connectionId)
+    if (!conn) return []
+    const ids = new Set(conn.schemaProjectIds || [])
+    if (conn.projectId) ids.add(conn.projectId)
+    return Array.from(ids)
   }
 
   // Get the active connection's project ID
@@ -368,6 +419,9 @@ export const useConnectionsStore = defineStore('connections', () => {
     setActiveConnection,
     removeConnection,
     setConnectionProjectId,
+    addSchemaProject,
+    removeSchemaProject,
+    getSchemaProjectIds,
     getActiveProjectId,
     getConnectionsByType,
     hasValidToken,

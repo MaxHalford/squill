@@ -2,13 +2,13 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
-import { Compartment, StateField, StateEffect, RangeSet } from '@codemirror/state'
+import { Compartment, StateField, StateEffect, RangeSet, EditorState } from '@codemirror/state'
 import { Decoration, WidgetType, tooltips, lineNumbers, highlightActiveLineGutter, drawSelection, dropCursor, highlightSpecialChars, keymap } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, insertNewline } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, insertNewline, indentMore, indentLess } from '@codemirror/commands'
 import { syntaxHighlighting, HighlightStyle, bracketMatching, indentUnit } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, acceptCompletion } from '@codemirror/autocomplete'
-import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
+import { searchKeymap, highlightSelectionMatches, selectNextOccurrence } from '@codemirror/search'
 import { getCodeMirrorDialect, type SqlDialect } from '../utils/sqlDialects'
 import { boostedSqlKeywords, substringSchemaCompletions } from '../utils/sqlKeywordCompletions'
 import { useSettingsStore } from '../stores/settings'
@@ -123,6 +123,7 @@ const languageCompartment = new Compartment()
 const lineNumbersCompartment = new Compartment()
 const autocompleteCompartment = new Compartment()
 const fontSizeCompartment = new Compartment()
+const tableLinkCompartment = new Compartment()
 
 // Create a dynamic font size extension
 const fontSizeExtension = (size: number) => EditorView.theme({
@@ -472,6 +473,17 @@ watch(() => settingsStore.showEditorLineNumbers, (show) => {
   }
 })
 
+// Watch for table link setting changes
+watch(() => settingsStore.tableLinkEnabled, (enabled) => {
+  if (editorView.value) {
+    editorView.value.dispatch({
+      effects: tableLinkCompartment.reconfigure(
+        enabled ? createTableLinkExtension((ref) => emit('navigate-to-table', ref)) : []
+      )
+    })
+  }
+})
+
 // Watch for font size setting changes
 watch(() => settingsStore.editorFontSize, (size) => {
   if (editorView.value) {
@@ -542,6 +554,7 @@ onMounted(() => {
       lineNumbersCompartment.of(settingsStore.showEditorLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []),
       fontSizeCompartment.of(fontSizeExtension(settingsStore.editorFontSize)),
       highlightSpecialChars(),
+      EditorState.allowMultipleSelections.of(true),
       history(),
       drawSelection({ cursorBlinkRate: 0 }),
       dropCursor(),
@@ -574,22 +587,24 @@ onMounted(() => {
         },
         // Override Enter to insert plain newline without auto-indent
         { key: 'Enter', run: insertNewline },
-        // Tab: accept autocomplete if open, otherwise insert 2 spaces
+        // Tab: accept autocomplete if open, indent selection, or insert spaces
         {
           key: 'Tab',
           run: (view) => {
-            // First try to accept autocomplete
-            if (acceptCompletion(view)) {
-              return true
-            }
-            // Otherwise insert 2 spaces
+            if (acceptCompletion(view)) return true
+            const { from, to } = view.state.selection.main
+            if (from !== to) return indentMore(view)
             view.dispatch({
-              changes: { from: view.state.selection.main.from, to: view.state.selection.main.to, insert: '  ' },
-              selection: { anchor: view.state.selection.main.from + 2 }
+              changes: { from, to, insert: '  ' },
+              selection: { anchor: from + 2 }
             })
             return true
           }
         },
+        // Shift-Tab: dedent selected lines
+        { key: 'Shift-Tab', run: indentLess },
+        // Cmd-D: select next occurrence of selection
+        { key: 'Mod-d', run: selectNextOccurrence, preventDefault: true },
         ...closeBracketsKeymap,
         ...defaultKeymap,
         ...searchKeymap,
@@ -601,7 +616,7 @@ onMounted(() => {
       suggestionField,
       suggestionTheme,
       keyboardHandlers,
-      createTableLinkExtension((ref) => emit('navigate-to-table', ref)),
+      tableLinkCompartment.of(settingsStore.tableLinkEnabled ? createTableLinkExtension((ref) => emit('navigate-to-table', ref)) : []),
       tooltips({ parent: document.body }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {

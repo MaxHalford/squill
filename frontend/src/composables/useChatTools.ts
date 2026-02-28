@@ -36,7 +36,7 @@ export function useChatTools(connectionId: Ref<string | undefined>, options: Cha
   // ---------------------------------------------------------------------------
 
   async function executeListSchemas(): Promise<string> {
-    const schema = collectSchemaForConnection(connectionType.value, connectionId.value)
+    const schema = await collectSchemaForConnection(connectionType.value, connectionId.value)
 
     const schemas = new Set<string>()
     for (const item of schema) {
@@ -60,7 +60,7 @@ export function useChatTools(connectionId: Ref<string | undefined>, options: Cha
   // ---------------------------------------------------------------------------
 
   async function executeListTables(schemaName: string): Promise<string> {
-    const schema = collectSchemaForConnection(connectionType.value, connectionId.value)
+    const schema = await collectSchemaForConnection(connectionType.value, connectionId.value)
 
     const tables = schema
       .filter(item => {

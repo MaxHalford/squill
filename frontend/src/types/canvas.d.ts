@@ -22,6 +22,7 @@ export interface Box {
   name: string
   dependencies: number[]
   connectionId?: string // ID of the database connection for this box
+  editorHeight?: number // Splitter position for sql boxes
 }
 
 export interface CanvasState {

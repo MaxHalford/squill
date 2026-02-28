@@ -726,6 +726,13 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
+  const updateBoxEditorHeight = (id: number, height: number) => {
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      box.editorHeight = height
+    }
+  }
+
   const updateBoxZIndex = (id: number, zIndex: number) => {
     const box = boxes.value.find(b => b.id === id)
     if (box) {
@@ -785,7 +792,8 @@ export const useCanvasStore = defineStore('canvas', () => {
       query: originalBox.query,
       name: newName,
       dependencies: [],
-      connectionId: originalBox.connectionId
+      connectionId: originalBox.connectionId,
+      editorHeight: originalBox.editorHeight
     }
     boxes.value.push(newBox)
     return newBox.id
@@ -825,7 +833,8 @@ export const useCanvasStore = defineStore('canvas', () => {
         query: originalBox.query,
         name: newName,
         dependencies: [],
-        connectionId: originalBox.connectionId
+        connectionId: originalBox.connectionId,
+        editorHeight: originalBox.editorHeight
       }
       boxes.value.push(newBox)
       newBoxIds.push(boxId)
@@ -878,6 +887,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     updateBoxSize,
     updateBoxQuery,
     updateBoxName,
+    updateBoxEditorHeight,
     updateBoxZIndex,
     updateBoxDependencies,
     updateBoxConnectionId,

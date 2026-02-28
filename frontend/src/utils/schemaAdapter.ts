@@ -7,10 +7,7 @@
  * Schema is only refreshed when explicitly requested by the user.
  */
 
-import { useSchemaStore } from '../stores/bigquerySchema'
 import { useDuckDBStore } from '../stores/duckdb'
-import { usePostgresStore } from '../stores/postgres'
-import { useSnowflakeStore } from '../stores/snowflake'
 import type { SchemaItem, ScoredSchemaItem } from './textSimilarity'
 
 export type ConnectionType = 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
@@ -54,13 +51,13 @@ export function hasSchemaCache(
 
 /**
  * Refresh and cache schema for a connection.
- * This should only be called when user explicitly requests a refresh.
+ * Fetches fresh data from DuckDB _schemas table.
  */
-export function refreshSchemaCache(
+export async function refreshSchemaCache(
   connectionType: ConnectionType,
   connectionId?: string
-): SchemaItem[] {
-  const items = doCollectSchema(connectionType, connectionId)
+): Promise<SchemaItem[]> {
+  const items = await doCollectSchema(connectionType, connectionId)
   const key = getCacheKey(connectionType, connectionId)
 
   memoryCache[key] = {
@@ -93,10 +90,10 @@ export function clearSchemaCache(
  *
  * For performance-critical paths (like search), use getCachedSchema() directly.
  */
-export function collectSchemaForConnection(
+export async function collectSchemaForConnection(
   connectionType: ConnectionType,
   connectionId?: string
-): SchemaItem[] {
+): Promise<SchemaItem[]> {
   // Return cached data if available
   const cached = getCachedSchema(connectionType, connectionId)
   if (cached.length > 0) {
@@ -108,110 +105,28 @@ export function collectSchemaForConnection(
 }
 
 /**
- * Internal: Actually collect schema from stores (no caching)
+ * Internal: Collect schema from DuckDB _schemas table or DuckDB tables metadata
  */
-function doCollectSchema(
+async function doCollectSchema(
   connectionType: ConnectionType,
   connectionId?: string
-): SchemaItem[] {
-  switch (connectionType) {
-    case 'bigquery':
-      return collectBigQuerySchema()
-    case 'duckdb':
-      return collectDuckDBSchema()
-    case 'postgres':
-      return collectPostgresSchema(connectionId)
-    case 'snowflake':
-      return collectSnowflakeSchema(connectionId)
-    default:
-      return []
-  }
-}
-
-/**
- * Collect BigQuery schema from the schema store
- * Format: "project.dataset.table" -> columns
- */
-function collectBigQuerySchema(): SchemaItem[] {
-  const schemaStore = useSchemaStore()
-  const items: SchemaItem[] = []
-
-  for (const [fullTableName, columns] of Object.entries(schemaStore.bigQuerySchemas)) {
-    items.push({
-      tableName: fullTableName,
-      columns: columns.map((col) => ({ name: col.name, type: col.type })),
-    })
-  }
-
-  return items
-}
-
-/**
- * Collect DuckDB schema from the duckdb store
- * Format: tableName -> { columns?: string[] }
- */
-function collectDuckDBSchema(): SchemaItem[] {
+): Promise<SchemaItem[]> {
   const duckdbStore = useDuckDBStore()
-  const items: SchemaItem[] = []
 
-  for (const [tableName, metadata] of Object.entries(duckdbStore.tables)) {
-    items.push({
-      tableName,
-      columns: (metadata.columns || []).map((name) => ({ name, type: 'unknown' })),
-    })
+  if (connectionType === 'duckdb') {
+    // DuckDB's own query result tables — read from in-memory metadata
+    const items: SchemaItem[] = []
+    for (const [tableName, metadata] of Object.entries(duckdbStore.tables)) {
+      items.push({
+        tableName,
+        columns: (metadata.columns || []).map((name) => ({ name, type: 'unknown' })),
+      })
+    }
+    return items
   }
 
-  return items
-}
-
-/**
- * Collect PostgreSQL schema from the postgres store
- * Uses cached tables and columns
- */
-function collectPostgresSchema(connectionId?: string): SchemaItem[] {
-  if (!connectionId) return []
-
-  const postgresStore = usePostgresStore()
-  const items: SchemaItem[] = []
-
-  const tables = postgresStore.tablesCache.get(connectionId) || []
-
-  for (const table of tables) {
-    const cacheKey = `${connectionId}:${table.schemaName}.${table.name}`
-    const columns = postgresStore.columnsCache.get(cacheKey) || []
-
-    items.push({
-      tableName: `${table.schemaName}.${table.name}`,
-      columns: columns.map((col) => ({ name: col.name, type: col.type })),
-    })
-  }
-
-  return items
-}
-
-/**
- * Collect Snowflake schema from the snowflake store
- * Uses cached tables and columns
- */
-function collectSnowflakeSchema(connectionId?: string): SchemaItem[] {
-  if (!connectionId) return []
-
-  const snowflakeStore = useSnowflakeStore()
-  const items: SchemaItem[] = []
-
-  const tables = snowflakeStore.tablesCache.get(connectionId) || []
-
-  for (const table of tables) {
-    const cacheKey = `${connectionId}:${table.databaseName}.${table.schemaName}.${table.name}`
-    const columns = snowflakeStore.columnsCache.get(cacheKey) || []
-
-    items.push({
-      tableName: `${table.databaseName}.${table.schemaName}.${table.name}`,
-      columns: columns.map((col) => ({ name: col.name, type: col.type })),
-    })
-  }
-
-  return items
+  // BQ, Postgres, Snowflake — query from DuckDB _schemas table
+  return duckdbStore.getSchemaItems(connectionType, connectionId)
 }
 
 /**

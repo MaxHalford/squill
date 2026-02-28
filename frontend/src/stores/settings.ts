@@ -17,6 +17,7 @@ interface Settings {
   // Code editor settings
   showEditorLineNumbers: boolean
   editorFontSize: number  // Font size in pixels for code editor
+  tableLinkEnabled: boolean  // Cmd+click to navigate to table definitions
   accentColor: string  // Highlighter color for Cmd+click table links
   // Appearance settings
   canvasPattern: CanvasPattern  // Background pattern for canvas
@@ -32,6 +33,7 @@ const DEFAULT_SETTINGS: Settings = {
   themePreference: 'system',
   showEditorLineNumbers: false,
   editorFontSize: 13,  // Default font size in pixels for code editor
+  tableLinkEnabled: true,  // Cmd+click to navigate to table definitions
   accentColor: '#9333ea',  // Purple (default accent color)
   canvasPattern: 'dots'  // Default canvas pattern
 }
@@ -46,6 +48,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const themePreference = ref<ThemePreference>(DEFAULT_SETTINGS.themePreference)
   const showEditorLineNumbers = ref(DEFAULT_SETTINGS.showEditorLineNumbers)
   const editorFontSize = ref(DEFAULT_SETTINGS.editorFontSize)
+  const tableLinkEnabled = ref(DEFAULT_SETTINGS.tableLinkEnabled)
   const accentColor = ref(DEFAULT_SETTINGS.accentColor)
   const canvasPattern = ref<CanvasPattern>(DEFAULT_SETTINGS.canvasPattern)
 
@@ -58,6 +61,7 @@ export const useSettingsStore = defineStore('settings', () => {
     themePreference.value = s.themePreference
     showEditorLineNumbers.value = s.showEditorLineNumbers
     editorFontSize.value = s.editorFontSize
+    tableLinkEnabled.value = s.tableLinkEnabled
     accentColor.value = s.accentColor
     canvasPattern.value = s.canvasPattern
   }
@@ -71,6 +75,7 @@ export const useSettingsStore = defineStore('settings', () => {
     themePreference: themePreference.value,
     showEditorLineNumbers: showEditorLineNumbers.value,
     editorFontSize: editorFontSize.value,
+    tableLinkEnabled: tableLinkEnabled.value,
     accentColor: accentColor.value,
     canvasPattern: canvasPattern.value,
   })
@@ -98,7 +103,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const ready = loadState()
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, accentColor, canvasPattern], saveState)
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern], saveState)
 
   // Reactive system theme tracking
   const systemTheme = ref<'light' | 'dark'>(
@@ -158,6 +163,10 @@ export const useSettingsStore = defineStore('settings', () => {
     showEditorLineNumbers.value = !showEditorLineNumbers.value
   }
 
+  const toggleTableLink = () => {
+    tableLinkEnabled.value = !tableLinkEnabled.value
+  }
+
   const setEditorFontSize = (value: string | number) => {
     const numValue = typeof value === 'string' ? parseInt(value, 10) : value
     if (numValue >= 8 && numValue <= 24) {
@@ -204,6 +213,8 @@ export const useSettingsStore = defineStore('settings', () => {
     toggleEditorLineNumbers,
     editorFontSize,
     setEditorFontSize,
+    tableLinkEnabled,
+    toggleTableLink,
     // Table link highlight
     accentColor,
     setTableLinkHighlightColor,

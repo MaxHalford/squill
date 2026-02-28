@@ -5,6 +5,9 @@ import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
 import { loadCsvWithDuckDB } from '../services/csvHandler'
 import { sanitizeTableName } from '../utils/sqlSanitize'
 import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
+import { loadSchema, saveSchema } from '../utils/storage'
+import type { SchemaNamespace } from '../utils/schemaBuilder'
+import type { SchemaItem } from '../utils/textSimilarity'
 import type { DatabaseEngine } from '../types/database'
 
 interface TableMetadata {
@@ -14,6 +17,21 @@ interface TableMetadata {
   originalBoxName?: string
   boxId?: number | null
 }
+
+/** Row in the _schemas DuckDB table */
+export interface SchemaRow {
+  connection_type: string
+  connection_id: string
+  catalog: string | null
+  schema_name: string
+  table_name: string
+  column_name: string
+  column_type: string
+  is_nullable: boolean
+}
+
+/** Internal tables that should be hidden from user-visible table lists */
+const INTERNAL_TABLES = new Set(['_schemas'])
 
 // JSON-serializable value type for query results
 type SerializableValue = string | number | boolean | null | SerializableValue[] | { [key: string]: SerializableValue }
@@ -67,6 +85,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   const isInitializing = ref(false)
   const initError = ref<string | null>(null)
 
+  // Schema refresh progress (set by MenuBar, read by Home.vue)
+  const schemaRefreshMessage = ref<string | null>(null)
+
   // Track initialization promise for concurrent callers to await
   let initPromise: Promise<void> | null = null
 
@@ -116,6 +137,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         // Create connection
         conn.value = await db.value.connect()
 
+        // Create internal _schemas table and load persisted data
+        await createSchemasTable()
+        await loadPersistedSchemas()
+
         // Load existing tables metadata
         await loadTablesMetadata()
 
@@ -148,9 +173,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
       const tableList = result.toArray()
 
-      // Load row count for each table
+      // Load row count for each table (skip internal tables)
       for (const row of tableList) {
         const tableName = row.table_name as string
+        if (INTERNAL_TABLES.has(tableName)) continue
         try {
           const countResult = await conn.value.query(`SELECT COUNT(*) as count FROM ${tableName}`)
           const countData = countResult.toArray()
@@ -769,6 +795,332 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // _schemas table: unified schema catalog stored in DuckDB, persisted to IDB
+  // ---------------------------------------------------------------------------
+
+  const createSchemasTable = async () => {
+    if (!conn.value) return
+    await conn.value.query(`
+      CREATE TABLE IF NOT EXISTS _schemas (
+        connection_type VARCHAR NOT NULL,
+        connection_id VARCHAR NOT NULL,
+        catalog VARCHAR,
+        schema_name VARCHAR NOT NULL,
+        table_name VARCHAR NOT NULL,
+        column_name VARCHAR NOT NULL,
+        column_type VARCHAR NOT NULL,
+        is_nullable BOOLEAN DEFAULT TRUE
+      )
+    `)
+  }
+
+  const loadPersistedSchemas = async () => {
+    if (!conn.value || !db.value) return
+
+    try {
+      // Try loading Parquet buffer from IDB
+      const buffer = await loadSchema<Uint8Array>('_schemas_parquet')
+      if (buffer && buffer.byteLength > 0) {
+        await db.value.registerFileBuffer('_schemas_load.parquet', new Uint8Array(buffer))
+        await conn.value.query(`INSERT INTO _schemas SELECT * FROM '_schemas_load.parquet'`)
+        await db.value.dropFile('_schemas_load.parquet')
+        console.log('Loaded schemas from IDB cache')
+        return
+      }
+
+      // Migration: try loading old bigQuerySchemas JSON format
+      const oldData = await loadSchema<Record<string, Array<{ name: string; type: string }>>>('bigQuerySchemas')
+      if (oldData && Object.keys(oldData).length > 0) {
+        console.log('Migrating BigQuery schemas from old IDB format...')
+        const rows: SchemaRow[] = []
+        for (const [fullKey, columns] of Object.entries(oldData)) {
+          const parts = fullKey.split('.')
+          if (parts.length !== 3) continue
+          const [project, dataset, table] = parts
+          for (const col of columns) {
+            rows.push({
+              connection_type: 'bigquery',
+              connection_id: '_migrated',
+              catalog: project,
+              schema_name: dataset,
+              table_name: table,
+              column_name: col.name,
+              column_type: col.type,
+              is_nullable: true,
+            })
+          }
+        }
+        if (rows.length > 0) {
+          await insertSchemaRows(rows)
+          await persistSchemas()
+          console.log(`Migrated ${rows.length} schema entries from old format`)
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load persisted schemas:', err)
+    }
+  }
+
+  const persistSchemas = async () => {
+    if (!conn.value || !db.value) return
+    try {
+      const tempFile = '_schemas_export.parquet'
+      await conn.value.query(`COPY _schemas TO '${tempFile}' (FORMAT PARQUET, COMPRESSION zstd)`)
+      const buffer = await db.value.copyFileToBuffer(tempFile)
+      await db.value.dropFile(tempFile)
+      await saveSchema('_schemas_parquet', new Uint8Array(buffer))
+    } catch (err) {
+      console.warn('Failed to persist schemas to IDB:', err)
+    }
+  }
+
+  const insertSchemaRows = async (rows: SchemaRow[]) => {
+    if (!conn.value || !db.value || rows.length === 0) return
+    const jsonFile = '_schemas_import.json'
+    await db.value.registerFileText(jsonFile, JSON.stringify(rows))
+    await conn.value.query(`INSERT INTO _schemas SELECT * FROM read_json_auto('${jsonFile}')`)
+    await db.value.dropFile(jsonFile)
+  }
+
+  /**
+   * Atomically replace all schema rows for a connection.
+   * Deletes existing rows, inserts new ones, persists to IDB.
+   */
+  const replaceConnectionSchemas = async (
+    connectionType: string,
+    connectionId: string,
+    rows: SchemaRow[]
+  ) => {
+    if (!isInitialized.value) await initialize()
+
+    const safeType = connectionType.replace(/'/g, "''")
+    const safeId = connectionId.replace(/'/g, "''")
+    await conn.value!.query(
+      `DELETE FROM _schemas WHERE connection_type = '${safeType}' AND connection_id = '${safeId}'`
+    )
+
+    if (rows.length > 0) {
+      await insertSchemaRows(rows)
+    }
+
+    schemaVersion.value++
+    persistSchemas()
+  }
+
+  /**
+   * Build a SchemaNamespace from _schemas for CodeMirror autocompletion.
+   * Handles BigQuery hierarchical structure, Postgres/Snowflake shortcuts.
+   */
+  const getEditorSchema = async (
+    connectionType: string,
+    connectionId: string,
+    activeProject?: string
+  ): Promise<SchemaNamespace> => {
+    if (!isInitialized.value || !conn.value) return {}
+
+    const safeType = connectionType.replace(/'/g, "''")
+    const safeId = connectionId.replace(/'/g, "''")
+    const result = await conn.value.query(`
+      SELECT catalog, schema_name, table_name, column_name
+      FROM _schemas
+      WHERE connection_type = '${safeType}' AND connection_id = '${safeId}'
+      ORDER BY catalog, schema_name, table_name, column_name
+    `)
+    const rows = result.toArray()
+
+    // Group columns by table
+    const tableColumns = new Map<string, string[]>()
+    for (const row of rows) {
+      const key = `${row.catalog || ''}\0${row.schema_name}\0${row.table_name}`
+      if (!tableColumns.has(key)) tableColumns.set(key, [])
+      tableColumns.get(key)!.push(row.column_name as string)
+    }
+
+    const schema: SchemaNamespace = {}
+
+    if (connectionType === 'bigquery') {
+      // Hierarchical: project → dataset → table → columns
+      for (const [key, columns] of tableColumns) {
+        const [project, dataset, table] = key.split('\0')
+        if (!project || !dataset || !table) continue
+
+        if (!schema[project]) schema[project] = {}
+        const projectNs = schema[project] as SchemaNamespace
+        if (!projectNs[dataset]) projectNs[dataset] = {}
+        const datasetNs = projectNs[dataset] as SchemaNamespace
+        datasetNs[table] = columns
+
+        // Add dataset.table shortcut for active project
+        if (activeProject && project === activeProject) {
+          if (!schema[dataset]) schema[dataset] = {}
+          const topDs = schema[dataset] as SchemaNamespace
+          if (!topDs[table]) topDs[table] = columns
+        }
+      }
+    } else if (connectionType === 'postgres') {
+      // Flat: schema.table → columns, plus unqualified for public
+      for (const [key, columns] of tableColumns) {
+        const [, schemaName, tableName] = key.split('\0')
+        schema[`${schemaName}.${tableName}`] = columns
+        if (schemaName === 'public') {
+          schema[tableName] = columns
+        }
+      }
+    } else if (connectionType === 'snowflake') {
+      // Flat: database.schema.table → columns, plus shortcuts
+      for (const [key, columns] of tableColumns) {
+        const [dbName, schemaName, tableName] = key.split('\0')
+        schema[`${dbName}.${schemaName}.${tableName}`] = columns
+        if (!schema[`${schemaName}.${tableName}`]) {
+          schema[`${schemaName}.${tableName}`] = columns
+        }
+        if (schemaName?.toUpperCase() === 'PUBLIC' && !schema[tableName]) {
+          schema[tableName] = columns
+        }
+      }
+    }
+
+    return schema
+  }
+
+  /**
+   * Get SchemaItem[] from _schemas for AI/LLM context (schemaAdapter replacement).
+   */
+  const getSchemaItems = async (
+    connectionType: string,
+    connectionId?: string
+  ): Promise<SchemaItem[]> => {
+    if (!isInitialized.value || !conn.value) return []
+
+    const safeType = connectionType.replace(/'/g, "''")
+    let where = `connection_type = '${safeType}'`
+    if (connectionId) {
+      const safeId = connectionId.replace(/'/g, "''")
+      where += ` AND connection_id = '${safeId}'`
+    }
+
+    const result = await conn.value.query(`
+      SELECT catalog, schema_name, table_name, column_name, column_type
+      FROM _schemas
+      WHERE ${where}
+      ORDER BY catalog, schema_name, table_name, column_name
+    `)
+    const rows = result.toArray()
+
+    // Group columns by table
+    const tableColumns = new Map<string, Array<{ name: string; type: string }>>()
+    for (const row of rows) {
+      let tableName: string
+      if (connectionType === 'bigquery') {
+        tableName = `${row.catalog}.${row.schema_name}.${row.table_name}`
+      } else if (connectionType === 'snowflake') {
+        tableName = `${row.catalog}.${row.schema_name}.${row.table_name}`
+      } else {
+        tableName = `${row.schema_name}.${row.table_name}`
+      }
+      if (!tableColumns.has(tableName)) tableColumns.set(tableName, [])
+      tableColumns.get(tableName)!.push({
+        name: row.column_name as string,
+        type: row.column_type as string,
+      })
+    }
+
+    return Array.from(tableColumns.entries()).map(([tableName, columns]) => ({
+      tableName,
+      columns,
+    }))
+  }
+
+  /**
+   * Atomically replace all schema rows for a specific catalog within a connection.
+   * Used by BigQuery to update one project's schemas without wiping others.
+   */
+  const replaceConnectionCatalogSchemas = async (
+    connectionType: string,
+    connectionId: string,
+    catalog: string,
+    rows: SchemaRow[]
+  ) => {
+    if (!isInitialized.value) await initialize()
+
+    const safeType = connectionType.replace(/'/g, "''")
+    const safeId = connectionId.replace(/'/g, "''")
+    const safeCatalog = catalog.replace(/'/g, "''")
+    await conn.value!.query(
+      `DELETE FROM _schemas WHERE connection_type = '${safeType}' AND connection_id = '${safeId}' AND catalog = '${safeCatalog}'`
+    )
+
+    if (rows.length > 0) {
+      await insertSchemaRows(rows)
+    }
+
+    schemaVersion.value++
+    persistSchemas()
+  }
+
+  /**
+   * Remove all schema rows for a specific catalog within a connection.
+   * Used when deselecting a BigQuery project.
+   */
+  const removeConnectionCatalogSchemas = async (
+    connectionType: string,
+    connectionId: string,
+    catalog: string
+  ) => {
+    if (!isInitialized.value) await initialize()
+
+    const safeType = connectionType.replace(/'/g, "''")
+    const safeId = connectionId.replace(/'/g, "''")
+    const safeCatalog = catalog.replace(/'/g, "''")
+    await conn.value!.query(
+      `DELETE FROM _schemas WHERE connection_type = '${safeType}' AND connection_id = '${safeId}' AND catalog = '${safeCatalog}'`
+    )
+
+    schemaVersion.value++
+    persistSchemas()
+  }
+
+  /**
+   * Upsert schema rows for a single table (delete old rows for that table, insert new).
+   * Used when individual table schemas are fetched on demand.
+   */
+  const upsertTableSchema = async (
+    connectionType: string,
+    connectionId: string,
+    catalog: string | null,
+    schemaName: string,
+    tableName: string,
+    columns: Array<{ name: string; type: string }>
+  ) => {
+    if (!isInitialized.value || !conn.value) return
+
+    const safe = (s: string) => s.replace(/'/g, "''")
+    const catalogClause = catalog
+      ? `AND catalog = '${safe(catalog)}'`
+      : `AND catalog IS NULL`
+    await conn.value.query(
+      `DELETE FROM _schemas WHERE connection_type = '${safe(connectionType)}' AND connection_id = '${safe(connectionId)}' ${catalogClause} AND schema_name = '${safe(schemaName)}' AND table_name = '${safe(tableName)}'`
+    )
+
+    if (columns.length > 0) {
+      const rows = columns.map(col => ({
+        connection_type: connectionType,
+        connection_id: connectionId,
+        catalog,
+        schema_name: schemaName,
+        table_name: tableName,
+        column_name: col.name,
+        column_type: col.type,
+        is_nullable: true,
+      }))
+      await insertSchemaRows(rows)
+    }
+
+    schemaVersion.value++
+    persistSchemas()
+  }
+
   return {
     isInitialized,
     isInitializing,
@@ -795,6 +1147,13 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     loadTablesMetadata,
     renameTable,
     loadCsvFile,
-    exportTable
+    exportTable,
+    replaceConnectionSchemas,
+    replaceConnectionCatalogSchemas,
+    removeConnectionCatalogSchemas,
+    upsertTableSchema,
+    getEditorSchema,
+    getSchemaItems,
+    schemaRefreshMessage,
   }
 })

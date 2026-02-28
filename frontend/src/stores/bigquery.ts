@@ -720,7 +720,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     let token = connectionsStore.getAccessToken(connectionId)
     if (!token) token = await connectionsStore.refreshAccessToken(connectionId)
 
-    // Paginated list helper
+    // Paginated REST list helper (for datasets.list etc.)
     const listAll = async <T>(baseUrl: string, itemsKey: string): Promise<T[]> => {
       const allItems: T[] = []
       let pageToken: string | undefined
@@ -736,8 +736,50 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       return allItems
     }
 
-    const { useSchemaStore } = await import('./bigquerySchema')
-    const schemaStore = useSchemaStore()
+    // Run a query and collect ALL result rows (follows pageToken pagination)
+    const runQueryAllRows = async (sql: string): Promise<Record<string, unknown>[]> => {
+      // Submit query
+      const response = await executeWithTokenRefresh<BigQueryQueryResponse>(connectionId, token!, (t) =>
+        fetch(`https://bigquery.googleapis.com/bigquery/v2/projects/${project}/queries`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${t}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: sql, useLegacySql: false, useQueryCache: true }),
+        })
+      )
+
+      // Poll until job completes
+      let data = response
+      if (data.jobComplete === false && data.jobReference) {
+        data = await pollQueryResults(project, data.jobReference.jobId, token!, null)
+      }
+
+      if (!data.schema || !data.rows) return []
+
+      const allRows = convertBigQueryRows(data.rows, data.schema.fields)
+
+      // Follow pagination to get all remaining rows
+      let nextPageToken = data.pageToken
+      const jobId = data.jobReference?.jobId
+      if (nextPageToken && jobId) {
+        while (nextPageToken) {
+          const page = await executeWithTokenRefresh<BigQueryQueryResponse>(connectionId, token!, (t) =>
+            fetch(
+              `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/queries/${jobId}?pageToken=${nextPageToken}`,
+              { headers: { 'Authorization': `Bearer ${t}` } },
+            )
+          )
+          if (page.schema && page.rows) {
+            allRows.push(...convertBigQueryRows(page.rows, page.schema.fields))
+          }
+          nextPageToken = page.pageToken
+        }
+      }
+
+      return allRows
+    }
+
+    const { useDuckDBStore } = await import('./duckdb')
+    const duckdbStore = useDuckDBStore()
 
     try {
       // Step 1: List all datasets with their locations (paginated)
@@ -771,11 +813,11 @@ export const useBigQueryStore = defineStore('bigquery', () => {
               `SELECT table_schema, table_name, column_name, data_type FROM \`${project}.${dsId}.INFORMATION_SCHEMA.COLUMNS\``
             )
             const query = unionParts.join('\nUNION ALL\n')
-            const result = await runQuery(query, null, connectionId)
+            const rows = await runQueryAllRows(query)
 
             // Group columns by table
             const tableColumns = new Map<string, { name: string; type: string }[]>()
-            for (const row of result.rows) {
+            for (const row of rows) {
               const dsId = row.table_schema as string
               const tbl = row.table_name as string
               const key = `${dsId}\0${tbl}`
@@ -793,8 +835,20 @@ export const useBigQueryStore = defineStore('bigquery', () => {
         })
       )
 
-      // Atomic replace: clear old schemas for this project and write new ones in one update
-      schemaStore.replaceProjectSchemas(project, allEntries)
+      // Convert to SchemaRow[] and write to DuckDB _schemas table
+      const schemaRows = allEntries.flatMap(entry =>
+        entry.columns.map(col => ({
+          connection_type: 'bigquery',
+          connection_id: connectionId,
+          catalog: entry.project,
+          schema_name: entry.dataset,
+          table_name: entry.table,
+          column_name: col.name,
+          column_type: col.type,
+          is_nullable: true,
+        }))
+      )
+      await duckdbStore.replaceConnectionCatalogSchemas('bigquery', connectionId, project, schemaRows)
 
       // Invalidate the autocompletion cache so it rebuilds from fresh schema data
       const { clearSchemaCache } = await import('../utils/schemaAdapter')

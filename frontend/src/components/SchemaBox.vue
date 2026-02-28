@@ -6,7 +6,6 @@ import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
-import { useSchemaStore } from '../stores/bigquerySchema'
 import { getTypeCategory } from '../utils/typeUtils'
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
 import type { BigQueryDataset, BigQueryTable } from '../types/bigquery'
@@ -34,7 +33,6 @@ const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
-const schemaStore = useSchemaStore()
 
 // ResizeObserver for virtual scroll container
 let columnsResizeObserver: ResizeObserver | null = null
@@ -451,15 +449,17 @@ const selectBigQueryProject = async (projectId: string) => {
     await loadDatasets(projectId)
   }
 
-  // Fetch all schemas for this project if not already loaded (populates schema store
-  // for autocomplete). Fire-and-forget to avoid blocking navigation.
-  const hasProjectSchemas = Object.keys(schemaStore.bigQuerySchemas).some(
-    key => key.startsWith(`${projectId}.`)
-  )
-  if (!hasProjectSchemas) {
-    bigqueryStore.fetchAllSchemas(projectId, selectedProject.value!).catch(err => {
-      console.warn(`Could not fetch schemas for ${projectId}:`, err)
-    })
+  // Fetch all schemas for this project if not already loaded in DuckDB.
+  // Fire-and-forget to avoid blocking navigation.
+  if (duckdbStore.isInitialized) {
+    const result = await duckdbStore.runQuery(
+      `SELECT 1 FROM _schemas WHERE connection_type = 'bigquery' AND catalog = '${projectId.replace(/'/g, "''")}' LIMIT 1`
+    )
+    if (result.rows.length === 0) {
+      bigqueryStore.fetchAllSchemas(projectId, selectedProject.value!).catch(err => {
+        console.warn(`Could not fetch schemas for ${projectId}:`, err)
+      })
+    }
   }
 }
 
@@ -714,13 +714,15 @@ const loadSchema = async (tableId: string, key: string) => {
       const schema = await bigqueryStore.fetchTableSchemaWithAnyConnection(selectedDataset.value, tableId, selectedBigQueryProject.value)
       schemas.value[key] = schema
 
-      // Also populate the schema store for autocompletion
-      if (selectedBigQueryProject.value && selectedDataset.value) {
-        schemaStore.setTableSchema(
+      // Also populate the DuckDB _schemas table for autocompletion
+      if (selectedBigQueryProject.value && selectedDataset.value && selectedProject.value) {
+        await duckdbStore.upsertTableSchema(
+          'bigquery',
+          selectedProject.value,
           selectedBigQueryProject.value,
           selectedDataset.value,
           tableId,
-          schema
+          schema,
         )
       }
     } catch (err) {

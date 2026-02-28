@@ -13,7 +13,6 @@ import { useBigQueryStore } from '../stores/bigquery'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
-import { useSchemaStore } from '../stores/bigquerySchema'
 import { useConnectionsStore } from '../stores/connections'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
@@ -21,7 +20,7 @@ import { useQueryResultsStore } from '../stores/queryResults'
 import { getEffectiveEngine, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
 import { useQueryExecution } from '../composables/useQueryExecution'
-import { buildDuckDBSchema, buildBigQuerySchema, buildPostgresSchema, buildSnowflakeSchema, combineSchemas } from '../utils/schemaBuilder'
+import { buildDuckDBSchema, type SchemaNamespace } from '../utils/schemaBuilder'
 import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai'
 import { isFixableError } from '../utils/errorClassifier'
 import { getConnectionDisplayName } from '../utils/connectionHelpers'
@@ -37,7 +36,6 @@ const bigqueryStore = useBigQueryStore()
 const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
-const schemaStore = useSchemaStore()
 const connectionsStore = useConnectionsStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
@@ -59,6 +57,7 @@ const props = withDefaults(defineProps<{
   showAutofix?: boolean
   showRowDetail?: boolean
   showAnalytics?: boolean
+  initialEditorHeight?: number
 }>(), {
   modelValue: '',
   connectionId: undefined,
@@ -67,10 +66,12 @@ const props = withDefaults(defineProps<{
   showAutofix: true,
   showRowDetail: true,
   showAnalytics: true,
+  initialEditorHeight: 150,
 })
 
 const emit = defineEmits<{
   'update:modelValue': [query: string]
+  'update:editorHeight': [height: number]
   'query-complete': [result: QueryCompleteEvent]
   'query-error': [error: string]
   'navigate-to-table': [ref: TableReferenceWithPosition]
@@ -92,7 +93,7 @@ const SPLITTER_HEIGHT = 4
 
 // Splitter
 const isDraggingSplitter = ref(false)
-const editorHeight = ref(150)
+const editorHeight = ref(props.initialEditorHeight)
 const panelHeight = ref(500) // tracked via ResizeObserver
 const dragStart = ref({ y: 0 })
 
@@ -180,44 +181,25 @@ const isEngineLoading = computed(() => {
   return false
 })
 
-const editorSchema = computed(() => {
-  const duckdbSchema = buildDuckDBSchema(duckdbStore.tables)
-  const projectId = boxConnection.value?.projectId
-  // Track schemaVersion to re-evaluate when schemas are bulk-loaded
-  void schemaStore.schemaVersion
-  const bigquerySchema = buildBigQuerySchema(schemaStore.bigQuerySchemas, projectId)
+// Editor schema for CodeMirror autocompletion.
+// DuckDB's own tables are always included; connection-specific schemas are
+// loaded asynchronously from the _schemas DuckDB table.
+const editorSchema = ref<SchemaNamespace>({})
 
-  let postgresSchema = {}
-  if (boxConnection.value?.type === 'postgres' && boxConnection.value?.id) {
-    void postgresStore.schemaVersion
-    postgresSchema = buildPostgresSchema(
-      postgresStore.tablesCache,
-      postgresStore.columnsCache,
-      boxConnection.value.id,
-    )
-  }
-
-  let snowflakeSchema = {}
-  if (boxConnection.value?.type === 'snowflake' && boxConnection.value?.id) {
-    void snowflakeStore.schemaVersion
-    snowflakeSchema = buildSnowflakeSchema(
-      snowflakeStore.tablesCache,
-      snowflakeStore.columnsCache,
-      boxConnection.value.id,
-    )
-  }
-
-  return combineSchemas(duckdbSchema, bigquerySchema, postgresSchema, snowflakeSchema)
-})
-
-// Fetch Postgres/Snowflake schema when connection changes
 watch(
-  () => boxConnection.value,
-  async (conn) => {
-    if (conn?.type === 'postgres' && conn?.id) {
-      await postgresStore.fetchAllColumns(conn.id)
-    } else if (conn?.type === 'snowflake' && conn?.id) {
-      await snowflakeStore.fetchAllColumns(conn.id)
+  [() => boxConnection.value, () => duckdbStore.schemaVersion],
+  async () => {
+    const duckdbSchema = buildDuckDBSchema(duckdbStore.tables)
+    const conn = boxConnection.value
+    if (conn?.type && conn.type !== 'duckdb' && conn?.id) {
+      const connectionSchema = await duckdbStore.getEditorSchema(
+        conn.type,
+        conn.id,
+        conn.projectId,
+      )
+      editorSchema.value = { ...duckdbSchema, ...connectionSchema }
+    } else {
+      editorSchema.value = duckdbSchema
     }
   },
   { immediate: true },
@@ -542,7 +524,15 @@ const handleMouseMove = (e: MouseEvent) => {
 }
 
 const handleMouseUp = () => {
-  isDraggingSplitter.value = false
+  if (isDraggingSplitter.value) {
+    isDraggingSplitter.value = false
+    emit('update:editorHeight', editorHeight.value)
+  }
+}
+
+const handleSplitterDblClick = () => {
+  editorHeight.value = (panelHeight.value - SPLITTER_HEIGHT) / 2
+  emit('update:editorHeight', editorHeight.value)
 }
 
 // ---------------------------------------------------------------------------
@@ -618,6 +608,7 @@ defineExpose({
     <div
       class="splitter"
       @mousedown="handleSplitterMouseDown"
+      @dblclick="handleSplitterDblClick"
     />
 
     <ResultsTable
