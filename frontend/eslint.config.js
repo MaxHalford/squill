@@ -22,6 +22,7 @@ export default tseslint.config(
       '@typescript-eslint/no-empty-object-type': 'off',
       'vue/multi-word-component-names': 'off',
       'vue/no-v-html': 'off',
+      'vue/max-attributes-per-line': 'off',
       'no-undef': 'off',
     }
   },
