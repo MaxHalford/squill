@@ -352,27 +352,39 @@ async def execute_paginated_query(
 
     try:
         async with pool.acquire() as conn:
-            # Get total count on first request
+            # Use COUNT(*) OVER() window function to get total count
+            # in a single query instead of two separate queries
             if request.include_count and request.offset == 0:
-                count_query = f"SELECT COUNT(*) as total FROM ({request.query}) AS subq"
-                count_result = await conn.fetchrow(count_query)
-                total_rows = count_result["total"] if count_result else 0
-
-            # Execute paginated query
-            paginated_query = f"""
-                SELECT * FROM ({request.query}) AS subq
-                LIMIT {request.batch_size} OFFSET {request.offset}
-            """
+                paginated_query = f"""
+                    SELECT *, COUNT(*) OVER() AS _total_count
+                    FROM ({request.query}) AS subq
+                    LIMIT {request.batch_size} OFFSET {request.offset}
+                """
+            else:
+                paginated_query = f"""
+                    SELECT * FROM ({request.query}) AS subq
+                    LIMIT {request.batch_size} OFFSET {request.offset}
+                """
             records = await conn.fetch(paginated_query)
-            rows = [dict(record) for record in records]
+
+            # Extract total_rows from the window function column
+            if request.include_count and request.offset == 0:
+                total_rows = records[0]["_total_count"] if records else 0
+
+            # Strip _total_count from rows and build schema info
+            rows = []
+            for record in records:
+                row = dict(record)
+                row.pop("_total_count", None)
+                rows.append(row)
 
             # Get schema from first row if available
             if records:
-                # Get column info from the first record's keys and types
                 first_record = records[0]
                 for key in first_record.keys():
+                    if key == "_total_count":
+                        continue
                     value = first_record[key]
-                    # Infer type from Python type
                     pg_type = "text"
                     if isinstance(value, int):
                         pg_type = "integer"
