@@ -654,8 +654,8 @@ onUnmounted(() => {
                   @click.stop
                 >
                   <button
-                    v-if="shouldShowExpired(connection.id)"
-                    v-tooltip="'Reconnect'"
+                    v-if="connection.type === 'bigquery'"
+                    v-tooltip="shouldShowExpired(connection.id) ? 'Reconnect' : 'Re-login'"
                     class="reconnect-btn"
                     @click="handleReconnect(connection.id, $event)"
                   >

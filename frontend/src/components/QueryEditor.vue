@@ -1,5 +1,18 @@
+<script lang="ts">
+let _nextScrollPreserverId = 0
+
+// Types for error suggestions
+export interface LineSuggestion {
+  line: number // 1-indexed line number
+  original: string
+  suggestion: string
+  action?: 'replace' | 'insert'
+  message?: string
+}
+</script>
+
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
 import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { Compartment, StateField, StateEffect, RangeSet, EditorState } from '@codemirror/state'
@@ -17,15 +30,6 @@ import { createTableLinkExtension } from '../utils/tableLinkExtension'
 import { attachTooltip } from '../directives/tooltip'
 import type { TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import type { SchemaNamespace } from '../utils/schemaBuilder'
-
-// Types for error suggestions
-interface LineSuggestion {
-  line: number // 1-indexed line number
-  original: string
-  suggestion: string
-  action?: 'replace' | 'insert'
-  message?: string
-}
 
 const props = defineProps<{
   modelValue?: string
@@ -54,6 +58,11 @@ const bigqueryStore = useBigQueryStore()
 
 const editorRef = ref<HTMLElement | null>(null)
 const editorView = ref<EditorView | null>(null)
+
+// Scroll preservation across CSS zoom commits
+const scrollPreserverId = _nextScrollPreserverId++
+const registerScrollPreserver = inject<((id: number, fns: { save: () => unknown; restore: (saved: unknown) => void }) => void) | null>('registerScrollPreserver', null)
+const unregisterScrollPreserver = inject<((id: number) => void) | null>('unregisterScrollPreserver', null)
 
 // Dry run state for cost estimation
 const dryRunResult = ref<DryRunResult | null>(null)
@@ -632,11 +641,18 @@ onMounted(() => {
   editorRef.value?.addEventListener('suggestion-accept', () => emit('accept-suggestion'))
   editorRef.value?.addEventListener('suggestion-dismiss', () => emit('dismiss-suggestion'))
 
+  // Register scroll preserver for CSS zoom commit stability
+  registerScrollPreserver?.(scrollPreserverId, {
+    save: () => editorView.value?.scrollSnapshot(),
+    restore: (snapshot) => editorView.value?.dispatch({ effects: snapshot as StateEffect<unknown> }),
+  })
+
   // Signal that editor is ready
   emit('ready')
 })
 
 onUnmounted(() => {
+  unregisterScrollPreserver?.(scrollPreserverId)
   editorView.value?.destroy()
   if (timerInterval) clearInterval(timerInterval)
   if (dryRunDebounceTimer) clearTimeout(dryRunDebounceTimer)

@@ -63,14 +63,38 @@ const committedZoom = ref(1) // The zoom level applied via CSS zoom
 let zoomIdleTimer: ReturnType<typeof setTimeout> | null = null
 const ZOOM_IDLE_DELAY = 150 // ms to wait before switching to CSS zoom
 
+// Scroll preserver registry — lets child components (e.g. CodeMirror editors)
+// save/restore scroll state across CSS zoom commits that trigger reflows
+const scrollPreservers = new Map<number, { save: () => unknown; restore: (saved: unknown) => void }>()
+provide('registerScrollPreserver', (id: number, fns: { save: () => unknown; restore: (saved: unknown) => void }) => {
+  scrollPreservers.set(id, fns)
+})
+provide('unregisterScrollPreserver', (id: number) => {
+  scrollPreservers.delete(id)
+})
+
 // Mark zoom as active and schedule the idle transition
 const markZoomActive = () => {
   isActivelyZooming.value = true
   if (zoomIdleTimer) clearTimeout(zoomIdleTimer)
   zoomIdleTimer = setTimeout(() => {
+    // Save scroll positions before CSS zoom commit
+    const savedScrolls = new Map<number, unknown>()
+    for (const [id, { save }] of scrollPreservers) {
+      savedScrolls.set(id, save())
+    }
+
     // Commit the current zoom to CSS zoom for crisp rendering
     committedZoom.value = zoom.value
     isActivelyZooming.value = false
+
+    // Restore scroll positions after the browser reflows
+    requestAnimationFrame(() => {
+      for (const [id, saved] of savedScrolls) {
+        const preserver = scrollPreservers.get(id)
+        if (preserver && saved) preserver.restore(saved)
+      }
+    })
   }, ZOOM_IDLE_DELAY)
 }
 
