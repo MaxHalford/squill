@@ -21,7 +21,8 @@ export const SettingsSchema = z.object({
   editorFontSize: z.number().min(8).max(24),
   tableLinkEnabled: z.boolean(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-  canvasPattern: CanvasPatternSchema
+  canvasPattern: CanvasPatternSchema,
+  voiceNotifyEnabled: z.boolean()
 }).partial() // All fields optional since we merge with defaults
 
 export type SettingsData = z.infer<typeof SettingsSchema>

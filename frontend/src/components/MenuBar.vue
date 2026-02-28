@@ -1180,6 +1180,27 @@ onUnmounted(() => {
 
             <div class="settings-section">
               <div class="setting-header">
+                Notifications
+              </div>
+              <div class="setting-description">
+                Announce query results when the tab is in the background
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <input
+                    type="checkbox"
+                    :checked="settingsStore.voiceNotifyEnabled"
+                    class="setting-checkbox"
+                    @change="settingsStore.toggleVoiceNotify"
+                  >
+                  <span>Voice notify on long queries</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
                 Schema cache
               </div>
               <div class="setting-description">

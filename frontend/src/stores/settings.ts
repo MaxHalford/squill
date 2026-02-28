@@ -21,6 +21,8 @@ interface Settings {
   accentColor: string  // Highlighter color for Cmd+click table links
   // Appearance settings
   canvasPattern: CanvasPattern  // Background pattern for canvas
+  // Notifications
+  voiceNotifyEnabled: boolean  // Speak query results when tab is backgrounded
 }
 
 // Default settings
@@ -35,7 +37,8 @@ const DEFAULT_SETTINGS: Settings = {
   editorFontSize: 13,  // Default font size in pixels for code editor
   tableLinkEnabled: true,  // Cmd+click to navigate to table definitions
   accentColor: '#9333ea',  // Purple (default accent color)
-  canvasPattern: 'dots'  // Default canvas pattern
+  canvasPattern: 'dots',  // Default canvas pattern
+  voiceNotifyEnabled: true  // Speak query results when tab is backgrounded
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -51,6 +54,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const tableLinkEnabled = ref(DEFAULT_SETTINGS.tableLinkEnabled)
   const accentColor = ref(DEFAULT_SETTINGS.accentColor)
   const canvasPattern = ref<CanvasPattern>(DEFAULT_SETTINGS.canvasPattern)
+  const voiceNotifyEnabled = ref(DEFAULT_SETTINGS.voiceNotifyEnabled)
 
   const applySettings = (s: Settings) => {
     fetchBatchSize.value = s.fetchBatchSize
@@ -64,6 +68,7 @@ export const useSettingsStore = defineStore('settings', () => {
     tableLinkEnabled.value = s.tableLinkEnabled
     accentColor.value = s.accentColor
     canvasPattern.value = s.canvasPattern
+    voiceNotifyEnabled.value = s.voiceNotifyEnabled
   }
 
   const collectSettings = (): Settings => ({
@@ -78,6 +83,7 @@ export const useSettingsStore = defineStore('settings', () => {
     tableLinkEnabled: tableLinkEnabled.value,
     accentColor: accentColor.value,
     canvasPattern: canvasPattern.value,
+    voiceNotifyEnabled: voiceNotifyEnabled.value,
   })
 
   const loadState = async () => {
@@ -103,7 +109,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const ready = loadState()
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern], saveState)
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled], saveState)
 
   // Reactive system theme tracking
   const systemTheme = ref<'light' | 'dark'>(
@@ -185,6 +191,10 @@ export const useSettingsStore = defineStore('settings', () => {
     canvasPattern.value = pattern
   }
 
+  const toggleVoiceNotify = () => {
+    voiceNotifyEnabled.value = !voiceNotifyEnabled.value
+  }
+
   const resetToDefaults = () => {
     applySettings(DEFAULT_SETTINGS)
   }
@@ -221,6 +231,9 @@ export const useSettingsStore = defineStore('settings', () => {
     // Appearance
     canvasPattern,
     setCanvasPattern,
+    // Notifications
+    voiceNotifyEnabled,
+    toggleVoiceNotify,
     resetToDefaults
   }
 })

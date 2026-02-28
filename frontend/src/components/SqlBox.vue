@@ -15,6 +15,8 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
 import { useQueryHistoryStore } from '../stores/queryHistory'
+import { useSettingsStore } from '../stores/settings'
+import { announceQueryResult, notifyTab } from '../utils/voiceNotify'
 import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { DATABASE_INFO } from '../types/database'
 
@@ -22,6 +24,7 @@ const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const queryHistoryStore = useQueryHistoryStore()
+const settingsStore = useSettingsStore()
 
 // Inject box executor registry for recursive dependency execution
 const registerBoxExecutor = inject<((boxId: number, runFn: () => Promise<void>) => void) | null>('registerBoxExecutor', null)
@@ -51,6 +54,7 @@ const emit = defineEmits([
 const baseBoxRef = ref<InstanceType<typeof BaseBox> | null>(null)
 const queryPanelRef = ref<InstanceType<typeof QueryPanel> | null>(null)
 const queryText = ref(props.initialQuery)
+const lastQueryStartTime = ref(0)
 
 // ---------------------------------------------------------------------------
 // Connection
@@ -182,13 +186,19 @@ watch(queryText, (newQuery) => {
 const handleQueryComplete = (result: QueryCompleteEvent) => {
   updateDependenciesFromQuery(queryPanelRef.value?.getQuery() || queryText.value)
 
+  const boxName = baseBoxRef.value?.boxName || props.initialName
+  notifyTab(boxName, true)
+  if (settingsStore.voiceNotifyEnabled && result.executionTimeMs > 10_000) {
+    announceQueryResult(boxName, true)
+  }
+
   if (props.connectionId) {
     queryHistoryStore.recordQuery({
       query: queryPanelRef.value?.getQuery() || queryText.value,
       connectionId: props.connectionId,
       connectionType: result.engine,
       success: true,
-      boxName: baseBoxRef.value?.boxName || props.initialName,
+      boxName,
       executionTimeMs: result.executionTimeMs,
       rowCount: result.rowCount,
     })
@@ -196,6 +206,13 @@ const handleQueryComplete = (result: QueryCompleteEvent) => {
 }
 
 const handleQueryError = (errorMessage: string) => {
+  const boxName = baseBoxRef.value?.boxName || props.initialName
+  notifyTab(boxName, false)
+  const elapsed = performance.now() - lastQueryStartTime.value
+  if (settingsStore.voiceNotifyEnabled && elapsed > 10_000) {
+    announceQueryResult(boxName, false)
+  }
+
   if (props.connectionId) {
     const currentEngine = getEffectiveEngine(
       boxConnection.value?.type,
@@ -207,7 +224,7 @@ const handleQueryError = (errorMessage: string) => {
       connectionId: props.connectionId,
       connectionType: currentEngine,
       success: false,
-      boxName: baseBoxRef.value?.boxName || props.initialName,
+      boxName,
       errorMessage,
     })
   }
@@ -259,6 +276,7 @@ const handleUpdateName = async (newName: string) => {
 // Registered run function that first resolves dependencies, then executes
 const registeredRun = async () => {
   const query = queryPanelRef.value?.getQuery() || queryText.value
+  lastQueryStartTime.value = performance.now()
   try {
     await runMissingDependencies(query)
   } catch (depErr) {
