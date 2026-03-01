@@ -161,6 +161,17 @@ export const attachTooltip = (el: HTMLElement, value: TooltipValue): (() => void
   }
 }
 
+/**
+ * Programmatically show a tooltip for an element (e.g. for event delegation).
+ * Call `hideTooltip` to dismiss.
+ */
+export const showTooltipFor = (el: HTMLElement, value: TooltipValue) => {
+  currentValues.set(el, value)
+  showTooltip(el)
+}
+
+export { hideTooltip }
+
 export const vTooltip: Directive<HTMLElement, TooltipValue> = {
   mounted(el, binding: DirectiveBinding<TooltipValue>) {
     if (!binding.value) return

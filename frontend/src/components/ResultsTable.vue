@@ -6,6 +6,7 @@ import { useQueryResultsStore } from '../stores/queryResults'
 import { getTypeCategory, simplifyTypeName, formatDateValue } from '../utils/typeUtils'
 import { formatRowCount, formatNumber } from '../utils/formatUtils'
 import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
+import { showTooltipFor, hideTooltip } from '../directives/tooltip'
 
 interface QueryStats {
   engine?: DatabaseEngine
@@ -622,6 +623,31 @@ onUnmounted(() => {
   }
 })
 
+// Cell overflow tooltip via event delegation (single listener for all cells)
+let tooltipCell: HTMLElement | null = null
+
+const handleCellMouseOver = (event: MouseEvent) => {
+  const td = (event.target as HTMLElement).closest('td:not(.virtual-padding-cell)') as HTMLElement | null
+  if (td === tooltipCell) return
+
+  if (tooltipCell) {
+    hideTooltip()
+    tooltipCell = null
+  }
+
+  if (td && td.scrollWidth > td.clientWidth) {
+    tooltipCell = td
+    showTooltipFor(td, td.textContent?.trim() || '')
+  }
+}
+
+const handleTableMouseLeave = () => {
+  if (tooltipCell) {
+    hideTooltip()
+    tooltipCell = null
+  }
+}
+
 defineExpose({ resetPagination })
 </script>
 
@@ -658,6 +684,8 @@ defineExpose({ resetPagination })
         ref="tableRef"
         class="results-table"
         :style="tableStyle"
+        @mouseover="handleCellMouseOver"
+        @mouseleave="handleTableMouseLeave"
       >
         <colgroup>
           <col
