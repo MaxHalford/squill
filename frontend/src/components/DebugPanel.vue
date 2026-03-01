@@ -57,7 +57,9 @@ const boundingBox = computed(() => {
 
 <template>
   <div class="debug-panel">
-    <div class="debug-header">debug</div>
+    <div class="debug-header">
+      debug
+    </div>
     <div class="debug-stats">
       <div class="debug-row">
         <span class="debug-label">boxes</span>

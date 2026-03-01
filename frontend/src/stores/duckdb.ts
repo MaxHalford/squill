@@ -243,7 +243,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         return tableName
       } catch (err: unknown) {
         console.error(`Failed to create empty table for ${boxName}:`, err)
-        throw new Error(`Failed to store results in DuckDB: ${getErrorMessage(err)}`)
+        throw new Error(`Failed to store results in DuckDB: ${getErrorMessage(err)}`, { cause: err })
       }
     }
 
@@ -304,7 +304,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       return tableName
     } catch (err: unknown) {
       console.error(`Failed to store results for ${boxName}:`, err)
-      throw new Error(`Failed to store results in DuckDB: ${getErrorMessage(err)}`)
+      throw new Error(`Failed to store results in DuckDB: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -342,7 +342,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       return rows.length
     } catch (err: unknown) {
       console.error(`Failed to append results to ${tableName}:`, err)
-      throw new Error(`Failed to append results to DuckDB: ${getErrorMessage(err)}`)
+      throw new Error(`Failed to append results to DuckDB: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -409,7 +409,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       return { tableName, rowCount, columns }
     } catch (err: unknown) {
       console.error(`Failed to store Arrow results for ${boxName}:`, err)
-      throw new Error(`Failed to store Arrow results in DuckDB: ${getErrorMessage(err)}`)
+      throw new Error(`Failed to store Arrow results in DuckDB: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -472,7 +472,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }
     } catch (err: unknown) {
       console.error('DuckDB query with storage failed:', err)
-      throw new Error(`DuckDB query failed: ${getErrorMessage(err)}`)
+      throw new Error(`DuckDB query failed: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -505,7 +505,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }
     } catch (err: unknown) {
       console.error('DuckDB query failed:', err)
-      throw new Error(`DuckDB query failed: ${getErrorMessage(err)}`)
+      throw new Error(`DuckDB query failed: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -544,7 +544,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       return { rows, columns, columnTypes }
     } catch (err: unknown) {
       console.error('DuckDB page query failed:', err)
-      throw new Error(`Failed to query table page: ${getErrorMessage(err)}`)
+      throw new Error(`Failed to query table page: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -557,7 +557,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       return result.schema.fields.map(f => f.name)
     } catch (err: unknown) {
       console.error('Failed to get table columns:', err)
-      throw new Error(`Failed to get columns for ${tableName}: ${getErrorMessage(err)}`)
+      throw new Error(`Failed to get columns for ${tableName}: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -573,7 +573,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }))
     } catch (err: unknown) {
       console.error('Failed to get table schema:', err)
-      throw new Error(`Failed to get schema for ${tableName}: ${getErrorMessage(err)}`)
+      throw new Error(`Failed to get schema for ${tableName}: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -667,7 +667,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       console.log(`⚠️  Dependent queries may need manual updates`)
     } catch (err: unknown) {
       console.error(`Failed to rename table from ${oldTableName} to ${newTableName}:`, err)
-      throw new Error(`Failed to rename table: ${getErrorMessage(err)}`)
+      throw new Error(`Failed to rename table: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -705,7 +705,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       return result.tableName
     } catch (err: unknown) {
       console.error(`Failed to load CSV ${file.name}:`, err)
-      throw new Error(`Failed to load CSV: ${getErrorMessage(err)}`)
+      throw new Error(`Failed to load CSV: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -769,7 +769,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         // Ignore cleanup errors
       }
       console.error(`Failed to export table as ${format}:`, err)
-      throw new Error(`Failed to export as ${format.toUpperCase()}: ${getErrorMessage(err)}`)
+      throw new Error(`Failed to export as ${format.toUpperCase()}: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 

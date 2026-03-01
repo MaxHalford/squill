@@ -24,6 +24,7 @@ export default tseslint.config(
       'vue/no-v-html': 'off',
       'vue/max-attributes-per-line': 'off',
       'no-undef': 'off',
+      'no-useless-assignment': 'off', // False positives in Vue <script setup> (template usage invisible to ESLint)
     }
   },
   {
