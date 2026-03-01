@@ -18,6 +18,7 @@
     "@codemirror/lang-sql": "^6.10.0",
     "@duckdb/duckdb-wasm": "^1.28.0",
     "@polar-sh/checkout": "^0.2.0",
+    "@tanstack/vue-virtual": "^3.13.19",
     "codemirror": "^6.0.2",
     "dexie": "^4.3.0",
     "marked": "^17.0.1",

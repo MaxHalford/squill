@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useQueryResultsStore } from '../stores/queryResults'
@@ -82,11 +83,8 @@ const scrollLeft = ref(0)
 const containerWidth = ref(800)
 const COLUMN_BUFFER = 2 // Render 2 extra columns on each side
 
-// Row virtualization state
-const scrollTop = ref(0)
-const containerHeight = ref(400)
-const measuredRowHeight = ref(22) // Measured from DOM, fallback to ~22px (3px padding + 12px*1.3 line-height + 3px padding)
-const ROW_BUFFER = 3 // Extra rows above/below viewport
+// Row virtualization via TanStack Virtual
+const ROW_HEIGHT_ESTIMATE = 22
 
 const pageSize = computed(() => settingsStore.paginationSize)
 
@@ -219,24 +217,23 @@ const visibleColumnsData = computed(() => {
 
 const visibleColumns = computed(() => visibleColumnsData.value.columns)
 
-// Row virtualization: only render visible rows
-const visibleRowsData = computed(() => {
-  const rows = pageData.value
-  if (rows.length <= 15) {
-    return { rows, startIndex: 0, paddingTop: 0, paddingBottom: 0 }
-  }
+// Row virtualization via TanStack Virtual
+const rowVirtualizer = useVirtualizer(computed(() => ({
+  count: pageData.value.length,
+  estimateSize: () => ROW_HEIGHT_ESTIMATE,
+  getScrollElement: () => tableContainerRef.value,
+  overscan: 15,
+})))
 
-  const rh = measuredRowHeight.value
-  const startIndex = Math.max(0, Math.floor(scrollTop.value / rh) - ROW_BUFFER)
-  const visibleCount = Math.ceil(containerHeight.value / rh) + ROW_BUFFER * 2
-  const endIndex = Math.min(rows.length, startIndex + visibleCount)
+const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems())
+const totalRowHeight = computed(() => rowVirtualizer.value.getTotalSize())
 
-  return {
-    rows: rows.slice(startIndex, endIndex),
-    startIndex,
-    paddingTop: startIndex * rh,
-    paddingBottom: Math.max(0, (rows.length - endIndex) * rh),
-  }
+// Before/after padding derived from TanStack virtual items
+const rowPaddingBefore = computed(() => virtualRows.value[0]?.start ?? 0)
+const rowPaddingAfter = computed(() => {
+  const items = virtualRows.value
+  if (!items.length) return 0
+  return totalRowHeight.value - items[items.length - 1].end
 })
 
 // Total colspan for spacer rows (row number + padding cells + visible columns)
@@ -269,7 +266,6 @@ const fetchPage = async () => {
     columns.value = result.columns
     columnTypes.value = result.columnTypes
     triggerReveal() // Trigger row reveal animation
-    nextTick(measureRowHeight)
   } catch (err) {
     console.error('Failed to fetch page:', err)
     pageData.value = []
@@ -572,31 +568,27 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
-// Track scroll position for column + row virtualization
-// Update synchronously so Vue batches the DOM update in the same frame as the scroll,
-// avoiding the 1-frame lag that causes visual jumps during slow scrolling.
-const handleTableScroll = () => {
-  if (tableContainerRef.value) {
-    scrollLeft.value = tableContainerRef.value.scrollLeft
-    scrollTop.value = tableContainerRef.value.scrollTop
+// Track horizontal scroll for column virtualization (TanStack handles vertical)
+let scrollRAF: number | null = null
+const handleHorizontalScroll = () => {
+  if (!tableContainerRef.value) return
+  const newLeft = tableContainerRef.value.scrollLeft
+  if (scrollLeft.value !== newLeft) {
+    if (!scrollRAF) {
+      scrollRAF = requestAnimationFrame(() => {
+        scrollRAF = null
+        if (tableContainerRef.value) {
+          scrollLeft.value = tableContainerRef.value.scrollLeft
+        }
+      })
+    }
   }
 }
 
-// Track container size for virtualization
-const updateContainerSize = () => {
+// Track container width for column virtualization
+const updateContainerWidth = () => {
   if (tableContainerRef.value) {
     containerWidth.value = tableContainerRef.value.clientWidth
-    containerHeight.value = tableContainerRef.value.clientHeight
-  }
-}
-
-// Measure actual rendered row height from the DOM
-const measureRowHeight = () => {
-  if (!tableRef.value) return
-  const row = tableRef.value.querySelector('tbody tr:not(.virtual-spacer)')
-  if (row) {
-    const h = (row as HTMLElement).getBoundingClientRect().height
-    if (h > 0) measuredRowHeight.value = h
   }
 }
 
@@ -644,13 +636,13 @@ onMounted(() => {
   document.addEventListener('copy', handleCopy)
   document.addEventListener('click', handleClickOutside)
 
-  // Column virtualization: track scroll and container size
+  // Column virtualization: track horizontal scroll and container width
   if (tableContainerRef.value) {
-    tableContainerRef.value.addEventListener('scroll', handleTableScroll, { passive: true })
-    updateContainerSize()
+    tableContainerRef.value.addEventListener('scroll', handleHorizontalScroll, { passive: true })
+    updateContainerWidth()
 
     resizeObserver = new ResizeObserver(() => {
-      updateContainerSize()
+      updateContainerWidth()
     })
     resizeObserver.observe(tableContainerRef.value)
   }
@@ -658,14 +650,15 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('copy', handleCopy)
   document.removeEventListener('click', handleClickOutside)
-  // Clean up resize listeners in case component unmounts during resize
   document.removeEventListener('mousemove', handleResize)
   document.removeEventListener('mouseup', stopResize)
   if (revealTimer) clearTimeout(revealTimer)
-
-  // Clean up scroll listener and resize observer
+  if (scrollRAF) {
+    cancelAnimationFrame(scrollRAF)
+    scrollRAF = null
+  }
   if (tableContainerRef.value) {
-    tableContainerRef.value.removeEventListener('scroll', handleTableScroll)
+    tableContainerRef.value.removeEventListener('scroll', handleHorizontalScroll)
   }
   if (resizeObserver) {
     resizeObserver.disconnect()
@@ -951,16 +944,16 @@ defineExpose({ resetPagination, triggerReveal })
         </thead>
         <tbody :key="animationKey">
           <!-- Top spacer for virtualized rows above viewport -->
-          <tr v-if="visibleRowsData.paddingTop > 0" class="virtual-spacer" aria-hidden="true">
-            <td :colspan="totalColspan" :style="{ height: visibleRowsData.paddingTop + 'px' }" />
+          <tr v-if="rowPaddingBefore > 0" class="virtual-spacer" aria-hidden="true">
+            <td :colspan="totalColspan" :style="{ height: rowPaddingBefore + 'px' }" />
           </tr>
 
           <tr
-            v-for="(row, i) in visibleRowsData.rows"
-            :key="visibleRowsData.startIndex + i"
-            :style="{ '--row-index': i }"
-            :class="{ 'reveal-row': isRevealing, 'stripe': (visibleRowsData.startIndex + i) % 2 === 1 }"
-            @mouseenter="hoveredRowIndex = visibleRowsData.startIndex + i"
+            v-for="vRow in virtualRows"
+            :key="vRow.index"
+            :style="{ '--row-index': vRow.index }"
+            :class="{ 'reveal-row': isRevealing, 'stripe': vRow.index % 2 === 1 }"
+            @mouseenter="hoveredRowIndex = vRow.index"
             @mouseleave="hoveredRowIndex = null"
           >
             <th
@@ -969,16 +962,16 @@ defineExpose({ resetPagination, triggerReveal })
             >
               <span
                 class="row-number"
-                :class="{ hidden: showRowDetail && hoveredRowIndex === visibleRowsData.startIndex + i }"
+                :class="{ hidden: showRowDetail && hoveredRowIndex === vRow.index }"
               >
-                {{ (currentPage - 1) * pageSize + visibleRowsData.startIndex + i + 1 }}
+                {{ (currentPage - 1) * pageSize + vRow.index + 1 }}
               </span>
               <button
                 v-if="showRowDetail"
                 class="detail-btn"
-                :class="{ visible: hoveredRowIndex === visibleRowsData.startIndex + i }"
+                :class="{ visible: hoveredRowIndex === vRow.index }"
                 aria-label="View row details"
-                @click.stop="handleShowDetail($event, row, visibleRowsData.startIndex + i)"
+                @click.stop="handleShowDetail($event, pageData[vRow.index], vRow.index)"
               >
                 <svg
                   width="16"
@@ -1008,13 +1001,13 @@ defineExpose({ resetPagination, triggerReveal })
               v-for="column in visibleColumns"
               :key="column"
               :class="{
-                'null-value': row[column] === null,
+                'null-value': pageData[vRow.index][column] === null,
                 'number-cell': getTypeCategory(columnTypes[column] || '') === 'number',
-                'bool-true': getTypeCategory(columnTypes[column] || '') === 'boolean' && row[column] === true,
-                'bool-false': getTypeCategory(columnTypes[column] || '') === 'boolean' && row[column] === false
+                'bool-true': getTypeCategory(columnTypes[column] || '') === 'boolean' && pageData[vRow.index][column] === true,
+                'bool-false': getTypeCategory(columnTypes[column] || '') === 'boolean' && pageData[vRow.index][column] === false
               }"
             >
-              {{ formatCellValue(row[column], columnTypes[column] || '') }}
+              {{ formatCellValue(pageData[vRow.index][column], columnTypes[column] || '') }}
             </td>
             <!-- Padding cell for virtualized columns after visible range -->
             <td
@@ -1024,8 +1017,8 @@ defineExpose({ resetPagination, triggerReveal })
           </tr>
 
           <!-- Bottom spacer for virtualized rows below viewport -->
-          <tr v-if="visibleRowsData.paddingBottom > 0" class="virtual-spacer" aria-hidden="true">
-            <td :colspan="totalColspan" :style="{ height: visibleRowsData.paddingBottom + 'px' }" />
+          <tr v-if="rowPaddingAfter > 0" class="virtual-spacer" aria-hidden="true">
+            <td :colspan="totalColspan" :style="{ height: rowPaddingAfter + 'px' }" />
           </tr>
         </tbody>
       </table>
