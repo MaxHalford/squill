@@ -22,21 +22,12 @@ const emit = defineEmits([
   'delete', 'maximize', 'update:name'
 ])
 
-// Parse row data from JSON string (supports both old format and new format with columnTypes)
 const parsedData = computed(() => {
   try {
     const parsed = JSON.parse(props.initialRowData)
-    // Check if it's the new format with rowData and columnTypes
-    if (parsed.rowData && typeof parsed.rowData === 'object') {
-      return {
-        rowData: parsed.rowData,
-        columnTypes: parsed.columnTypes || {}
-      }
-    }
-    // Old format - just row data directly
     return {
-      rowData: parsed,
-      columnTypes: {}
+      rowData: parsed.rowData ?? {},
+      columnTypes: parsed.columnTypes ?? {}
     }
   } catch {
     return { rowData: {}, columnTypes: {} }

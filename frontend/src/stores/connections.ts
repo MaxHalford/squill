@@ -84,14 +84,7 @@ export const useConnectionsStore = defineStore('connections', () => {
       if (data) {
         const result = ConnectionsStateSchema.safeParse(data)
         if (result.success) {
-          // Migrate: backfill schemaProjectIds from projectId for BigQuery connections
-          const migrated = result.data.connections.map(c => {
-            if (c.type === 'bigquery' && c.projectId && !c.schemaProjectIds?.length) {
-              return { ...c, schemaProjectIds: [c.projectId] }
-            }
-            return c
-          })
-          connections.value = deduplicateConnections(migrated)
+          connections.value = deduplicateConnections(result.data.connections)
           activeConnectionId.value = result.data.activeConnectionId
         }
       }

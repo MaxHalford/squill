@@ -119,19 +119,6 @@ export const useQueryHistoryStore = defineStore('queryHistory', () => {
   }
 
   /**
-   * Backward compatibility: record successful query (for existing code)
-   */
-  function recordSuccessfulQuery(connectionId: string, query: string): void {
-    recordQuery({
-      query,
-      connectionId,
-      connectionType: 'duckdb', // Default, will be overridden by SqlBox
-      success: true
-    })
-  }
-
-  /**
-   * Get sample queries for AI fixer (backward compatible)
    * Returns last 5 successful queries for a connection
    */
   function getSampleQueries(connectionId: string): string[] {
@@ -221,7 +208,6 @@ export const useQueryHistoryStore = defineStore('queryHistory', () => {
     historyEntries,
     connectionIds,
     recordQuery,
-    recordSuccessfulQuery,
     getSampleQueries,
     getHistory,
     getEntry,

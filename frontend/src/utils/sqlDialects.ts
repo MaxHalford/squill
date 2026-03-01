@@ -469,5 +469,3 @@ export function getCodeMirrorDialect(dialect: SqlDialect): SQLDialect {
   return dialects[dialect]?.codemirror || PostgreSQL
 }
 
-// Legacy export for backward compatibility
-export const BigQueryDialect = BigQueryCodeMirror

@@ -137,9 +137,8 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         // Create connection
         conn.value = await db.value.connect()
 
-        // Create internal _schemas table and load persisted data
-        await createSchemasTable()
-        await loadPersistedSchemas()
+        // Create internal _schemas table, loading persisted data if available
+        await initSchemasTable()
 
         // Load existing tables metadata
         await loadTablesMetadata()
@@ -217,8 +216,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     // Handle empty results: create an empty table with schema if available
     if (!results || results.length === 0) {
       try {
-        await conn.value!.query(`DROP TABLE IF EXISTS ${tableName}`)
-
         if (schema && schema.length > 0) {
           // Create empty table with proper column types from schema
           const columnDefs = schema.map(col => {
@@ -227,10 +224,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
               : 'VARCHAR'
             return `"${col.name}" ${duckdbType}`
           }).join(', ')
-          await conn.value!.query(`CREATE TABLE ${tableName} (${columnDefs})`)
+          await conn.value!.query(`CREATE OR REPLACE TABLE ${tableName} (${columnDefs})`)
         } else {
           // No schema available - create a minimal empty table
-          await conn.value!.query(`CREATE TABLE ${tableName} (_empty VARCHAR)`)
+          await conn.value!.query(`CREATE OR REPLACE TABLE ${tableName} (_empty VARCHAR)`)
         }
 
         tables.value[tableName] = {
@@ -253,9 +250,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     const columns = Object.keys(results[0])
 
     try {
-      // Drop existing table if exists
-      await conn.value!.query(`DROP TABLE IF EXISTS ${tableName}`)
-
       // Register JSON data
       await db.value!.registerFileText(jsonFileName, JSON.stringify(results))
 
@@ -283,14 +277,14 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         }).join(', ')
 
         await conn.value!.query(
-          `CREATE TABLE ${tableName} AS SELECT ${columnDefs} FROM read_json_auto('${jsonFileName}')`
+          `CREATE OR REPLACE TABLE ${tableName} AS SELECT ${columnDefs} FROM read_json_auto('${jsonFileName}')`
         )
       } else {
         // Other engines (Postgres, Snowflake, etc.): let DuckDB infer types
         // These databases return properly typed JSON that DuckDB can handle
         const columnList = columns.map(c => `"${c}"`).join(', ')
         await conn.value!.query(
-          `CREATE TABLE ${tableName} AS SELECT ${columnList} FROM read_json_auto('${jsonFileName}')`
+          `CREATE OR REPLACE TABLE ${tableName} AS SELECT ${columnList} FROM read_json_auto('${jsonFileName}')`
         )
       }
 
@@ -368,7 +362,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     const startTime = performance.now()
 
     try {
-      // Drop existing table if exists
+      // Drop required here — insertArrowFromIPCStream has no "replace" option
       await conn.value!.query(`DROP TABLE IF EXISTS ${tableName}`)
 
       // Read Arrow IPC stream and insert into DuckDB
@@ -799,8 +793,24 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // _schemas table: unified schema catalog stored in DuckDB, persisted to IDB
   // ---------------------------------------------------------------------------
 
-  const createSchemasTable = async () => {
-    if (!conn.value) return
+  /** Create _schemas table, populating from IDB cache if available. */
+  const initSchemasTable = async () => {
+    if (!conn.value || !db.value) return
+
+    try {
+      const buffer = await loadSchema<Uint8Array>('_schemas_parquet')
+      if (buffer && buffer.byteLength > 0) {
+        await db.value.registerFileBuffer('_schemas_load.parquet', new Uint8Array(buffer))
+        await conn.value.query(`CREATE TABLE _schemas AS SELECT * FROM '_schemas_load.parquet'`)
+        await db.value.dropFile('_schemas_load.parquet')
+        console.log('Loaded schemas from IDB cache')
+        return
+      }
+    } catch (err) {
+      console.warn('Failed to load persisted schemas:', err)
+    }
+
+    // No persisted data (or load failed) — create empty table
     await conn.value.query(`
       CREATE TABLE IF NOT EXISTS _schemas (
         connection_type VARCHAR NOT NULL,
@@ -813,53 +823,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         is_nullable BOOLEAN DEFAULT TRUE
       )
     `)
-  }
-
-  const loadPersistedSchemas = async () => {
-    if (!conn.value || !db.value) return
-
-    try {
-      // Try loading Parquet buffer from IDB
-      const buffer = await loadSchema<Uint8Array>('_schemas_parquet')
-      if (buffer && buffer.byteLength > 0) {
-        await db.value.registerFileBuffer('_schemas_load.parquet', new Uint8Array(buffer))
-        await conn.value.query(`INSERT INTO _schemas SELECT * FROM '_schemas_load.parquet'`)
-        await db.value.dropFile('_schemas_load.parquet')
-        console.log('Loaded schemas from IDB cache')
-        return
-      }
-
-      // Migration: try loading old bigQuerySchemas JSON format
-      const oldData = await loadSchema<Record<string, Array<{ name: string; type: string }>>>('bigQuerySchemas')
-      if (oldData && Object.keys(oldData).length > 0) {
-        console.log('Migrating BigQuery schemas from old IDB format...')
-        const rows: SchemaRow[] = []
-        for (const [fullKey, columns] of Object.entries(oldData)) {
-          const parts = fullKey.split('.')
-          if (parts.length !== 3) continue
-          const [project, dataset, table] = parts
-          for (const col of columns) {
-            rows.push({
-              connection_type: 'bigquery',
-              connection_id: '_migrated',
-              catalog: project,
-              schema_name: dataset,
-              table_name: table,
-              column_name: col.name,
-              column_type: col.type,
-              is_nullable: true,
-            })
-          }
-        }
-        if (rows.length > 0) {
-          await insertSchemaRows(rows)
-          await persistSchemas()
-          console.log(`Migrated ${rows.length} schema entries from old format`)
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to load persisted schemas:', err)
-    }
   }
 
   const persistSchemas = async () => {
