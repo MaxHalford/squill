@@ -8,21 +8,20 @@
  * - Query history recording
  * - DuckDB table rename on box name change
  */
-import { ref, watch, onMounted, onUnmounted, computed, inject } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed, inject, toRef } from 'vue'
 import BaseBox from './BaseBox.vue'
 import QueryPanel, { type QueryCompleteEvent } from './QueryPanel.vue'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useCanvasStore } from '../stores/canvas'
-import { useConnectionsStore } from '../stores/connections'
 import { useQueryHistoryStore } from '../stores/queryHistory'
 import { useSettingsStore } from '../stores/settings'
+import { useBoxConnection } from '../composables/useBoxConnection'
 import { announceQueryResult, notifyTab } from '../utils/voiceNotify'
 import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { DATABASE_INFO } from '../types/database'
 
 const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()
-const connectionsStore = useConnectionsStore()
 const queryHistoryStore = useQueryHistoryStore()
 const settingsStore = useSettingsStore()
 
@@ -60,15 +59,7 @@ const lastQueryStartTime = ref(0)
 // Connection
 // ---------------------------------------------------------------------------
 
-const boxConnection = computed(() => {
-  if (!props.connectionId) return null
-  return connectionsStore.connections.find(c => c.id === props.connectionId) || null
-})
-
-const isConnectionMissing = computed(() => {
-  if (!props.connectionId) return false
-  return !boxConnection.value
-})
+const { connection: boxConnection, isConnectionMissing } = useBoxConnection(toRef(props, 'connectionId'))
 
 const missingConnectionType = computed((): string | undefined => {
   if (!props.connectionId) return undefined

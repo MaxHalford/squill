@@ -421,25 +421,20 @@ const handleRefreshSchemas = async () => {
       await refreshSchemaCache('bigquery')
     }
 
-    // Refresh all PostgreSQL connections
-    for (const conn of connections.filter(c => c.type === 'postgres')) {
-      try {
-        duckdbStore.schemaRefreshMessage = `Refreshing PostgreSQL schemas (${conn.name || conn.id})...`
-        await postgresStore.refreshSchemas(conn.id)
-        await refreshSchemaCache('postgres', conn.id)
-      } catch (err) {
-        console.warn(`Schema refresh failed for PostgreSQL ${conn.name || conn.id}:`, err)
-      }
-    }
-
-    // Refresh all Snowflake connections
-    for (const conn of connections.filter(c => c.type === 'snowflake')) {
-      try {
-        duckdbStore.schemaRefreshMessage = `Refreshing Snowflake schemas (${conn.name || conn.id})...`
-        await snowflakeStore.refreshSchemas(conn.id)
-        await refreshSchemaCache('snowflake', conn.id)
-      } catch (err) {
-        console.warn(`Schema refresh failed for Snowflake ${conn.name || conn.id}:`, err)
+    // Offset-based engines (identical pattern)
+    const offsetEngines = [
+      { type: 'postgres' as const, label: 'PostgreSQL', store: postgresStore },
+      { type: 'snowflake' as const, label: 'Snowflake', store: snowflakeStore },
+    ]
+    for (const { type, label, store } of offsetEngines) {
+      for (const conn of connections.filter(c => c.type === type)) {
+        try {
+          duckdbStore.schemaRefreshMessage = `Refreshing ${label} schemas (${conn.name || conn.id})...`
+          await store.refreshSchemas(conn.id)
+          await refreshSchemaCache(type, conn.id)
+        } catch (err) {
+          console.warn(`Schema refresh failed for ${label} ${conn.name || conn.id}:`, err)
+        }
       }
     }
   } catch (error) {

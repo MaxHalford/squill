@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
+import { calculateBoundingBox } from '../utils/geometry'
 
 const canvasStore = useCanvasStore()
 
@@ -48,16 +49,9 @@ const clearAll = () => {
 }
 
 const boundingBox = computed(() => {
-  const boxes = canvasStore.boxes
-  if (boxes.length === 0) return null
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  for (const b of boxes) {
-    minX = Math.min(minX, b.x)
-    minY = Math.min(minY, b.y)
-    maxX = Math.max(maxX, b.x + b.width)
-    maxY = Math.max(maxY, b.y + b.height)
-  }
-  return { width: Math.round(maxX - minX), height: Math.round(maxY - minY) }
+  const bb = calculateBoundingBox(canvasStore.boxes)
+  if (!bb) return null
+  return { width: Math.round(bb.maxX - bb.minX), height: Math.round(bb.maxY - bb.minY) }
 })
 </script>
 

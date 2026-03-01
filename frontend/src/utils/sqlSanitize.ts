@@ -34,6 +34,13 @@ export function escapeIdentifier(identifier: string): string {
 }
 
 /**
+ * Escape a SQL string literal value (double single quotes)
+ */
+export function escapeSqlString(value: string): string {
+  return value.replace(/'/g, "''")
+}
+
+/**
  * Clean a SQL query for execution
  * - Trims whitespace
  * - Removes trailing semicolons (they break subquery wrapping for pagination)

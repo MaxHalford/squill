@@ -6,17 +6,17 @@
  * logic. Used by both SqlBox (wrapped in BaseBox with dependency tracking)
  * and ChatBox (embedded alongside the chat panel).
  */
-import { ref, inject, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, inject, watch, onMounted, onUnmounted, computed, nextTick, toRef } from 'vue'
 import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
-import { useConnectionsStore } from '../stores/connections'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import { useQueryResultsStore } from '../stores/queryResults'
+import { useBoxConnection } from '../composables/useBoxConnection'
 import { getEffectiveEngine, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
 import { useQueryExecution } from '../composables/useQueryExecution'
@@ -29,7 +29,6 @@ import { type DatabaseEngine, type QueryCompleteEvent } from '../types/database'
 export type { QueryCompleteEvent }
 
 const boxVisible = inject('boxVisible', ref(true))
-const isCanvasInteracting = inject('isCanvasInteracting', ref(false))
 const resultsRef = ref<InstanceType<typeof ResultsTable> | null>(null)
 
 // ---------------------------------------------------------------------------
@@ -40,7 +39,6 @@ const bigqueryStore = useBigQueryStore()
 const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
-const connectionsStore = useConnectionsStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 const queryResultsStore = useQueryResultsStore()
@@ -123,9 +121,9 @@ let resizeObserver: ResizeObserver | null = null
 // Visibility — must be after resultTableName declaration (avoids TDZ)
 // ---------------------------------------------------------------------------
 
-// Unified: hide results when off-screen OR during canvas interaction (if has results)
+// Hide results when off-screen (visibility culling)
 const shouldHideResults = computed(() =>
-  !!resultTableName.value && (!boxVisible.value || isCanvasInteracting.value)
+  !!resultTableName.value && !boxVisible.value
 )
 
 // Trigger row reveal animation on any hide → show transition (RAF-debounced
@@ -166,10 +164,7 @@ watch(queryText, (newQuery) => {
 // Connection
 // ---------------------------------------------------------------------------
 
-const boxConnection = computed(() => {
-  if (!props.connectionId) return null
-  return connectionsStore.connections.find(c => c.id === props.connectionId) || null
-})
+const { connection: boxConnection, isConnectionMissing } = useBoxConnection(toRef(props, 'connectionId'))
 
 const connectionDisplayName = computed(() => {
   const baseName = getConnectionDisplayName(boxConnection.value)
@@ -177,11 +172,6 @@ const connectionDisplayName = computed(() => {
     return `${baseName} / ${boxConnection.value.projectId}`
   }
   return baseName
-})
-
-const isConnectionMissing = computed(() => {
-  if (!props.connectionId) return false
-  return !boxConnection.value
 })
 
 
@@ -242,6 +232,12 @@ watch(
 // Lazy loading
 // ---------------------------------------------------------------------------
 
+const getOffsetStore = (engine: string) => {
+  if (engine === 'postgres') return postgresStore
+  if (engine === 'snowflake') return snowflakeStore
+  return null
+}
+
 const fetchNextBatch = async (
   engine: string,
   query: string,
@@ -274,22 +270,11 @@ const fetchNextBatch = async (
           props.boxId, fetchState.fetchedRows + result.rows.length, result.hasMore, result.pageToken,
         )
       }
-    } else if (engine === 'postgres') {
+    } else {
+      const store = getOffsetStore(engine)
+      if (!store) return
       const offset = pageTokenOrOffset as number
-      const result = await postgresStore.runQueryPaginated(
-        boxConnection.value?.id || '', query, batchSize, offset, false, backgroundLoadController.signal,
-      )
-      await duckdbStore.appendResults(tableName, result.rows as Record<string, unknown>[], schema)
-
-      const fetchState = queryResultsStore.getFetchState(props.boxId)
-      if (fetchState) {
-        queryResultsStore.updateFetchProgress(
-          props.boxId, fetchState.fetchedRows + result.rows.length, result.hasMore, undefined, result.nextOffset,
-        )
-      }
-    } else if (engine === 'snowflake') {
-      const offset = pageTokenOrOffset as number
-      const result = await snowflakeStore.runQueryPaginated(
+      const result = await store.runQueryPaginated(
         boxConnection.value?.id || '', query, batchSize, offset, false, backgroundLoadController.signal,
       )
       await duckdbStore.appendResults(tableName, result.rows as Record<string, unknown>[], schema)
@@ -384,46 +369,26 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
           })
         }
         execResult = { rowCount: paginatedResult.rows.length, executionTimeMs: 0, engine, stats: paginatedResult.stats }
-      } else if (engine === 'postgres') {
-        if (!connectionId) throw new Error('No PostgreSQL connection selected')
-
-        const paginatedResult = await postgresStore.runQueryPaginated(
-          connectionId, query, batchSize, 0, true, abortController.signal,
-        )
-        await duckdbStore.storeResults(props.boxName || 'untitled', paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
-        if (props.boxId !== null) {
-          queryResultsStore.initQueryResult(props.boxId, 'postgres', {
-            totalRows: paginatedResult.totalRows,
-            fetchedRows: paginatedResult.rows.length,
-            hasMoreRows: paginatedResult.hasMore,
-            nextOffset: paginatedResult.nextOffset,
-            originalQuery: query,
-            connectionId,
-            schema: paginatedResult.columns,
-          })
-        }
-        execResult = { rowCount: paginatedResult.rows.length, executionTimeMs: 0, engine, stats: paginatedResult.stats }
-      } else if (engine === 'snowflake') {
-        if (!connectionId) throw new Error('No Snowflake connection selected')
-
-        const paginatedResult = await snowflakeStore.runQueryPaginated(
-          connectionId, query, batchSize, 0, true, abortController.signal,
-        )
-        await duckdbStore.storeResults(props.boxName || 'untitled', paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
-        if (props.boxId !== null) {
-          queryResultsStore.initQueryResult(props.boxId, 'snowflake', {
-            totalRows: paginatedResult.totalRows,
-            fetchedRows: paginatedResult.rows.length,
-            hasMoreRows: paginatedResult.hasMore,
-            nextOffset: paginatedResult.nextOffset,
-            originalQuery: query,
-            connectionId,
-            schema: paginatedResult.columns,
-          })
-        }
-        execResult = { rowCount: paginatedResult.rows.length, executionTimeMs: 0, engine, stats: paginatedResult.stats }
       } else {
-        throw new Error(`Database type "${engine}" is not yet supported`)
+        const store = getOffsetStore(engine)
+        if (!store || !connectionId) throw new Error(`No ${engine} connection selected`)
+
+        const paginatedResult = await store.runQueryPaginated(
+          connectionId, query, batchSize, 0, true, abortController.signal,
+        )
+        await duckdbStore.storeResults(props.boxName || 'untitled', paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
+        if (props.boxId !== null) {
+          queryResultsStore.initQueryResult(props.boxId, engine as DatabaseEngine, {
+            totalRows: paginatedResult.totalRows,
+            fetchedRows: paginatedResult.rows.length,
+            hasMoreRows: paginatedResult.hasMore,
+            nextOffset: paginatedResult.nextOffset,
+            originalQuery: query,
+            connectionId,
+            schema: paginatedResult.columns,
+          })
+        }
+        execResult = { rowCount: paginatedResult.rows.length, executionTimeMs: 0, engine, stats: paginatedResult.stats }
       }
 
       execResult.executionTimeMs = Math.round(performance.now() - startTime)

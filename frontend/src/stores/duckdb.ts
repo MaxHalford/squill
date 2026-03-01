@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
 import { loadCsvWithDuckDB } from '../services/csvHandler'
-import { sanitizeTableName } from '../utils/sqlSanitize'
+import { sanitizeTableName, escapeSqlString } from '../utils/sqlSanitize'
 import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
 import { loadSchema, saveSchema } from '../utils/storage'
 import { buildDuckDBSchema, type SchemaNamespace } from '../utils/schemaBuilder'
@@ -159,6 +159,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     return initPromise
   }
 
+  const ensureInit = async () => {
+    if (!isInitialized.value) await initialize()
+  }
+
   // Load metadata about existing tables
   const loadTablesMetadata = async () => {
     if (!conn.value) return
@@ -207,9 +211,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     schema?: ColumnSchema[],
     sourceEngine?: DatabaseEngine
   ): Promise<string | null> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     const tableName = sanitizeTableName(boxName)
 
@@ -313,9 +315,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     rows: Record<string, unknown>[],
     _schema?: ColumnSchema[]  // Kept for API compatibility, but not used
   ): Promise<number> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     if (!rows || rows.length === 0) {
       return 0
@@ -354,9 +354,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     arrowStream: ReadableStream<Uint8Array>,
     boxId: number | null = null
   ): Promise<{ tableName: string; rowCount: number; columns: string[] }> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     const tableName = sanitizeTableName(boxName)
     const startTime = performance.now()
@@ -423,9 +421,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     boxName: string,
     boxId: number | null = null
   ): Promise<QueryResult> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     await loadTablesMetadata()
 
@@ -482,9 +478,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
   // Run a query without storing results (for analytics, etc.)
   const runQuery = async (query: string): Promise<QueryResult> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     const startTime = performance.now()
 
@@ -527,9 +521,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     page: number,
     pageSize: number
   ): Promise<{ rows: Record<string, SerializableValue>[], columns: string[], columnTypes: Record<string, string> }> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     const offset = (page - 1) * pageSize
     const query = `SELECT * FROM ${tableName} LIMIT ${pageSize} OFFSET ${offset}`
@@ -558,9 +550,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
   // Get column names for a table
   const getTableColumns = async (tableName: string): Promise<string[]> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     try {
       const result = await conn.value!.query(`SELECT * FROM ${tableName} LIMIT 0`)
@@ -573,9 +563,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
   // Get table schema (column names and types) for appending data
   const getTableSchema = async (tableName: string): Promise<{ name: string; type: string }[]> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     try {
       const result = await conn.value!.query(`SELECT * FROM "${tableName}" LIMIT 0`)
@@ -591,9 +579,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
   // Get total row count for a table
   const getTableRowCount = async (tableName: string): Promise<number> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     // First check metadata cache
     const metadata = tables.value[tableName]
@@ -655,9 +641,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     // If names are the same after sanitization, nothing to do
     if (oldTableName === newTableName) return
 
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     try {
       // Check if old table exists
@@ -692,9 +676,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     file: File,
     boxId: number | null = null
   ): Promise<string | null> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     try {
       // Load CSV using DuckDB's native file loading
@@ -735,9 +717,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     format: ExportFormat,
     _filename: string
   ): Promise<Blob> => {
-    if (!isInitialized.value) {
-      await initialize()
-    }
+    await ensureInit()
 
     const selectQuery = `SELECT * FROM ${tableName}`
 
@@ -859,10 +839,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     connectionId: string,
     rows: SchemaRow[]
   ) => {
-    if (!isInitialized.value) await initialize()
+    await ensureInit()
 
-    const safeType = connectionType.replace(/'/g, "''")
-    const safeId = connectionId.replace(/'/g, "''")
+    const safeType = escapeSqlString(connectionType)
+    const safeId = escapeSqlString(connectionId)
     await conn.value!.query(
       `DELETE FROM _schemas WHERE connection_type = '${safeType}' AND connection_id = '${safeId}'`
     )
@@ -886,8 +866,8 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   ): Promise<SchemaNamespace> => {
     if (!isInitialized.value || !conn.value) return {}
 
-    const safeType = connectionType.replace(/'/g, "''")
-    const safeId = connectionId.replace(/'/g, "''")
+    const safeType = escapeSqlString(connectionType)
+    const safeId = escapeSqlString(connectionId)
     const result = await conn.value.query(`
       SELECT catalog, schema_name, table_name, column_name
       FROM _schemas
@@ -960,10 +940,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   ): Promise<SchemaItem[]> => {
     if (!isInitialized.value || !conn.value) return []
 
-    const safeType = connectionType.replace(/'/g, "''")
+    const safeType = escapeSqlString(connectionType)
     let where = `connection_type = '${safeType}'`
     if (connectionId) {
-      const safeId = connectionId.replace(/'/g, "''")
+      const safeId = escapeSqlString(connectionId)
       where += ` AND connection_id = '${safeId}'`
     }
 
@@ -1009,11 +989,11 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     catalog: string,
     rows: SchemaRow[]
   ) => {
-    if (!isInitialized.value) await initialize()
+    await ensureInit()
 
-    const safeType = connectionType.replace(/'/g, "''")
-    const safeId = connectionId.replace(/'/g, "''")
-    const safeCatalog = catalog.replace(/'/g, "''")
+    const safeType = escapeSqlString(connectionType)
+    const safeId = escapeSqlString(connectionId)
+    const safeCatalog = escapeSqlString(catalog)
     await conn.value!.query(
       `DELETE FROM _schemas WHERE connection_type = '${safeType}' AND connection_id = '${safeId}' AND catalog = '${safeCatalog}'`
     )
@@ -1035,11 +1015,11 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     connectionId: string,
     catalog: string
   ) => {
-    if (!isInitialized.value) await initialize()
+    await ensureInit()
 
-    const safeType = connectionType.replace(/'/g, "''")
-    const safeId = connectionId.replace(/'/g, "''")
-    const safeCatalog = catalog.replace(/'/g, "''")
+    const safeType = escapeSqlString(connectionType)
+    const safeId = escapeSqlString(connectionId)
+    const safeCatalog = escapeSqlString(catalog)
     await conn.value!.query(
       `DELETE FROM _schemas WHERE connection_type = '${safeType}' AND connection_id = '${safeId}' AND catalog = '${safeCatalog}'`
     )
@@ -1062,12 +1042,11 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   ) => {
     if (!isInitialized.value || !conn.value) return
 
-    const safe = (s: string) => s.replace(/'/g, "''")
     const catalogClause = catalog
-      ? `AND catalog = '${safe(catalog)}'`
+      ? `AND catalog = '${escapeSqlString(catalog)}'`
       : `AND catalog IS NULL`
     await conn.value.query(
-      `DELETE FROM _schemas WHERE connection_type = '${safe(connectionType)}' AND connection_id = '${safe(connectionId)}' ${catalogClause} AND schema_name = '${safe(schemaName)}' AND table_name = '${safe(tableName)}'`
+      `DELETE FROM _schemas WHERE connection_type = '${escapeSqlString(connectionType)}' AND connection_id = '${escapeSqlString(connectionId)}' ${catalogClause} AND schema_name = '${escapeSqlString(schemaName)}' AND table_name = '${escapeSqlString(tableName)}'`
     )
 
     if (columns.length > 0) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useQueryResultsStore } from '../stores/queryResults'
@@ -53,6 +53,15 @@ const hoveredRowIndex = ref<number | null>(null)
 const hoveredColumn = ref<string | null>(null)
 const currentPage = ref(1)
 const animationKey = ref(0) // Incremented to trigger row animations
+const isRevealing = ref(false) // Only true briefly after page change, not during scroll
+let revealTimer: ReturnType<typeof setTimeout> | null = null
+
+const triggerReveal = () => {
+  animationKey.value++
+  isRevealing.value = true
+  if (revealTimer) clearTimeout(revealTimer)
+  revealTimer = setTimeout(() => { isRevealing.value = false }, 600)
+}
 
 // Data state - fetched from DuckDB
 const pageData = ref<Record<string, unknown>[]>([])
@@ -76,8 +85,8 @@ const COLUMN_BUFFER = 2 // Render 2 extra columns on each side
 // Row virtualization state
 const scrollTop = ref(0)
 const containerHeight = ref(400)
-const ROW_HEIGHT = 28
-const ROW_BUFFER = 5 // Extra rows above/below viewport
+const measuredRowHeight = ref(22) // Measured from DOM, fallback to ~22px (3px padding + 12px*1.3 line-height + 3px padding)
+const ROW_BUFFER = 3 // Extra rows above/below viewport
 
 const pageSize = computed(() => settingsStore.paginationSize)
 
@@ -217,15 +226,16 @@ const visibleRowsData = computed(() => {
     return { rows, startIndex: 0, paddingTop: 0, paddingBottom: 0 }
   }
 
-  const startIndex = Math.max(0, Math.floor(scrollTop.value / ROW_HEIGHT) - ROW_BUFFER)
-  const visibleCount = Math.ceil(containerHeight.value / ROW_HEIGHT) + ROW_BUFFER * 2
+  const rh = measuredRowHeight.value
+  const startIndex = Math.max(0, Math.floor(scrollTop.value / rh) - ROW_BUFFER)
+  const visibleCount = Math.ceil(containerHeight.value / rh) + ROW_BUFFER * 2
   const endIndex = Math.min(rows.length, startIndex + visibleCount)
 
   return {
     rows: rows.slice(startIndex, endIndex),
     startIndex,
-    paddingTop: startIndex * ROW_HEIGHT,
-    paddingBottom: Math.max(0, (rows.length - endIndex) * ROW_HEIGHT),
+    paddingTop: startIndex * rh,
+    paddingBottom: Math.max(0, (rows.length - endIndex) * rh),
   }
 })
 
@@ -258,7 +268,8 @@ const fetchPage = async () => {
     pageData.value = result.rows
     columns.value = result.columns
     columnTypes.value = result.columnTypes
-    animationKey.value++ // Trigger row reveal animation
+    triggerReveal() // Trigger row reveal animation
+    nextTick(measureRowHeight)
   } catch (err) {
     console.error('Failed to fetch page:', err)
     pageData.value = []
@@ -562,16 +573,12 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 // Track scroll position for column + row virtualization
-let scrollRAF: number | null = null
+// Update synchronously so Vue batches the DOM update in the same frame as the scroll,
+// avoiding the 1-frame lag that causes visual jumps during slow scrolling.
 const handleTableScroll = () => {
-  if (!scrollRAF) {
-    scrollRAF = requestAnimationFrame(() => {
-      if (tableContainerRef.value) {
-        scrollLeft.value = tableContainerRef.value.scrollLeft
-        scrollTop.value = tableContainerRef.value.scrollTop
-      }
-      scrollRAF = null
-    })
+  if (tableContainerRef.value) {
+    scrollLeft.value = tableContainerRef.value.scrollLeft
+    scrollTop.value = tableContainerRef.value.scrollTop
   }
 }
 
@@ -580,6 +587,16 @@ const updateContainerSize = () => {
   if (tableContainerRef.value) {
     containerWidth.value = tableContainerRef.value.clientWidth
     containerHeight.value = tableContainerRef.value.clientHeight
+  }
+}
+
+// Measure actual rendered row height from the DOM
+const measureRowHeight = () => {
+  if (!tableRef.value) return
+  const row = tableRef.value.querySelector('tbody tr:not(.virtual-spacer)')
+  if (row) {
+    const h = (row as HTMLElement).getBoundingClientRect().height
+    if (h > 0) measuredRowHeight.value = h
   }
 }
 
@@ -644,6 +661,7 @@ onUnmounted(() => {
   // Clean up resize listeners in case component unmounts during resize
   document.removeEventListener('mousemove', handleResize)
   document.removeEventListener('mouseup', stopResize)
+  if (revealTimer) clearTimeout(revealTimer)
 
   // Clean up scroll listener and resize observer
   if (tableContainerRef.value) {
@@ -652,10 +670,6 @@ onUnmounted(() => {
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
-  }
-  if (scrollRAF) {
-    cancelAnimationFrame(scrollRAF)
-    scrollRAF = null
   }
 })
 
@@ -684,7 +698,7 @@ const handleTableMouseLeave = () => {
   }
 }
 
-defineExpose({ resetPagination, triggerReveal: () => { animationKey.value++ } })
+defineExpose({ resetPagination, triggerReveal })
 </script>
 
 <template>
@@ -945,7 +959,7 @@ defineExpose({ resetPagination, triggerReveal: () => { animationKey.value++ } })
             v-for="(row, i) in visibleRowsData.rows"
             :key="visibleRowsData.startIndex + i"
             :style="{ '--row-index': i }"
-            :class="{ 'reveal-row': true, 'stripe': (visibleRowsData.startIndex + i) % 2 === 1 }"
+            :class="{ 'reveal-row': isRevealing, 'stripe': (visibleRowsData.startIndex + i) % 2 === 1 }"
             @mouseenter="hoveredRowIndex = visibleRowsData.startIndex + i"
             @mouseleave="hoveredRowIndex = null"
           >

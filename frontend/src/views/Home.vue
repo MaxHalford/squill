@@ -655,62 +655,20 @@ const handleNavigateToTable = async (info: {
 }
 
 // Handle creating a new SQL box that queries from an existing box
-const handleCreateQueryBoxBelow = async (sourceBox: { id: number; name: string; x: number; y: number; width: number; height: number; connectionId?: string }) => {
-  // Default SQL box dimensions: 600x500
-  // addBox centers at position, so we need to add half the new box height
-  const NEW_BOX_HEIGHT = 500
-  const GAP = 80 // Gap between boxes for arrow visibility
-  const position = {
-    x: sourceBox.x + sourceBox.width / 2,
-    y: sourceBox.y + sourceBox.height + GAP + NEW_BOX_HEIGHT / 2
-  }
+const handleCreateQueryBox = async (
+  sourceBox: { id: number; name: string; x: number; y: number; width: number; height: number; connectionId?: string },
+  direction: 'below' | 'right',
+) => {
+  const GAP = 80
+  const position = direction === 'below'
+    ? { x: sourceBox.x + sourceBox.width / 2, y: sourceBox.y + sourceBox.height + GAP + 500 / 2 }
+    : { x: sourceBox.x + sourceBox.width + GAP + 600 / 2, y: sourceBox.y + sourceBox.height / 2 }
 
-  // Use the source box's connection
   const connectionId = sourceBox.connectionId || 'duckdb-local'
-
-  // Create new box
   const boxId = canvasStore.addBox('sql', position, 'duckdb', connectionId)
-
-  // Generate query that references the source box's table
   const tableName = duckdbStore.sanitizeTableName(sourceBox.name)
-  const query = `SELECT *\nFROM ${tableName}`
-
-  canvasStore.updateBoxQuery(boxId, query)
-
-  // Select and focus the new box
+  canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${tableName}`)
   selectBox(boxId, { shouldPan: true })
-
-  // Auto-execute after a short delay to let the box render
-  await nextTick()
-  setTimeout(() => executeBoxQuery(boxId), 100)
-}
-
-const handleCreateQueryBoxRight = async (sourceBox: { id: number; name: string; x: number; y: number; width: number; height: number; connectionId?: string }) => {
-  // Default SQL box dimensions: 600x500
-  // addBox centers at position, so we need to add half the new box width
-  const NEW_BOX_WIDTH = 600
-  const GAP = 80 // Gap between boxes for arrow visibility
-  const position = {
-    x: sourceBox.x + sourceBox.width + GAP + NEW_BOX_WIDTH / 2,
-    y: sourceBox.y + sourceBox.height / 2
-  }
-
-  // Use the source box's connection
-  const connectionId = sourceBox.connectionId || 'duckdb-local'
-
-  // Create new box
-  const boxId = canvasStore.addBox('sql', position, 'duckdb', connectionId)
-
-  // Generate query that references the source box's table
-  const tableName = duckdbStore.sanitizeTableName(sourceBox.name)
-  const query = `SELECT *\nFROM ${tableName}`
-
-  canvasStore.updateBoxQuery(boxId, query)
-
-  // Select and focus the new box
-  selectBox(boxId, { shouldPan: true })
-
-  // Auto-execute after a short delay to let the box render
   await nextTick()
   setTimeout(() => executeBoxQuery(boxId), 100)
 }
@@ -1008,8 +966,8 @@ onUnmounted(() => {
       <!-- Box creation buttons (floating near selected SQL box) -->
       <BoxCreationButtons
         :selected-box="selectedSqlBox"
-        @create-box-below="handleCreateQueryBoxBelow"
-        @create-box-right="handleCreateQueryBoxRight"
+        @create-box-below="(sb) => handleCreateQueryBox(sb, 'below')"
+        @create-box-right="(sb) => handleCreateQueryBox(sb, 'right')"
       />
 
       <template

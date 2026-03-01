@@ -3,13 +3,7 @@ import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import type { Box } from '../types/canvas'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
-
-interface BoundingBox {
-  minX: number
-  minY: number
-  maxX: number
-  maxY: number
-}
+import { calculateBoundingBox } from '../utils/geometry'
 
 interface Point {
   x: number
@@ -122,56 +116,50 @@ const viewportStyle = computed(() => {
 
 provide('canvasZoom', zoom)
 
-// --- Results freeze during canvas interaction (zoom < 0.6) ---
-// Skip rendering result tables when zoomed out and interacting,
-// since many boxes are visible and each ResultsTable is expensive.
 const isAnimatingPan = ref(false)
-const isSustainedZoom = ref(false)
-let wheelCount = 0
-let wheelResetTimer: ReturnType<typeof setTimeout> | null = null
-const FREEZE_ZOOM_THRESHOLD = 0.6
-
-const trackWheelForFreeze = () => {
-  wheelCount++
-  if (wheelCount >= 2 && zoom.value < FREEZE_ZOOM_THRESHOLD) isSustainedZoom.value = true
-  if (wheelResetTimer) clearTimeout(wheelResetTimer)
-  wheelResetTimer = setTimeout(() => {
-    wheelCount = 0
-    isSustainedZoom.value = false
-    wheelResetTimer = null
-  }, ZOOM_IDLE_DELAY)
-}
-
-const shouldFreezeResults = computed(() => {
-  if (zoom.value >= FREEZE_ZOOM_THRESHOLD) return false
-  return isSustainedZoom.value || isPanning.value || isAnimatingPan.value
-})
-provide('isCanvasInteracting', shouldFreezeResults)
 
 const PADDING = 100
 
-const calculateBoundingBox = (boxes: Box[]): BoundingBox => {
-  if (!boxes?.length) {
-    return { minX: 0, minY: 0, maxX: 800, maxY: 600 }
+let animationFrameId: number | null = null
+
+const animateTo = (
+  targets: { pan: Point; zoom?: number },
+  onComplete?: () => void,
+) => {
+  if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+  isAnimatingPan.value = true
+  const startPan = { ...pan.value }
+  const startZoom = zoom.value
+  const startTime = performance.now()
+  const duration = 400
+  const animate = (currentTime: number) => {
+    const progress = Math.min((currentTime - startTime) / duration, 1)
+    const eased = 1 - Math.pow(1 - progress, 3)
+    pan.value = {
+      x: startPan.x + (targets.pan.x - startPan.x) * eased,
+      y: startPan.y + (targets.pan.y - startPan.y) * eased,
+    }
+    if (targets.zoom !== undefined) {
+      zoom.value = startZoom + (targets.zoom - startZoom) * eased
+      markZoomActive()
+    }
+    if (progress < 1) {
+      animationFrameId = requestAnimationFrame(animate)
+    } else {
+      animationFrameId = null
+      isAnimatingPan.value = false
+      onComplete?.()
+    }
   }
-
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-
-  for (const box of boxes) {
-    minX = Math.min(minX, box.x)
-    minY = Math.min(minY, box.y)
-    maxX = Math.max(maxX, box.x + box.width)
-    maxY = Math.max(maxY, box.y + box.height)
-  }
-
-  return { minX, minY, maxX, maxY }
+  animationFrameId = requestAnimationFrame(animate)
 }
 
 const fitToView = () => {
   if (!canvasRef.value || !props.boxes?.length) return
 
   const rect = canvasRef.value.getBoundingClientRect()
-  const { minX, minY, maxX, maxY } = calculateBoundingBox(props.boxes)
+  const bb = calculateBoundingBox(props.boxes)
+  const { minX, minY, maxX, maxY } = bb ?? { minX: 0, minY: 0, maxX: 800, maxY: 600 }
 
   const contentWidth = maxX - minX
   const contentHeight = maxY - minY
@@ -183,40 +171,13 @@ const fitToView = () => {
   const contentCenterX = (minX + maxX) / 2
   const contentCenterY = (minY + maxY) / 2
 
-  const targetPan = {
-    x: rect.width / 2 - contentCenterX * targetZoom,
-    y: rect.height / 2 - contentCenterY * targetZoom
-  }
-
-  // Cancel any existing animation
-  if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
-  isAnimatingPan.value = true
-
-  const startPan = { ...pan.value }
-  const startZoom = zoom.value
-  const startTime = performance.now()
-  const duration = 400
-
-  const animate = (currentTime: number) => {
-    const progress = Math.min((currentTime - startTime) / duration, 1)
-    const eased = 1 - Math.pow(1 - progress, 3)
-
-    pan.value = {
-      x: startPan.x + (targetPan.x - startPan.x) * eased,
-      y: startPan.y + (targetPan.y - startPan.y) * eased
-    }
-    zoom.value = startZoom + (targetZoom - startZoom) * eased
-    markZoomActive()
-
-    if (progress < 1) {
-      animationFrameId = requestAnimationFrame(animate)
-    } else {
-      animationFrameId = null
-      isAnimatingPan.value = false
-    }
-  }
-
-  animationFrameId = requestAnimationFrame(animate)
+  animateTo({
+    pan: {
+      x: rect.width / 2 - contentCenterX * targetZoom,
+      y: rect.height / 2 - contentCenterY * targetZoom,
+    },
+    zoom: targetZoom,
+  })
 }
 
 const getViewportCenter = (): Point => {
@@ -229,43 +190,17 @@ const getViewportCenter = (): Point => {
   }
 }
 
-let animationFrameId: number | null = null
-
 const panToBox = (boxId: number) => {
   const box = props.boxes.find(b => b.id === boxId)
   if (!box || !canvasRef.value) return
 
   const rect = canvasRef.value.getBoundingClientRect()
-  const targetPan = {
-    x: rect.width / 2 - (box.x + box.width / 2) * zoom.value,
-    y: rect.height / 2 - (box.y + box.height / 2) * zoom.value
-  }
-
-  if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
-  isAnimatingPan.value = true
-
-  const startPan = { ...pan.value }
-  const startTime = performance.now()
-  const duration = 400
-
-  const animate = (currentTime: number) => {
-    const progress = Math.min((currentTime - startTime) / duration, 1)
-    const eased = 1 - Math.pow(1 - progress, 3)
-
-    pan.value = {
-      x: startPan.x + (targetPan.x - startPan.x) * eased,
-      y: startPan.y + (targetPan.y - startPan.y) * eased
-    }
-
-    if (progress < 1) {
-      animationFrameId = requestAnimationFrame(animate)
-    } else {
-      animationFrameId = null
-      isAnimatingPan.value = false
-    }
-  }
-
-  animationFrameId = requestAnimationFrame(animate)
+  animateTo({
+    pan: {
+      x: rect.width / 2 - (box.x + box.width / 2) * zoom.value,
+      y: rect.height / 2 - (box.y + box.height / 2) * zoom.value,
+    },
+  })
 }
 
 const screenToCanvas = (screenX: number, screenY: number): Point => {
@@ -329,7 +264,6 @@ const handleWheel = (e: WheelEvent) => {
   }
   zoom.value = newZoom
   markZoomActive()
-  trackWheelForFreeze()
 }
 
 const handleMouseDown = (e: MouseEvent) => {
@@ -524,10 +458,6 @@ onUnmounted(() => {
     zoomIdleTimer = null
   }
 
-  if (wheelResetTimer) {
-    clearTimeout(wheelResetTimer)
-    wheelResetTimer = null
-  }
 
 })
 </script>
