@@ -122,6 +122,32 @@ const viewportStyle = computed(() => {
 
 provide('canvasZoom', zoom)
 
+// --- Results freeze during canvas interaction (zoom < 0.6) ---
+// Skip rendering result tables when zoomed out and interacting,
+// since many boxes are visible and each ResultsTable is expensive.
+const isAnimatingPan = ref(false)
+const isSustainedZoom = ref(false)
+let wheelCount = 0
+let wheelResetTimer: ReturnType<typeof setTimeout> | null = null
+const FREEZE_ZOOM_THRESHOLD = 0.6
+
+const trackWheelForFreeze = () => {
+  wheelCount++
+  if (wheelCount >= 2 && zoom.value < FREEZE_ZOOM_THRESHOLD) isSustainedZoom.value = true
+  if (wheelResetTimer) clearTimeout(wheelResetTimer)
+  wheelResetTimer = setTimeout(() => {
+    wheelCount = 0
+    isSustainedZoom.value = false
+    wheelResetTimer = null
+  }, ZOOM_IDLE_DELAY)
+}
+
+const shouldFreezeResults = computed(() => {
+  if (zoom.value >= FREEZE_ZOOM_THRESHOLD) return false
+  return isSustainedZoom.value || isPanning.value || isAnimatingPan.value
+})
+provide('isCanvasInteracting', shouldFreezeResults)
+
 const PADDING = 100
 
 const calculateBoundingBox = (boxes: Box[]): BoundingBox => {
@@ -164,6 +190,7 @@ const fitToView = () => {
 
   // Cancel any existing animation
   if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+  isAnimatingPan.value = true
 
   const startPan = { ...pan.value }
   const startZoom = zoom.value
@@ -185,6 +212,7 @@ const fitToView = () => {
       animationFrameId = requestAnimationFrame(animate)
     } else {
       animationFrameId = null
+      isAnimatingPan.value = false
     }
   }
 
@@ -214,6 +242,7 @@ const panToBox = (boxId: number) => {
   }
 
   if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+  isAnimatingPan.value = true
 
   const startPan = { ...pan.value }
   const startTime = performance.now()
@@ -232,6 +261,7 @@ const panToBox = (boxId: number) => {
       animationFrameId = requestAnimationFrame(animate)
     } else {
       animationFrameId = null
+      isAnimatingPan.value = false
     }
   }
 
@@ -299,6 +329,7 @@ const handleWheel = (e: WheelEvent) => {
   }
   zoom.value = newZoom
   markZoomActive()
+  trackWheelForFreeze()
 }
 
 const handleMouseDown = (e: MouseEvent) => {
@@ -491,6 +522,11 @@ onUnmounted(() => {
   if (zoomIdleTimer) {
     clearTimeout(zoomIdleTimer)
     zoomIdleTimer = null
+  }
+
+  if (wheelResetTimer) {
+    clearTimeout(wheelResetTimer)
+    wheelResetTimer = null
   }
 
 })

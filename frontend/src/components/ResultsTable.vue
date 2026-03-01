@@ -73,6 +73,12 @@ const scrollLeft = ref(0)
 const containerWidth = ref(800)
 const COLUMN_BUFFER = 2 // Render 2 extra columns on each side
 
+// Row virtualization state
+const scrollTop = ref(0)
+const containerHeight = ref(400)
+const ROW_HEIGHT = 28
+const ROW_BUFFER = 5 // Extra rows above/below viewport
+
 const pageSize = computed(() => settingsStore.paginationSize)
 
 // Get fetch state for this box if available
@@ -203,6 +209,34 @@ const visibleColumnsData = computed(() => {
 })
 
 const visibleColumns = computed(() => visibleColumnsData.value.columns)
+
+// Row virtualization: only render visible rows
+const visibleRowsData = computed(() => {
+  const rows = pageData.value
+  if (rows.length <= 30) {
+    return { rows, startIndex: 0, paddingTop: 0, paddingBottom: 0 }
+  }
+
+  const startIndex = Math.max(0, Math.floor(scrollTop.value / ROW_HEIGHT) - ROW_BUFFER)
+  const visibleCount = Math.ceil(containerHeight.value / ROW_HEIGHT) + ROW_BUFFER * 2
+  const endIndex = Math.min(rows.length, startIndex + visibleCount)
+
+  return {
+    rows: rows.slice(startIndex, endIndex),
+    startIndex,
+    paddingTop: startIndex * ROW_HEIGHT,
+    paddingBottom: Math.max(0, (rows.length - endIndex) * ROW_HEIGHT),
+  }
+})
+
+// Total colspan for spacer rows (row number + padding cells + visible columns)
+const totalColspan = computed(() => {
+  let count = 1 // row number column
+  if (visibleColumnsData.value.paddingLeft > 0) count++
+  count += visibleColumns.value.length
+  if (visibleColumnsData.value.paddingRight > 0) count++
+  return count
+})
 
 // Fetch a page of data from DuckDB
 const fetchPage = async () => {
@@ -527,23 +561,25 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
-// Track horizontal scroll for column virtualization
+// Track scroll position for column + row virtualization
 let scrollRAF: number | null = null
 const handleTableScroll = () => {
   if (!scrollRAF) {
     scrollRAF = requestAnimationFrame(() => {
       if (tableContainerRef.value) {
         scrollLeft.value = tableContainerRef.value.scrollLeft
+        scrollTop.value = tableContainerRef.value.scrollTop
       }
       scrollRAF = null
     })
   }
 }
 
-// Track container width for virtualization
-const updateContainerWidth = () => {
+// Track container size for virtualization
+const updateContainerSize = () => {
   if (tableContainerRef.value) {
     containerWidth.value = tableContainerRef.value.clientWidth
+    containerHeight.value = tableContainerRef.value.clientHeight
   }
 }
 
@@ -594,10 +630,10 @@ onMounted(() => {
   // Column virtualization: track scroll and container size
   if (tableContainerRef.value) {
     tableContainerRef.value.addEventListener('scroll', handleTableScroll, { passive: true })
-    updateContainerWidth()
+    updateContainerSize()
 
     resizeObserver = new ResizeObserver(() => {
-      updateContainerWidth()
+      updateContainerSize()
     })
     resizeObserver.observe(tableContainerRef.value)
   }
@@ -648,7 +684,7 @@ const handleTableMouseLeave = () => {
   }
 }
 
-defineExpose({ resetPagination })
+defineExpose({ resetPagination, triggerReveal: () => { animationKey.value++ } })
 </script>
 
 <template>
@@ -900,12 +936,17 @@ defineExpose({ resetPagination })
           </tr>
         </thead>
         <tbody :key="animationKey">
+          <!-- Top spacer for virtualized rows above viewport -->
+          <tr v-if="visibleRowsData.paddingTop > 0" class="virtual-spacer" aria-hidden="true">
+            <td :colspan="totalColspan" :style="{ height: visibleRowsData.paddingTop + 'px' }" />
+          </tr>
+
           <tr
-            v-for="(row, index) in pageData"
-            :key="index"
-            :style="{ '--row-index': index }"
-            class="reveal-row"
-            @mouseenter="hoveredRowIndex = index"
+            v-for="(row, i) in visibleRowsData.rows"
+            :key="visibleRowsData.startIndex + i"
+            :style="{ '--row-index': i }"
+            :class="{ 'reveal-row': true, 'stripe': (visibleRowsData.startIndex + i) % 2 === 1 }"
+            @mouseenter="hoveredRowIndex = visibleRowsData.startIndex + i"
             @mouseleave="hoveredRowIndex = null"
           >
             <th
@@ -914,16 +955,16 @@ defineExpose({ resetPagination })
             >
               <span
                 class="row-number"
-                :class="{ hidden: showRowDetail && hoveredRowIndex === index }"
+                :class="{ hidden: showRowDetail && hoveredRowIndex === visibleRowsData.startIndex + i }"
               >
-                {{ (currentPage - 1) * pageSize + index + 1 }}
+                {{ (currentPage - 1) * pageSize + visibleRowsData.startIndex + i + 1 }}
               </span>
               <button
                 v-if="showRowDetail"
                 class="detail-btn"
-                :class="{ visible: hoveredRowIndex === index }"
+                :class="{ visible: hoveredRowIndex === visibleRowsData.startIndex + i }"
                 aria-label="View row details"
-                @click.stop="handleShowDetail($event, row, index)"
+                @click.stop="handleShowDetail($event, row, visibleRowsData.startIndex + i)"
               >
                 <svg
                   width="16"
@@ -966,6 +1007,11 @@ defineExpose({ resetPagination })
               v-if="visibleColumnsData.paddingRight > 0"
               class="virtual-padding-cell"
             />
+          </tr>
+
+          <!-- Bottom spacer for virtualized rows below viewport -->
+          <tr v-if="visibleRowsData.paddingBottom > 0" class="virtual-spacer" aria-hidden="true">
+            <td :colspan="totalColspan" :style="{ height: visibleRowsData.paddingBottom + 'px' }" />
           </tr>
         </tbody>
       </table>
@@ -1350,13 +1396,16 @@ defineExpose({ resetPagination })
 /* Row backgrounds - subtle TUI style */
 .results-table tbody tr {
   background: var(--surface-primary);
-  /* Performance: skip rendering off-screen rows */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 28px;
 }
 
-.results-table tbody tr:nth-child(even) {
+.results-table tbody tr.stripe {
   background: var(--table-row-stripe-bg);
+}
+
+/* Spacer rows for row virtualization */
+.results-table .virtual-spacer td {
+  padding: 0;
+  border: none;
 }
 
 .results-table tbody tr:hover {
@@ -1425,7 +1474,7 @@ defineExpose({ resetPagination })
 }
 
 /* Body row number cells inherit row background */
-.results-table tbody tr:nth-child(even) .row-number-col {
+.results-table tbody tr.stripe .row-number-col {
   background: var(--table-row-stripe-bg);
 }
 

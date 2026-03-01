@@ -6,7 +6,7 @@ import { loadCsvWithDuckDB } from '../services/csvHandler'
 import { sanitizeTableName } from '../utils/sqlSanitize'
 import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
 import { loadSchema, saveSchema } from '../utils/storage'
-import type { SchemaNamespace } from '../utils/schemaBuilder'
+import { buildDuckDBSchema, type SchemaNamespace } from '../utils/schemaBuilder'
 import type { SchemaItem } from '../utils/textSimilarity'
 import type { DatabaseEngine } from '../types/database'
 
@@ -612,6 +612,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
+  // Cached DuckDB schema for CodeMirror autocompletion.
+  // Computed once per tables change, shared across all QueryPanel instances.
+  const duckdbEditorSchema = computed(() => buildDuckDBSchema(tables.value))
+
   // Get list of all table names
   const getTableNames = computed(() => Object.keys(tables.value))
 
@@ -1117,6 +1121,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     upsertTableSchema,
     getEditorSchema,
     getSchemaItems,
+    duckdbEditorSchema,
     schemaRefreshMessage,
   }
 })

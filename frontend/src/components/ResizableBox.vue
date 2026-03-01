@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, inject } from 'vue'
+import { ref, watch, onUnmounted, inject, provide } from 'vue'
+import { useBoxVisibility } from '../composables/useBoxVisibility'
 
 interface Position {
   x: number
@@ -38,6 +39,8 @@ const emit = defineEmits<{
 
 const boxRef = ref<HTMLElement | null>(null)
 const headerRef = ref<HTMLElement | null>(null)
+const { isVisible: boxVisible } = useBoxVisibility(boxRef)
+provide('boxVisible', boxVisible)
 
 const position = ref<Position>({ x: props.initialX ?? 100, y: props.initialY ?? 100 })
 const size = ref<Size>({ width: props.initialWidth ?? 600, height: props.initialHeight ?? 500 })
@@ -69,6 +72,8 @@ const handleHeaderMouseDown = (e: MouseEvent) => {
   emit('select', { shouldPan: false })
   isDragging.value = true
   emit('drag-start')
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', handleMouseUp)
 
   const zoom = canvasZoom.value
   dragStart.value = {
@@ -85,6 +90,8 @@ const handleResizeStart = (e: MouseEvent, direction: ResizeDirection) => {
   isResizing.value = true
   resizeDirection.value = direction
   emit('drag-start')
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', handleMouseUp)
   dragStart.value = { x: e.clientX, y: e.clientY }
   initialSize.value = { ...size.value }
   initialPosition.value = { ...position.value }
@@ -149,13 +156,11 @@ const handleMouseUp = () => {
   isDragging.value = false
   isResizing.value = false
   resizeDirection.value = null
+  window.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('mouseup', handleMouseUp)
 }
 
-onMounted(() => {
-  window.addEventListener('mousemove', handleMouseMove)
-  window.addEventListener('mouseup', handleMouseUp)
-})
-
+// Safety net: clean up if component unmounts mid-drag
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('mouseup', handleMouseUp)

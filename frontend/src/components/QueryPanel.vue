@@ -20,13 +20,17 @@ import { useQueryResultsStore } from '../stores/queryResults'
 import { getEffectiveEngine, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
 import { useQueryExecution } from '../composables/useQueryExecution'
-import { buildDuckDBSchema, type SchemaNamespace } from '../utils/schemaBuilder'
+import type { SchemaNamespace } from '../utils/schemaBuilder'
 import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai'
 import { isFixableError } from '../utils/errorClassifier'
 import { getConnectionDisplayName } from '../utils/connectionHelpers'
 import { type DatabaseEngine, type QueryCompleteEvent } from '../types/database'
 
 export type { QueryCompleteEvent }
+
+const boxVisible = inject('boxVisible', ref(true))
+const isCanvasInteracting = inject('isCanvasInteracting', ref(false))
+const resultsRef = ref<InstanceType<typeof ResultsTable> | null>(null)
 
 // ---------------------------------------------------------------------------
 // Stores
@@ -116,6 +120,29 @@ const rootRef = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
 
 // ---------------------------------------------------------------------------
+// Visibility — must be after resultTableName declaration (avoids TDZ)
+// ---------------------------------------------------------------------------
+
+// Unified: hide results when off-screen OR during canvas interaction (if has results)
+const shouldHideResults = computed(() =>
+  !!resultTableName.value && (!boxVisible.value || isCanvasInteracting.value)
+)
+
+// Trigger row reveal animation on any hide → show transition (RAF-debounced
+// so rapid IntersectionObserver fires during fitToView coalesce instead of
+// recreating <tbody> while Vue is mid-patch → "parentNode is null").
+let revealRAF: number | null = null
+watch(shouldHideResults, (hidden, wasHidden) => {
+  if (!hidden && wasHidden) {
+    if (revealRAF) cancelAnimationFrame(revealRAF)
+    revealRAF = requestAnimationFrame(() => {
+      resultsRef.value?.triggerReveal()
+      revealRAF = null
+    })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Sync v-model
 // ---------------------------------------------------------------------------
 
@@ -186,21 +213,27 @@ const isEngineLoading = computed(() => {
 // loaded asynchronously from the _schemas DuckDB table.
 const editorSchema = ref<SchemaNamespace>({})
 
+let schemaTimeout: ReturnType<typeof setTimeout> | null = null
+const updateEditorSchema = async () => {
+  const duckdbSchema = duckdbStore.duckdbEditorSchema
+  const conn = boxConnection.value
+  if (conn?.type && conn.type !== 'duckdb' && conn?.id) {
+    const connectionSchema = await duckdbStore.getEditorSchema(
+      conn.type,
+      conn.id,
+      conn.projectId,
+    )
+    editorSchema.value = { ...duckdbSchema, ...connectionSchema }
+  } else {
+    editorSchema.value = duckdbSchema
+  }
+}
+
 watch(
   [() => boxConnection.value, () => duckdbStore.schemaVersion],
-  async () => {
-    const duckdbSchema = buildDuckDBSchema(duckdbStore.tables)
-    const conn = boxConnection.value
-    if (conn?.type && conn.type !== 'duckdb' && conn?.id) {
-      const connectionSchema = await duckdbStore.getEditorSchema(
-        conn.type,
-        conn.id,
-        conn.projectId,
-      )
-      editorSchema.value = { ...duckdbSchema, ...connectionSchema }
-    } else {
-      editorSchema.value = duckdbSchema
-    }
+  () => {
+    if (schemaTimeout) clearTimeout(schemaTimeout)
+    schemaTimeout = setTimeout(updateEditorSchema, 300)
   },
   { immediate: true },
 )
@@ -506,6 +539,8 @@ const handleSplitterMouseDown = (e: MouseEvent) => {
   e.preventDefault()
   isDraggingSplitter.value = true
   dragStart.value.y = e.clientY
+  window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('mouseup', handleMouseUp)
 }
 
 const handleMouseMove = (e: MouseEvent) => {
@@ -527,6 +562,8 @@ const handleMouseUp = () => {
   if (isDraggingSplitter.value) {
     isDraggingSplitter.value = false
     emit('update:editorHeight', editorHeight.value)
+    window.removeEventListener('mousemove', handleMouseMove)
+    window.removeEventListener('mouseup', handleMouseUp)
   }
 }
 
@@ -540,9 +577,6 @@ const handleSplitterDblClick = () => {
 // ---------------------------------------------------------------------------
 
 onMounted(() => {
-  window.addEventListener('mousemove', handleMouseMove)
-  window.addEventListener('mouseup', handleMouseUp)
-
   // Track panel height via ResizeObserver
   if (rootRef.value) {
     resizeObserver = new ResizeObserver((entries) => {
@@ -558,6 +592,8 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('mouseup', handleMouseUp)
   resizeObserver?.disconnect()
+  if (schemaTimeout) clearTimeout(schemaTimeout)
+  if (revealRAF) cancelAnimationFrame(revealRAF)
 
   if (backgroundLoadController) {
     backgroundLoadController.abort()
@@ -611,21 +647,24 @@ defineExpose({
       @dblclick="handleSplitterDblClick"
     />
 
-    <ResultsTable
-      :table-name="resultTableName"
-      :stats="queryStats"
-      :error="error"
-      :is-fetching-fix="isFetchingFix"
-      :no-relevant-fix="suggestion?.noRelevantFix"
-      :box-name="boxName"
-      :box-id="boxId"
-      :connection-name="connectionDisplayName"
-      :show-row-detail="showRowDetail"
-      :show-analytics="showAnalytics"
-      @show-row-detail="emit('show-row-detail', $event)"
-      @show-column-analytics="emit('show-column-analytics', $event)"
-      @request-more-data="handleRequestMoreData"
-    />
+    <div class="results-wrapper" :class="{ 'interaction-freeze': shouldHideResults }">
+      <ResultsTable
+        ref="resultsRef"
+        :table-name="resultTableName"
+        :stats="queryStats"
+        :error="error"
+        :is-fetching-fix="isFetchingFix"
+        :no-relevant-fix="suggestion?.noRelevantFix"
+        :box-name="boxName"
+        :box-id="boxId"
+        :connection-name="connectionDisplayName"
+        :show-row-detail="showRowDetail"
+        :show-analytics="showAnalytics"
+        @show-row-detail="emit('show-row-detail', $event)"
+        @show-column-analytics="emit('show-column-analytics', $event)"
+        @request-more-data="handleRequestMoreData"
+      />
+    </div>
   </div>
 </template>
 
@@ -647,6 +686,26 @@ defineExpose({
   position: relative;
   z-index: 10;
   isolation: isolate;
+}
+
+.results-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.results-wrapper.interaction-freeze {
+  content-visibility: hidden;
+  contain-intrinsic-size: auto 300px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--surface-primary) 0px,
+    var(--surface-primary) 28px,
+    var(--table-row-stripe-bg) 28px,
+    var(--table-row-stripe-bg) 56px
+  );
 }
 
 /* Larger hit area for easier dragging */

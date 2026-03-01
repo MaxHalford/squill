@@ -163,8 +163,13 @@ watch(() => props.initialQuery, (newQuery) => {
 })
 
 // Recalculate dependencies when DuckDB schema changes (table renames, etc.)
+// Debounced to avoid N*M cascade when many boxes react to schema changes.
+let depTimeout: ReturnType<typeof setTimeout> | null = null
 watch(() => duckdbStore.schemaVersion, () => {
-  if (queryText.value) updateDependenciesFromQuery(queryText.value)
+  if (depTimeout) clearTimeout(depTimeout)
+  depTimeout = setTimeout(() => {
+    if (queryText.value) updateDependenciesFromQuery(queryText.value)
+  }, 500)
 })
 
 // Debounced emit of query changes for persistence + dependency tracking
@@ -299,6 +304,10 @@ onUnmounted(() => {
   if (queryTimeout) {
     clearTimeout(queryTimeout)
     queryTimeout = null
+  }
+  if (depTimeout) {
+    clearTimeout(depTimeout)
+    depTimeout = null
   }
   if (unregisterBoxExecutor) {
     unregisterBoxExecutor(props.boxId)

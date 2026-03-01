@@ -6,6 +6,7 @@ import DependencyArrows from '../components/DependencyArrows.vue'
 import OnboardingModal from '../components/OnboardingModal.vue'
 import UploadProgress from '../components/UploadProgress.vue'
 import BoxCreationButtons from '../components/BoxCreationButtons.vue'
+import DebugPanel from '../components/DebugPanel.vue'
 
 // Lazy-load box components - only loaded when needed
 const SqlBox = defineAsyncComponent(() => import('../components/SqlBox.vue'))
@@ -42,6 +43,7 @@ const onboardingDismissed = ref(false)
 const showPostgresModal = ref(false)
 const showSnowflakeModal = ref(false)
 const showShortcutsModal = ref(false)
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
 
 // CSV upload progress state
 const uploadingFiles = ref<string[]>([])
@@ -735,13 +737,24 @@ const handleKeyDown = (e: KeyboardEvent) => {
     }
   }
 
-  // Cmd+Enter to execute query in selected SQL box (when not focused in editor)
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !isInTextInput && canvasStore.selectedBoxId !== null) {
-    const box = canvasStore.boxes.find(b => b.id === canvasStore.selectedBoxId)
-    if (box?.type === 'sql') {
-      e.preventDefault()
-      e.stopPropagation()
-      executeBoxQuery?.(box.id)
+  // Cmd+Enter to execute query in selected SQL box(es) (when not focused in editor)
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !isInTextInput) {
+    if (canvasStore.selectedBoxIds.size > 0) {
+      const sqlBoxIds = canvasStore.boxes
+        .filter(b => canvasStore.selectedBoxIds.has(b.id) && b.type === 'sql')
+        .map(b => b.id)
+      if (sqlBoxIds.length > 0) {
+        e.preventDefault()
+        e.stopPropagation()
+        sqlBoxIds.forEach(id => executeBoxQuery(id))
+      }
+    } else if (canvasStore.selectedBoxId !== null) {
+      const box = canvasStore.boxes.find(b => b.id === canvasStore.selectedBoxId)
+      if (box?.type === 'sql') {
+        e.preventDefault()
+        e.stopPropagation()
+        executeBoxQuery(box.id)
+      }
     }
   }
 
@@ -1168,6 +1181,11 @@ onUnmounted(() => {
     <UploadProgress
       :files="uploadingFiles"
       :current-index="uploadCurrentIndex"
+    />
+
+    <DebugPanel
+      v-if="isLocalhost && canvasRef"
+      :zoom="canvasRef.zoom"
     />
 
     <!-- Bottom progress bar for DuckDB init and schema refresh -->
