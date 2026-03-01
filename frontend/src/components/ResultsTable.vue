@@ -222,7 +222,7 @@ const visibleColumns = computed(() => visibleColumnsData.value.columns)
 // Row virtualization: only render visible rows
 const visibleRowsData = computed(() => {
   const rows = pageData.value
-  if (rows.length <= 30) {
+  if (rows.length <= 15) {
     return { rows, startIndex: 0, paddingTop: 0, paddingBottom: 0 }
   }
 
