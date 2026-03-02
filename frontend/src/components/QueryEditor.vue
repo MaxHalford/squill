@@ -16,7 +16,7 @@ import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
 import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { Compartment, StateField, StateEffect, RangeSet, EditorState } from '@codemirror/state'
-import { Decoration, WidgetType, tooltips, lineNumbers, highlightActiveLineGutter, drawSelection, dropCursor, highlightSpecialChars, keymap } from '@codemirror/view'
+import { Decoration, WidgetType, tooltips, lineNumbers, drawSelection, dropCursor, highlightSpecialChars, keymap } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, insertNewline, indentMore, indentLess } from '@codemirror/commands'
 import { syntaxHighlighting, HighlightStyle, bracketMatching, indentUnit } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
@@ -386,9 +386,6 @@ const editorTheme = EditorView.theme({
     color: 'var(--editor-gutter-color)',
     border: 'none',
   },
-  '.cm-activeLineGutter': {
-    backgroundColor: 'var(--editor-active-line-bg)',
-  },
   '&': {
     fontFamily: 'var(--font-family-mono)',
   },
@@ -478,7 +475,7 @@ watch(() => settingsStore.showEditorLineNumbers, (show) => {
   if (editorView.value) {
     editorView.value.dispatch({
       effects: lineNumbersCompartment.reconfigure(
-        show ? [lineNumbers(), highlightActiveLineGutter()] : []
+        show ? [lineNumbers()] : []
       )
     })
   }
@@ -570,7 +567,7 @@ onMounted(() => {
   editorView.value = new EditorView({
     extensions: [
       // Custom setup without indentation handling or code folding
-      lineNumbersCompartment.of(settingsStore.showEditorLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []),
+      lineNumbersCompartment.of(settingsStore.showEditorLineNumbers ? [lineNumbers()] : []),
       fontSizeCompartment.of(fontSizeExtension(settingsStore.editorFontSize)),
       highlightSpecialChars(),
       EditorState.allowMultipleSelections.of(true),
