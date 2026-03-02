@@ -382,7 +382,7 @@ watch(() => props.isRunning, (running) => {
 const editorTheme = EditorView.theme({
 
   '.cm-gutters': {
-    backgroundColor: 'var(--editor-bg)',
+    backgroundColor: 'transparent',
     color: 'var(--editor-gutter-color)',
     border: 'none',
   },
