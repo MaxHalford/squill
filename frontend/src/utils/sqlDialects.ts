@@ -469,3 +469,21 @@ export function getCodeMirrorDialect(dialect: SqlDialect): SQLDialect {
   return dialects[dialect]?.codemirror || PostgreSQL
 }
 
+/**
+ * Set of all SQL keywords (lowercased) across all dialects.
+ * Used by extractAliases() to filter out keywords that look like table aliases.
+ */
+export const sqlKeywordSet: Set<string> = (() => {
+  const keywords = new Set<string>()
+  const allCompletions = [
+    ...commonCompletions,
+    ...Object.values(dialects).flatMap(d => d.completions),
+  ]
+  for (const c of allCompletions) {
+    if (c.type === 'keyword') {
+      keywords.add(c.label.toLowerCase())
+    }
+  }
+  return keywords
+})()
+

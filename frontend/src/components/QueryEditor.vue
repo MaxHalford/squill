@@ -51,6 +51,7 @@ const emit = defineEmits<{
   'dismiss-suggestion': []
   'navigate-to-table': [ref: TableReferenceWithPosition]
   'ready': []
+  'activate': []
 }>()
 
 const settingsStore = useSettingsStore()
@@ -541,7 +542,15 @@ watch(() => props.suggestion, (newSuggestion) => {
 onMounted(() => {
   if (!editorRef.value) return
 
+  let hasActivated = false
   const keyboardHandlers = EditorView.domEventHandlers({
+    focus() {
+      if (!hasActivated) {
+        hasActivated = true
+        emit('activate')
+      }
+      return false
+    },
     keydown(event, view) {
       // Escape dismisses suggestion if active, otherwise blurs editor
       if (event.key === 'Escape') {

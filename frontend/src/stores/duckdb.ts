@@ -97,6 +97,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // Reactive trigger for table schema changes
   const schemaVersion = ref(0)
 
+  // Cache for getEditorSchema() results, keyed by "connectionType:connectionId"
+  const editorSchemaCache = new Map<string, SchemaNamespace>()
+  let lastSchemaCacheVersion = -1
+
   // Initialize DuckDB with IndexedDB persistence
   const initialize = async (): Promise<void> => {
     // Already initialized
@@ -144,6 +148,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         await loadTablesMetadata()
 
         isInitialized.value = true
+        schemaVersion.value++
         console.log('DuckDB initialized successfully')
       } catch (err: unknown) {
         console.error('DuckDB initialization failed:', err)
@@ -163,7 +168,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     if (!isInitialized.value) await initialize()
   }
 
-  // Load metadata about existing tables
+  // Load metadata about existing tables (names, row counts, column names)
   const loadTablesMetadata = async () => {
     if (!conn.value) return
 
@@ -176,7 +181,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
       const tableList = result.toArray()
 
-      // Load row count for each table (skip internal tables)
+      // Load row count and columns for each table (skip internal tables)
       for (const row of tableList) {
         const tableName = row.table_name as string
         if (INTERNAL_TABLES.has(tableName)) continue
@@ -185,14 +190,24 @@ export const useDuckDBStore = defineStore('duckdb', () => {
           const countData = countResult.toArray()
           const rowCount = countData[0]?.count || 0
 
+          // Load column names for auto-complete
+          const colResult = await conn.value.query(`
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'main' AND table_name = '${tableName}'
+            ORDER BY ordinal_position
+          `)
+          const columns = colResult.toArray().map((r: Record<string, unknown>) => r.column_name as string)
+
           // Merge with existing metadata to preserve boxId and originalBoxName
           tables.value[tableName] = {
             ...(tables.value[tableName] || {}), // Preserve existing metadata
             rowCount: Number(rowCount),
+            columns,
             lastUpdated: Date.now()
           }
         } catch (err) {
-          console.warn(`Failed to get row count for ${tableName}:`, err)
+          console.warn(`Failed to get metadata for ${tableName}:`, err)
         }
       }
 
@@ -866,6 +881,16 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   ): Promise<SchemaNamespace> => {
     if (!isInitialized.value || !conn.value) return {}
 
+    // Invalidate cache when schema data has changed
+    if (schemaVersion.value !== lastSchemaCacheVersion) {
+      editorSchemaCache.clear()
+      lastSchemaCacheVersion = schemaVersion.value
+    }
+
+    const cacheKey = `${connectionType}:${connectionId}`
+    const cached = editorSchemaCache.get(cacheKey)
+    if (cached) return cached
+
     const safeType = escapeSqlString(connectionType)
     const safeId = escapeSqlString(connectionId)
     const result = await conn.value.query(`
@@ -928,6 +953,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }
     }
 
+    editorSchemaCache.set(cacheKey, schema)
     return schema
   }
 

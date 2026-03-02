@@ -201,7 +201,10 @@ const isEngineLoading = computed(() => {
 // Editor schema for CodeMirror autocompletion.
 // DuckDB's own tables are always included; connection-specific schemas are
 // loaded asynchronously from the _schemas DuckDB table.
+// Schema loading is deferred until the editor is first focused to avoid
+// N redundant queries on page load with N SQL boxes.
 const editorSchema = ref<SchemaNamespace>({})
+const isEditorActive = ref(false)
 
 let schemaTimeout: ReturnType<typeof setTimeout> | null = null
 const updateEditorSchema = async () => {
@@ -219,13 +222,20 @@ const updateEditorSchema = async () => {
   }
 }
 
+const handleEditorActivate = () => {
+  if (!isEditorActive.value) {
+    isEditorActive.value = true
+    updateEditorSchema()
+  }
+}
+
 watch(
   [() => boxConnection.value, () => duckdbStore.schemaVersion],
   () => {
+    if (!isEditorActive.value) return
     if (schemaTimeout) clearTimeout(schemaTimeout)
     schemaTimeout = setTimeout(updateEditorSchema, 300)
   },
-  { immediate: true },
 )
 
 // ---------------------------------------------------------------------------
@@ -603,6 +613,7 @@ defineExpose({
       @accept-suggestion="handleAcceptSuggestion"
       @dismiss-suggestion="suggestion = null"
       @navigate-to-table="emit('navigate-to-table', $event)"
+      @activate="handleEditorActivate"
       @ready="() => {}"
     />
 

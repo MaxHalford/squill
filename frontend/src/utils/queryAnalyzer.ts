@@ -10,6 +10,7 @@
 
 import type { ConnectionType } from '../types/connection'
 import { isLocalConnectionType } from './connectionHelpers'
+import { sqlKeywordSet } from './sqlDialects'
 
 /**
  * Extract table references from SQL query
@@ -148,7 +149,22 @@ export function getEffectiveEngine(
 }
 
 /**
- * Extract table alias mappings from SQL query.
+ * Extract the SQL statement containing the given cursor position.
+ * Splits on semicolons (outside of quotes) and returns the relevant fragment.
+ */
+export function extractCurrentStatement(doc: string, cursorPos: number): string {
+  // Simple semicolon split — good enough for statement isolation.
+  // Doesn't handle semicolons inside string literals, but those are rare
+  // in the FROM/JOIN clauses we care about.
+  let start = doc.lastIndexOf(';', cursorPos - 1)
+  start = start === -1 ? 0 : start + 1
+  let end = doc.indexOf(';', cursorPos)
+  end = end === -1 ? doc.length : end
+  return doc.slice(start, end)
+}
+
+/**
+ * Extract table alias mappings from a SQL string.
  * Returns a Map from lowercase alias to the original table name (cleaned of quotes).
  * Handles: FROM/JOIN table alias, FROM/JOIN table AS alias.
  */
@@ -161,26 +177,12 @@ export function extractAliases(query: string): Map<string, string> {
   // cause false matches that consume the FROM keyword and break real alias detection.
   const pattern = /(?:FROM|JOIN)\s+(`[^`]+`|"[^"]+(?:"\s*\.\s*"[^"]+)*"|[\w][\w.-]*)\s+(?:AS\s+)?(\w+)/gi
 
-  const sqlKeywords = new Set([
-    'where', 'on', 'and', 'or', 'not', 'in', 'is', 'null', 'between', 'like', 'exists',
-    'group', 'order', 'having', 'limit', 'offset', 'union', 'intersect', 'except',
-    'inner', 'left', 'right', 'cross', 'full', 'outer', 'natural', 'lateral',
-    'set', 'into', 'values', 'as', 'select', 'from', 'join', 'using',
-    'case', 'when', 'then', 'else', 'end',
-    'asc', 'desc', 'with', 'recursive', 'all', 'distinct',
-    'window', 'partition', 'over', 'rows', 'range', 'unbounded',
-    'preceding', 'following', 'current', 'row',
-    'fetch', 'next', 'only', 'for', 'update', 'delete', 'insert',
-    'create', 'drop', 'alter', 'table', 'index', 'view', 'schema', 'database',
-    'if', 'returns', 'true', 'false', 'begin', 'commit', 'rollback',
-  ])
-
   let match
   while ((match = pattern.exec(query)) !== null) {
     const tableRef = match[1]
     const alias = match[2]
 
-    if (!alias || sqlKeywords.has(alias.toLowerCase())) continue
+    if (!alias || sqlKeywordSet.has(alias.toLowerCase())) continue
 
     // Clean up table name (remove backticks/double quotes)
     let cleanTable: string
