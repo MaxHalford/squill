@@ -147,5 +147,54 @@ export function getEffectiveEngine(
   return connectionType || 'duckdb'
 }
 
+/**
+ * Extract table alias mappings from SQL query.
+ * Returns a Map from lowercase alias to the original table name (cleaned of quotes).
+ * Handles: FROM/JOIN table alias, FROM/JOIN table AS alias, comma-separated FROM tables.
+ */
+export function extractAliases(query: string): Map<string, string> {
+  const aliases = new Map<string, string>()
+
+  // Match: FROM/JOIN/comma + table reference + optional AS + alias
+  // Table ref can be: `backtick.quoted`, "double"."quoted", or unquoted.path
+  const pattern = /(?:FROM|JOIN|,)\s+(`[^`]+`|"[^"]+(?:"\s*\.\s*"[^"]+)*"|[\w][\w.-]*)\s+(?:AS\s+)?(\w+)/gi
+
+  const sqlKeywords = new Set([
+    'where', 'on', 'and', 'or', 'not', 'in', 'is', 'null', 'between', 'like', 'exists',
+    'group', 'order', 'having', 'limit', 'offset', 'union', 'intersect', 'except',
+    'inner', 'left', 'right', 'cross', 'full', 'outer', 'natural', 'lateral',
+    'set', 'into', 'values', 'as', 'select', 'from', 'join', 'using',
+    'case', 'when', 'then', 'else', 'end',
+    'asc', 'desc', 'with', 'recursive', 'all', 'distinct',
+    'window', 'partition', 'over', 'rows', 'range', 'unbounded',
+    'preceding', 'following', 'current', 'row',
+    'fetch', 'next', 'only', 'for', 'update', 'delete', 'insert',
+    'create', 'drop', 'alter', 'table', 'index', 'view', 'schema', 'database',
+    'if', 'returns', 'true', 'false', 'begin', 'commit', 'rollback',
+  ])
+
+  let match
+  while ((match = pattern.exec(query)) !== null) {
+    const tableRef = match[1]
+    const alias = match[2]
+
+    if (!alias || sqlKeywords.has(alias.toLowerCase())) continue
+
+    // Clean up table name (remove backticks/double quotes)
+    let cleanTable: string
+    if (tableRef.startsWith('`') && tableRef.endsWith('`')) {
+      cleanTable = tableRef.slice(1, -1)
+    } else if (tableRef.includes('"')) {
+      cleanTable = tableRef.replace(/"/g, '').replace(/\s*\.\s*/g, '.')
+    } else {
+      cleanTable = tableRef
+    }
+
+    aliases.set(alias.toLowerCase(), cleanTable)
+  }
+
+  return aliases
+}
+
 // Re-export for convenience
 export { isLocalConnectionType }

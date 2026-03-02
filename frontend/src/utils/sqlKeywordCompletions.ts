@@ -1,5 +1,6 @@
 import type { Completion, CompletionContext, CompletionSource } from '@codemirror/autocomplete'
 import { getDialectCompletions, type SqlDialect } from './sqlDialects'
+import { extractAliases } from './queryAnalyzer'
 import type { SchemaNamespace } from './schemaBuilder'
 
 /**
@@ -41,8 +42,22 @@ export function substringSchemaCompletions(schema: SchemaNamespace): CompletionS
 
     const typed = context.state.sliceDoc(word.from, word.to);
     const parts = typed.split('.');
-    const prefix = parts.slice(0, -1);
+    let prefix = parts.slice(0, -1);
     const query = parts[parts.length - 1].toLowerCase();
+
+    // Resolve table aliases: if the first prefix part isn't a schema key,
+    // check if it's an alias (e.g., "u" in "FROM users u") and resolve to the actual table
+    if (prefix.length > 0 && !Array.isArray(schema)) {
+      const firstPart = prefix[0].toLowerCase();
+      const schemaHasKey = Object.keys(schema).some(k => k.toLowerCase() === firstPart);
+      if (!schemaHasKey) {
+        const aliases = extractAliases(context.state.doc.toString());
+        const resolved = aliases.get(firstPart);
+        if (resolved) {
+          prefix = [...resolved.split('.'), ...prefix.slice(1)];
+        }
+      }
+    }
 
     // Navigate schema hierarchy using the prefix parts
     // e.g. "my-project.my_dataset." → navigate to the dataset level
