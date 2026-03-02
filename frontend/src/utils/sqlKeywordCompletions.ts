@@ -113,6 +113,17 @@ export function substringSchemaCompletions(schema: SchemaNamespace): CompletionS
     });
 
     // filter: false — we handle filtering ourselves, skip CodeMirror's prefix filter
-    return { from, options, filter: false };
+    // getMatch — highlight the matched substring in each completion label
+    return {
+      from,
+      options,
+      filter: false,
+      getMatch: (completion: Completion) => {
+        if (!query) return [];
+        const idx = completion.label.toLowerCase().indexOf(query);
+        if (idx < 0) return [];
+        return [idx, idx + query.length];
+      }
+    };
   };
 }

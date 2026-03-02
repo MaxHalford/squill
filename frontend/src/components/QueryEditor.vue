@@ -423,8 +423,9 @@ const editorTheme = EditorView.theme({
     color: 'var(--text-primary)',
   },
   '.cm-completionMatchedText': {
-    color: 'var(--color-accent)',
     textDecoration: 'none',
+    backgroundColor: 'color-mix(in srgb, var(--color-warning) 25%, transparent)',
+    borderRadius: '1px',
   },
   // Cursor styling - uses accent color
   '.cm-cursor, .cm-cursor-primary': {
