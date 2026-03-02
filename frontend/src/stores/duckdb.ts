@@ -173,44 +173,43 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     if (!conn.value) return
 
     try {
-      const result = await conn.value.query(`
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema = 'main'
+      // Single query: get row counts for all user tables
+      const countResult = await conn.value.query(`
+        SELECT table_name, estimated_size as row_count
+        FROM duckdb_tables()
+        WHERE schema_name = 'main'
       `)
+      const countRows = countResult.toArray()
 
-      const tableList = result.toArray()
+      // Single query: get all columns grouped by table
+      const colResult = await conn.value.query(`
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'main'
+        ORDER BY table_name, ordinal_position
+      `)
+      const colRows = colResult.toArray()
 
-      // Load row count and columns for each table (skip internal tables)
-      for (const row of tableList) {
-        const tableName = row.table_name as string
-        if (INTERNAL_TABLES.has(tableName)) continue
-        try {
-          const countResult = await conn.value.query(`SELECT COUNT(*) as count FROM ${tableName}`)
-          const countData = countResult.toArray()
-          const rowCount = countData[0]?.count || 0
-
-          // Load column names for auto-complete
-          const colResult = await conn.value.query(`
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'main' AND table_name = '${tableName}'
-            ORDER BY ordinal_position
-          `)
-          const columns = colResult.toArray().map((r: Record<string, unknown>) => r.column_name as string)
-
-          // Merge with existing metadata to preserve boxId and originalBoxName
-          tables.value[tableName] = {
-            ...(tables.value[tableName] || {}), // Preserve existing metadata
-            rowCount: Number(rowCount),
-            columns,
-            lastUpdated: Date.now()
-          }
-        } catch (err) {
-          console.warn(`Failed to get metadata for ${tableName}:`, err)
-        }
+      // Group columns by table name
+      const columnsByTable = new Map<string, string[]>()
+      for (const row of colRows) {
+        const tbl = row.table_name as string
+        if (!columnsByTable.has(tbl)) columnsByTable.set(tbl, [])
+        columnsByTable.get(tbl)!.push(row.column_name as string)
       }
 
+      const now = Date.now()
+      for (const row of countRows) {
+        const tableName = row.table_name as string
+        if (INTERNAL_TABLES.has(tableName)) continue
+
+        tables.value[tableName] = {
+          ...(tables.value[tableName] || {}),
+          rowCount: Number(row.row_count || 0),
+          columns: columnsByTable.get(tableName) || [],
+          lastUpdated: now,
+        }
+      }
     } catch (err) {
       console.warn('Failed to load tables metadata:', err)
     }
