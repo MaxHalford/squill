@@ -97,56 +97,67 @@ const handleResizeStart = (e: MouseEvent, direction: ResizeDirection) => {
   initialPosition.value = { ...position.value }
 }
 
+let dragRafId: number | null = null
+let latestClientX = 0
+let latestClientY = 0
+
 const handleMouseMove = (e: MouseEvent) => {
-  const zoom = canvasZoom.value
+  latestClientX = e.clientX
+  latestClientY = e.clientY
+  if (dragRafId !== null) return
 
-  if (isDragging.value) {
-    const newPosition = {
-      x: (e.clientX - dragStart.value.x) / zoom,
-      y: (e.clientY - dragStart.value.y) / zoom
+  dragRafId = requestAnimationFrame(() => {
+    dragRafId = null
+    const zoom = canvasZoom.value
+
+    if (isDragging.value) {
+      const newPosition = {
+        x: (latestClientX - dragStart.value.x) / zoom,
+        y: (latestClientY - dragStart.value.y) / zoom
+      }
+      position.value = newPosition
+      emit('update:position', newPosition)
+      return
     }
-    position.value = newPosition
-    emit('update:position', newPosition)
-    return
-  }
 
-  if (!isResizing.value || !resizeDirection.value) return
+    if (!isResizing.value || !resizeDirection.value) return
 
-  const deltaX = (e.clientX - dragStart.value.x) / zoom
-  const deltaY = (e.clientY - dragStart.value.y) / zoom
-  const dir = resizeDirection.value
+    const deltaX = (latestClientX - dragStart.value.x) / zoom
+    const deltaY = (latestClientY - dragStart.value.y) / zoom
+    const dir = resizeDirection.value
 
-  let newWidth = initialSize.value.width
-  let newHeight = initialSize.value.height
-  let newX = initialPosition.value.x
-  let newY = initialPosition.value.y
+    let newWidth = initialSize.value.width
+    let newHeight = initialSize.value.height
+    let newX = initialPosition.value.x
+    let newY = initialPosition.value.y
 
-  // Horizontal resize
-  if (dir.includes('e')) {
-    newWidth = Math.max(MIN_WIDTH, initialSize.value.width + deltaX)
-  } else if (dir.includes('w')) {
-    const proposedWidth = initialSize.value.width - deltaX
-    if (proposedWidth >= MIN_WIDTH) {
-      newWidth = proposedWidth
-      newX = initialPosition.value.x + deltaX
+    // Horizontal resize
+    if (dir.includes('e')) {
+      newWidth = Math.max(MIN_WIDTH, initialSize.value.width + deltaX)
+    } else if (dir.includes('w')) {
+      const proposedWidth = initialSize.value.width - deltaX
+      if (proposedWidth >= MIN_WIDTH) {
+        newWidth = proposedWidth
+        newX = initialPosition.value.x + deltaX
+      }
     }
-  }
 
-  // Vertical resize
-  if (dir.includes('s')) {
-    newHeight = Math.max(MIN_HEIGHT, initialSize.value.height + deltaY)
-  } else if (dir.includes('n')) {
-    const proposedHeight = initialSize.value.height - deltaY
-    if (proposedHeight >= MIN_HEIGHT) {
-      newHeight = proposedHeight
-      newY = initialPosition.value.y + deltaY
+    // Vertical resize
+    if (dir.includes('s')) {
+      newHeight = Math.max(MIN_HEIGHT, initialSize.value.height + deltaY)
+    } else if (dir.includes('n')) {
+      const proposedHeight = initialSize.value.height - deltaY
+      if (proposedHeight >= MIN_HEIGHT) {
+        newHeight = proposedHeight
+        newY = initialPosition.value.y + deltaY
+      }
     }
-  }
 
-  size.value = { width: newWidth, height: newHeight }
-  position.value = { x: newX, y: newY }
-  emit('update:size', { width: newWidth, height: newHeight })
-  emit('update:position', { x: newX, y: newY })
+    size.value = { width: newWidth, height: newHeight }
+    position.value = { x: newX, y: newY }
+    emit('update:size', { width: newWidth, height: newHeight })
+    emit('update:position', { x: newX, y: newY })
+  })
 }
 
 const handleMouseUp = () => {
@@ -156,6 +167,10 @@ const handleMouseUp = () => {
   isDragging.value = false
   isResizing.value = false
   resizeDirection.value = null
+  if (dragRafId !== null) {
+    cancelAnimationFrame(dragRafId)
+    dragRafId = null
+  }
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('mouseup', handleMouseUp)
 }
@@ -164,6 +179,10 @@ const handleMouseUp = () => {
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('mouseup', handleMouseUp)
+  if (dragRafId !== null) {
+    cancelAnimationFrame(dragRafId)
+    dragRafId = null
+  }
 })
 </script>
 
@@ -174,8 +193,7 @@ onUnmounted(() => {
     :class="{ selected: isSelected, dragging: isDragging || isResizing }"
     :data-box-id="boxId"
     :style="{
-      left: `${position.x}px`,
-      top: `${position.y}px`,
+      transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
       width: `${size.width}px`,
       height: `${size.height}px`,
       zIndex
@@ -237,6 +255,8 @@ onUnmounted(() => {
 <style scoped>
 .resizable-box {
   position: absolute;
+  left: 0;
+  top: 0;
   display: flex;
   flex-direction: column;
   background: var(--surface-primary);
@@ -253,11 +273,11 @@ onUnmounted(() => {
 @keyframes box-enter {
   from {
     opacity: 0;
-    transform: scale(0.95);
+    scale: 0.95;
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    scale: 1;
   }
 }
 
@@ -279,11 +299,11 @@ onUnmounted(() => {
 @keyframes box-leave {
   from {
     opacity: 1;
-    transform: scale(1);
+    scale: 1;
   }
   to {
     opacity: 0;
-    transform: scale(0.95);
+    scale: 0.95;
   }
 }
 
@@ -298,7 +318,7 @@ onUnmounted(() => {
   box-shadow: var(--shadow-sm) !important;
   outline: none !important;
   /* GPU-accelerate during drag only */
-  will-change: left, top;
+  will-change: transform;
 }
 
 .box-header {

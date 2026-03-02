@@ -307,29 +307,49 @@ const handleMouseDown = (e: MouseEvent) => {
   canvasRef.value.style.cursor = 'grabbing'
 }
 
-const handleMouseMove = (e: MouseEvent) => {
-  if (isRectangleSelecting.value) {
-    rectangleCurrent.value = screenToCanvas(e.clientX, e.clientY)
-    canvasStore.setRectangleSelection({
-      startX: rectangleStart.value.x,
-      startY: rectangleStart.value.y,
-      endX: rectangleCurrent.value.x,
-      endY: rectangleCurrent.value.y
-    })
-    return
-  }
+let panRafId: number | null = null
+let latestMoveX = 0
+let latestMoveY = 0
 
-  if (isPanning.value) {
-    isActuallyPanning.value = true
-    pan.value = {
-      x: e.clientX - panStart.value.x,
-      y: e.clientY - panStart.value.y
+const handleMouseMove = (e: MouseEvent) => {
+  latestMoveX = e.clientX
+  latestMoveY = e.clientY
+
+  // Set flag immediately — mouseup checks it synchronously
+  if (isPanning.value) isActuallyPanning.value = true
+
+  if (panRafId !== null) return
+
+  panRafId = requestAnimationFrame(() => {
+    panRafId = null
+
+    if (isRectangleSelecting.value) {
+      rectangleCurrent.value = screenToCanvas(latestMoveX, latestMoveY)
+      canvasStore.setRectangleSelection({
+        startX: rectangleStart.value.x,
+        startY: rectangleStart.value.y,
+        endX: rectangleCurrent.value.x,
+        endY: rectangleCurrent.value.y
+      })
+      return
     }
-  }
+
+    if (isPanning.value) {
+      pan.value = {
+        x: latestMoveX - panStart.value.x,
+        y: latestMoveY - panStart.value.y
+      }
+    }
+  })
 }
 
 const handleMouseUp = () => {
   if (!canvasRef.value) return
+
+  if (panRafId !== null) {
+    cancelAnimationFrame(panRafId)
+    panRafId = null
+  }
 
   if (isRectangleSelecting.value) {
     const selectedIds = props.boxes
@@ -450,6 +470,10 @@ onUnmounted(() => {
   if (animationFrameId !== null) {
     cancelAnimationFrame(animationFrameId)
     animationFrameId = null
+  }
+  if (panRafId !== null) {
+    cancelAnimationFrame(panRafId)
+    panRafId = null
   }
 
   // Clean up zoom idle timer
