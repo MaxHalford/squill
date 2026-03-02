@@ -45,13 +45,17 @@ export function substringSchemaCompletions(schema: SchemaNamespace): CompletionS
     let prefix = parts.slice(0, -1);
     const query = parts[parts.length - 1].toLowerCase();
 
+    // Parse aliases once — used for both resolution (u. → users columns) and top-level suggestions
+    const aliases = !Array.isArray(schema)
+      ? extractAliases(context.state.doc.toString())
+      : null;
+
     // Resolve table aliases: if the first prefix part isn't a schema key,
     // check if it's an alias (e.g., "u" in "FROM users u") and resolve to the actual table
-    if (prefix.length > 0 && !Array.isArray(schema)) {
+    if (prefix.length > 0 && aliases) {
       const firstPart = prefix[0].toLowerCase();
       const schemaHasKey = Object.keys(schema).some(k => k.toLowerCase() === firstPart);
       if (!schemaHasKey) {
-        const aliases = extractAliases(context.state.doc.toString());
         const resolved = aliases.get(firstPart);
         if (resolved) {
           prefix = [...resolved.split('.'), ...prefix.slice(1)];
@@ -98,6 +102,15 @@ export function substringSchemaCompletions(schema: SchemaNamespace): CompletionS
           label: key,
           type: Array.isArray(current[key]) ? 'property' : 'class',
         }));
+
+      // At top level (no dot prefix), add alias names as completions
+      if (prefix.length === 0 && aliases) {
+        for (const [alias, table] of aliases) {
+          if (!query || alias.includes(query)) {
+            options.push({ label: alias, type: 'constant', detail: table });
+          }
+        }
+      }
     }
 
     if (options.length === 0) return null;

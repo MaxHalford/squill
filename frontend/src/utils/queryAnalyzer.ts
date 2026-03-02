@@ -150,14 +150,16 @@ export function getEffectiveEngine(
 /**
  * Extract table alias mappings from SQL query.
  * Returns a Map from lowercase alias to the original table name (cleaned of quotes).
- * Handles: FROM/JOIN table alias, FROM/JOIN table AS alias, comma-separated FROM tables.
+ * Handles: FROM/JOIN table alias, FROM/JOIN table AS alias.
  */
 export function extractAliases(query: string): Map<string, string> {
   const aliases = new Map<string, string>()
 
-  // Match: FROM/JOIN/comma + table reference + optional AS + alias
+  // Match: FROM/JOIN + table reference + optional AS + alias
   // Table ref can be: `backtick.quoted`, "double"."quoted", or unquoted.path
-  const pattern = /(?:FROM|JOIN|,)\s+(`[^`]+`|"[^"]+(?:"\s*\.\s*"[^"]+)*"|[\w][\w.-]*)\s+(?:AS\s+)?(\w+)/gi
+  // Note: comma is intentionally excluded — commas in SELECT lists (e.g. ", col FROM")
+  // cause false matches that consume the FROM keyword and break real alias detection.
+  const pattern = /(?:FROM|JOIN)\s+(`[^`]+`|"[^"]+(?:"\s*\.\s*"[^"]+)*"|[\w][\w.-]*)\s+(?:AS\s+)?(\w+)/gi
 
   const sqlKeywords = new Set([
     'where', 'on', 'and', 'or', 'not', 'in', 'is', 'null', 'between', 'like', 'exists',
