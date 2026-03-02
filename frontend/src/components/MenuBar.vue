@@ -27,7 +27,12 @@ const projectSearch = ref('')
 const projectSearchRef = ref<HTMLInputElement | null>(null)
 const projectsLoading = ref(false)
 const sortedProjects = computed(() =>
-  [...bigqueryStore.projects].sort((a, b) => a.projectId.localeCompare(b.projectId))
+  [...bigqueryStore.projects].sort((a, b) => {
+    const aSelected = isProjectSelected(a.projectId)
+    const bSelected = isProjectSelected(b.projectId)
+    if (aSelected !== bSelected) return aSelected ? -1 : 1
+    return a.projectId.localeCompare(b.projectId)
+  })
 )
 const filteredProjects = computed(() => {
   const q = projectSearch.value.toLowerCase()
@@ -755,11 +760,14 @@ onUnmounted(() => {
                   class="item-check-placeholder"
                 />
                 <span class="item-text">{{ project.projectId }}</span>
-                <button
+                <span
                   v-tooltip="isProjectSelected(project.projectId) ? (isBillingProject(project.projectId) ? 'Billing project' : 'Set as billing project') : undefined"
+                  role="button"
+                  tabindex="0"
                   class="billing-pin-btn"
                   :class="{ active: isBillingProject(project.projectId), hidden: !isProjectSelected(project.projectId) }"
-                  @click="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
+                  @click.stop="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
+                  @keydown.enter.stop="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
                 >
                   <svg
                     width="12"
@@ -773,7 +781,7 @@ onUnmounted(() => {
                   >
                     <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                   </svg>
-                </button>
+                </span>
               </button>
             </div>
 
