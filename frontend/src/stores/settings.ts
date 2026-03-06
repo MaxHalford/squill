@@ -4,7 +4,8 @@ import { SettingsSchema } from '../utils/storageSchemas'
 import { loadItem, saveItem } from '../utils/storage'
 
 type ThemePreference = 'system' | 'light' | 'dark'
-type CanvasPattern = 'dots' | 'grid' | 'crosshatch' | 'waves' | 'none'
+type CanvasPattern = 'dots' | 'grid' | 'waves' | 'none'
+type SqlBoxLayout = 'vertical' | 'horizontal'
 
 interface Settings {
   // Fetch pagination: rows loaded per batch from source databases
@@ -23,6 +24,8 @@ interface Settings {
   canvasPattern: CanvasPattern  // Background pattern for canvas
   // Notifications
   voiceNotifyEnabled: boolean  // Speak query results when tab is backgrounded
+  // Layout
+  sqlBoxLayout: SqlBoxLayout  // Split direction: vertical (top/bottom) or horizontal (left/right)
 }
 
 // Default settings
@@ -38,7 +41,8 @@ const DEFAULT_SETTINGS: Settings = {
   tableLinkEnabled: true,  // Cmd+click to navigate to table definitions
   accentColor: '#9333ea',  // Purple (default accent color)
   canvasPattern: 'dots',  // Default canvas pattern
-  voiceNotifyEnabled: true  // Speak query results when tab is backgrounded
+  voiceNotifyEnabled: true,  // Speak query results when tab is backgrounded
+  sqlBoxLayout: 'vertical'  // Default: editor on top, results on bottom
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -55,6 +59,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const accentColor = ref(DEFAULT_SETTINGS.accentColor)
   const canvasPattern = ref<CanvasPattern>(DEFAULT_SETTINGS.canvasPattern)
   const voiceNotifyEnabled = ref(DEFAULT_SETTINGS.voiceNotifyEnabled)
+  const sqlBoxLayout = ref<SqlBoxLayout>(DEFAULT_SETTINGS.sqlBoxLayout)
 
   const applySettings = (s: Settings) => {
     fetchBatchSize.value = s.fetchBatchSize
@@ -69,6 +74,7 @@ export const useSettingsStore = defineStore('settings', () => {
     accentColor.value = s.accentColor
     canvasPattern.value = s.canvasPattern
     voiceNotifyEnabled.value = s.voiceNotifyEnabled
+    sqlBoxLayout.value = s.sqlBoxLayout
   }
 
   const collectSettings = (): Settings => ({
@@ -84,6 +90,7 @@ export const useSettingsStore = defineStore('settings', () => {
     accentColor: accentColor.value,
     canvasPattern: canvasPattern.value,
     voiceNotifyEnabled: voiceNotifyEnabled.value,
+    sqlBoxLayout: sqlBoxLayout.value,
   })
 
   const loadState = async () => {
@@ -109,7 +116,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const ready = loadState()
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled], saveState)
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled, sqlBoxLayout], saveState)
 
   // Reactive system theme tracking
   const systemTheme = ref<'light' | 'dark'>(
@@ -195,6 +202,10 @@ export const useSettingsStore = defineStore('settings', () => {
     voiceNotifyEnabled.value = !voiceNotifyEnabled.value
   }
 
+  const toggleSqlBoxLayout = () => {
+    sqlBoxLayout.value = sqlBoxLayout.value === 'vertical' ? 'horizontal' : 'vertical'
+  }
+
   const resetToDefaults = () => {
     applySettings(DEFAULT_SETTINGS)
   }
@@ -234,6 +245,9 @@ export const useSettingsStore = defineStore('settings', () => {
     // Notifications
     voiceNotifyEnabled,
     toggleVoiceNotify,
+    // Layout
+    sqlBoxLayout,
+    toggleSqlBoxLayout,
     resetToDefaults
   }
 })

@@ -101,6 +101,38 @@ const handleGitHubLoginFlow = async (code: string): Promise<void> => {
 }
 
 /**
+ * Handle Microsoft OAuth login flow.
+ * Creates/updates user account using Microsoft email.
+ */
+const handleMicrosoftLoginFlow = async (code: string): Promise<void> => {
+  const response = await fetch(`${BACKEND_URL}/auth/microsoft/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code,
+      redirect_uri: `${window.location.origin}/auth/callback`,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(errorData.detail || 'Failed to authenticate with Microsoft')
+  }
+
+  const data = await response.json()
+
+  await userStore.setUser({
+    id: data.user.id,
+    email: data.user.email,
+    plan: data.user.plan,
+    isVip: data.user.is_vip ?? false,
+    planExpiresAt: data.user.plan_expires_at ?? null,
+    subscriptionCancelAtPeriodEnd: data.user.subscription_cancel_at_period_end ?? false,
+    authProvider: 'microsoft',
+  }, data.session_token)
+}
+
+/**
  * Handle BigQuery connection OAuth flow.
  * Creates BigQuery connection with refresh token.
  */
@@ -222,6 +254,10 @@ onMounted(async () => {
     } else if (flowType === 'github-login') {
       // GitHub OAuth login flow
       await handleGitHubLoginFlow(code)
+      router.push('/app')
+    } else if (flowType === 'microsoft-login') {
+      // Microsoft OAuth login flow
+      await handleMicrosoftLoginFlow(code)
       router.push('/app')
     } else {
       // BigQuery connection flow (default, including legacy states)

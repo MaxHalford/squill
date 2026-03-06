@@ -740,6 +740,71 @@ async def get_all_columns(
     return AllColumnsResponse(columns=columns_by_table)
 
 
+class TableMetadataResponse(BaseModel):
+    row_count: int | None = None
+    size_bytes: int | None = None
+    table_type: str | None = None
+
+
+@router.get(
+    "/schema/{connection_id}/table-metadata/{database_name}/{schema_name}/{table_name}",
+    response_model=TableMetadataResponse,
+)
+async def get_table_metadata(
+    connection_id: str,
+    database_name: str,
+    schema_name: str,
+    table_name: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get metadata (row count, size) for a specific table."""
+    connection, password = await get_connection_credentials(connection_id, db, user.id)
+
+    try:
+        conn = await SnowflakeConnectionManager.get_connection(
+            connection_id=connection.id,
+            account=connection.account,
+            username=connection.username,
+            password=password,
+            warehouse=connection.warehouse,
+            database=connection.database,
+            schema=connection.schema_name,
+            role=connection.role,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to connect to Snowflake: {e}",
+        )
+
+    try:
+        safe_db = quote_identifier(database_name)
+        query = f"""
+            SELECT ROW_COUNT, BYTES, TABLE_TYPE
+            FROM {safe_db}.INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
+        """
+        rows, _schema = await SnowflakeConnectionManager.execute_query_with_params(
+            conn, query, (schema_name, table_name)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch table metadata: {e}",
+        )
+
+    if not rows:
+        return TableMetadataResponse()
+
+    row = rows[0]
+    return TableMetadataResponse(
+        row_count=row.get("ROW_COUNT", row.get("row_count")),
+        size_bytes=row.get("BYTES", row.get("bytes")),
+        table_type=row.get("TABLE_TYPE", row.get("table_type")),
+    )
+
+
 @router.delete("/connections/{connection_id}")
 async def delete_connection(
     connection_id: str,

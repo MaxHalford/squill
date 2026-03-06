@@ -47,7 +47,7 @@ const props = defineProps({
 const emit = defineEmits([
   'select', 'update:position', 'update:size', 'delete', 'maximize',
   'update:name', 'update:query', 'update:editorHeight', 'show-row-detail', 'show-column-analytics',
-  'drag-start', 'drag-end', 'navigate-to-table',
+  'drag-start', 'drag-end', 'navigate-to-table', 'show-explain',
 ])
 
 const baseBoxRef = ref<InstanceType<typeof BaseBox> | null>(null)
@@ -345,6 +345,7 @@ defineExpose({
       @navigate-to-table="handleNavigateToTable"
       @show-row-detail="emit('show-row-detail', $event)"
       @show-column-analytics="emit('show-column-analytics', $event)"
+      @show-explain="emit('show-explain', $event)"
       @update:editor-height="emit('update:editorHeight', $event)"
     />
   </BaseBox>

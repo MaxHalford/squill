@@ -597,6 +597,79 @@ async def get_all_columns(
     return AllColumnsResponse(columns=columns_by_table)
 
 
+class TableMetadataResponse(BaseModel):
+    row_count: int | None = None
+    size_bytes: int | None = None
+    table_type: str | None = None
+
+
+@router.get(
+    "/schema/{connection_id}/table-metadata/{schema_name}/{table_name}",
+    response_model=TableMetadataResponse,
+)
+async def get_table_metadata(
+    connection_id: str,
+    schema_name: str,
+    table_name: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get metadata (row count, size) for a specific table."""
+    connection, password = await get_connection_credentials(connection_id, db, user.id)
+
+    try:
+        pool = await PostgresPoolManager.get_pool(
+            connection_id=connection.id,
+            host=connection.host,
+            port=connection.port,
+            database=connection.database,
+            username=connection.username,
+            password=password,
+            ssl_mode=connection.ssl_mode,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to connect to database: {e}",
+        )
+
+    try:
+        async with pool.acquire() as conn:
+            record = await conn.fetchrow(
+                """
+                SELECT
+                    c.reltuples::bigint AS row_count,
+                    pg_total_relation_size(c.oid) AS size_bytes,
+                    CASE c.relkind
+                        WHEN 'r' THEN 'TABLE'
+                        WHEN 'v' THEN 'VIEW'
+                        WHEN 'm' THEN 'MATERIALIZED VIEW'
+                        WHEN 'f' THEN 'FOREIGN TABLE'
+                        ELSE c.relkind::text
+                    END AS table_type
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = $1 AND c.relname = $2
+                """,
+                schema_name,
+                table_name,
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch table metadata: {e}",
+        )
+
+    if not record:
+        return TableMetadataResponse()
+
+    return TableMetadataResponse(
+        row_count=record["row_count"] if record["row_count"] >= 0 else None,
+        size_bytes=record["size_bytes"],
+        table_type=record["table_type"],
+    )
+
+
 @router.delete("/connections/{connection_id}")
 async def delete_connection(
     connection_id: str,

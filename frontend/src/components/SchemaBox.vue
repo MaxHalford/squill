@@ -7,7 +7,8 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { getTypeCategory } from '../utils/typeUtils'
-import { DATABASE_INFO, type DatabaseEngine } from '../types/database'
+import { formatRowCountCompact, formatBytes } from '../utils/formatUtils'
+import { DATABASE_INFO, type DatabaseEngine, type TableMetadataInfo } from '../types/database'
 import type { BigQueryDataset, BigQueryTable } from '../types/bigquery'
 import type { PostgresTableInfo } from '../stores/postgres'
 import type { SnowflakeDatabaseInfo, SnowflakeSchemaInfo, SnowflakeTableInfo } from '../stores/snowflake'
@@ -82,6 +83,7 @@ const selectedSnowflakeSchema = ref<string | null>(null)
 const datasets = ref<Record<string, BrowserItem[]>>({}) // { projectId: [datasets] }
 const tables = ref<Record<string, BrowserItem[]>>({}) // { datasetId: [tables] }
 const schemas = ref<Record<string, SchemaField[]>>({}) // { tableId: schema }
+const tableMetadata = ref<Record<string, TableMetadataInfo>>({}) // { tableKey: metadata }
 // BigQuery-specific cache
 const bigqueryProjectsByConnection = ref<Record<string, { projectId: string; name?: string }[]>>({}) // { connectionId: [projects] }
 // Snowflake-specific caches
@@ -320,7 +322,7 @@ const column5Items = computed((): BrowserItem[] => {
 })
 
 // Virtual scrolling for columns list (performance optimization for large tables)
-const COLUMN_ITEM_HEIGHT = 32
+const COLUMN_ITEM_HEIGHT = 26
 const COLUMN_BUFFER_SIZE = 10 // Extra items to render above/below viewport
 const columnsScrollTop = ref(0)
 const columnsContainerHeight = ref(400)
@@ -331,6 +333,22 @@ const rawColumnItems = computed(() => {
   return (selectedProjectType.value === 'snowflake' || selectedProjectType.value === 'bigquery')
     ? column5Items.value
     : column4Items.value
+})
+
+// Current table metadata for the selected table
+const currentTableMetadata = computed((): TableMetadataInfo | null => {
+  if (!selectedTable.value) return null
+  let key: string
+  if (selectedProject.value === 'duckdb') {
+    key = selectedTable.value
+  } else if (selectedProjectType.value === 'postgres') {
+    key = `${selectedProject.value}:${selectedTable.value}`
+  } else if (selectedProjectType.value === 'snowflake') {
+    key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
+  } else {
+    key = `${selectedDataset.value}.${selectedTable.value}`
+  }
+  return tableMetadata.value[key] || null
 })
 
 // Filtered column items (per-column substring filter)
@@ -398,9 +416,48 @@ const updateColumnsContainerHeight = () => {
   }
 }
 
+// Smooth scroll management for Finder-style column navigation.
+// When columns are added, scrolls right to reveal them.
+// When columns are removed, uses a spacer to prevent an abrupt scroll jump.
+const scrollSpacerRef = ref<HTMLElement | null>(null)
+let savedScrollWidth = 0
+
+const captureScrollState = () => {
+  savedScrollWidth = schemaBrowserRef.value?.scrollWidth ?? 0
+}
+
+const smoothScrollUpdate = () => {
+  nextTick(() => {
+    const el = schemaBrowserRef.value
+    const spacer = scrollSpacerRef.value
+    if (!el || !spacer) return
+
+    const currentScrollWidth = el.scrollWidth
+
+    if (savedScrollWidth > currentScrollWidth) {
+      // Columns were removed — fill the gap with a spacer and animate it away
+      const gap = savedScrollWidth - currentScrollWidth
+      spacer.style.transition = 'none'
+      spacer.style.width = `${gap}px`
+      void spacer.offsetWidth // force layout
+      spacer.style.transition = 'width 0.2s ease-out'
+      spacer.style.width = '0px'
+    } else {
+      // Columns were added — scroll right to reveal them
+      el.scrollTo({
+        left: el.scrollWidth,
+        behavior: 'smooth'
+      })
+    }
+
+    savedScrollWidth = 0
+  })
+}
+
 // Select connection (column 1)
 const selectProject = async (projectId: string) => {
   if (selectedProject.value === projectId) return
+  captureScrollState()
 
   selectedProject.value = projectId
   selectedBigQueryProject.value = null
@@ -412,6 +469,9 @@ const selectProject = async (projectId: string) => {
   col3Filter.value = ''; col3FilterOpen.value = false
   col4Filter.value = ''; col4FilterOpen.value = false
   col5Filter.value = ''; col5FilterOpen.value = false
+
+  // Animate column collapse immediately (before any await)
+  smoothScrollUpdate()
 
   const project = projects.value.find(p => p.id === projectId)
 
@@ -437,6 +497,7 @@ const selectProject = async (projectId: string) => {
 // Select BigQuery project (column 2 for BigQuery)
 const selectBigQueryProject = async (projectId: string) => {
   if (selectedBigQueryProject.value === projectId) return
+  captureScrollState()
 
   selectedBigQueryProject.value = projectId
   selectedDataset.value = null
@@ -444,6 +505,9 @@ const selectBigQueryProject = async (projectId: string) => {
   col3Filter.value = ''; col3FilterOpen.value = false
   col4Filter.value = ''; col4FilterOpen.value = false
   col5Filter.value = ''; col5FilterOpen.value = false
+
+  // Animate column collapse immediately (before any await)
+  smoothScrollUpdate()
 
   if (!datasets.value[projectId]) {
     await loadDatasets(projectId)
@@ -479,11 +543,15 @@ const loadBigQueryProjects = async (connectionId: string) => {
 // Select dataset
 const selectDataset = async (datasetId: string) => {
   if (selectedDataset.value === datasetId) return
+  captureScrollState()
 
   selectedDataset.value = datasetId
   selectedTable.value = null
   col4Filter.value = ''; col4FilterOpen.value = false
   col5Filter.value = ''; col5FilterOpen.value = false
+
+  // Animate column collapse immediately (before any await)
+  smoothScrollUpdate()
 
   // Load tables for this dataset
   if (!tables.value[datasetId]) {
@@ -494,6 +562,7 @@ const selectDataset = async (datasetId: string) => {
 // Select Snowflake database
 const selectSnowflakeDatabase = async (databaseName: string) => {
   if (selectedSnowflakeDatabase.value === databaseName) return
+  captureScrollState()
 
   selectedSnowflakeDatabase.value = databaseName
   selectedSnowflakeSchema.value = null
@@ -501,6 +570,9 @@ const selectSnowflakeDatabase = async (databaseName: string) => {
   col3Filter.value = ''; col3FilterOpen.value = false
   col4Filter.value = ''; col4FilterOpen.value = false
   col5Filter.value = ''; col5FilterOpen.value = false
+
+  // Animate column collapse immediately (before any await)
+  smoothScrollUpdate()
 
   // Load schemas for this database
   const cacheKey = `${selectedProject.value}:${databaseName}`
@@ -512,11 +584,15 @@ const selectSnowflakeDatabase = async (databaseName: string) => {
 // Select Snowflake schema
 const selectSnowflakeSchema = async (schemaName: string) => {
   if (selectedSnowflakeSchema.value === schemaName) return
+  captureScrollState()
 
   selectedSnowflakeSchema.value = schemaName
   selectedTable.value = null
   col4Filter.value = ''; col4FilterOpen.value = false
   col5Filter.value = ''; col5FilterOpen.value = false
+
+  // Animate column collapse immediately (before any await)
+  smoothScrollUpdate()
 
   // Load tables for this schema
   const cacheKey = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${schemaName}`
@@ -527,6 +603,7 @@ const selectSnowflakeSchema = async (schemaName: string) => {
 
 // Select table
 const selectTable = async (tableId: string) => {
+  captureScrollState()
   selectedTable.value = tableId
   selectedColumn.value = null
   col5Filter.value = ''; col5FilterOpen.value = false
@@ -553,6 +630,7 @@ const selectTable = async (tableId: string) => {
   if (!schemas.value[key]) {
     await loadSchema(tableId, key)
   }
+  smoothScrollUpdate()
 }
 
 // Load BigQuery datasets
@@ -658,10 +736,10 @@ const loadSnowflakeTablesForSchema = async (connectionId: string, databaseName: 
   }
 }
 
-// Load table schema
+// Load table schema and metadata
 const loadSchema = async (tableId: string, key: string) => {
   if (selectedProject.value === 'duckdb') {
-    // DuckDB schema
+    // DuckDB schema + metadata
     const table = duckdbStore.tables[tableId]
     if (table && table.columns) {
       schemas.value[key] = table.columns.map(col => ({
@@ -669,50 +747,68 @@ const loadSchema = async (tableId: string, key: string) => {
         type: 'VARCHAR' // Simplified for now
       }))
     }
+    tableMetadata.value[key] = {
+      rowCount: table?.rowCount ?? null,
+      sizeBytes: null,
+      engine: 'duckdb',
+    }
   } else if (selectedProjectType.value === 'postgres') {
-    // PostgreSQL schema
+    // PostgreSQL schema + metadata (fetched in parallel)
     loadingSchema.value[tableId] = true
     try {
-      // tableId is in format schema.table
       const [schemaName, tableName] = tableId.split('.')
-      const columns = await postgresStore.fetchColumns(selectedProject.value!, schemaName, tableName)
+      const [columns, metadata] = await Promise.all([
+        postgresStore.fetchColumns(selectedProject.value!, schemaName, tableName),
+        postgresStore.fetchTableMetadata(selectedProject.value!, schemaName, tableName).catch(() => null),
+      ])
       schemas.value[key] = columns.map(col => ({
         name: col.name,
         type: col.type
       }))
+      if (metadata) tableMetadata.value[key] = metadata
     } catch (err) {
       console.error('Failed to load PostgreSQL schema:', err)
     } finally {
       loadingSchema.value[tableId] = false
     }
   } else if (selectedProjectType.value === 'snowflake') {
-    // Snowflake schema - use selected database and schema from hierarchical navigation
+    // Snowflake schema + metadata (fetched in parallel)
     if (!selectedSnowflakeDatabase.value || !selectedSnowflakeSchema.value) return
     loadingSchema.value[tableId] = true
     try {
-      const columns = await snowflakeStore.fetchColumns(
-        selectedProject.value!,
-        selectedSnowflakeDatabase.value,
-        selectedSnowflakeSchema.value,
-        tableId
-      )
+      const [columns, metadata] = await Promise.all([
+        snowflakeStore.fetchColumns(
+          selectedProject.value!,
+          selectedSnowflakeDatabase.value,
+          selectedSnowflakeSchema.value,
+          tableId
+        ),
+        snowflakeStore.fetchTableMetadata(
+          selectedProject.value!,
+          selectedSnowflakeDatabase.value,
+          selectedSnowflakeSchema.value,
+          tableId
+        ).catch(() => null),
+      ])
       schemas.value[key] = columns.map(col => ({
         name: col.name,
         type: col.type
       }))
+      if (metadata) tableMetadata.value[key] = metadata
     } catch (err) {
       console.error('Failed to load Snowflake schema:', err)
     } finally {
       loadingSchema.value[tableId] = false
     }
   } else {
-    // BigQuery schema - use helper that works with any BigQuery connection
+    // BigQuery schema + metadata (from same API call)
     if (!selectedDataset.value || !selectedBigQueryProject.value) return
 
     loadingSchema.value[tableId] = true
     try {
-      const schema = await bigqueryStore.fetchTableSchemaWithAnyConnection(selectedDataset.value, tableId, selectedBigQueryProject.value)
-      schemas.value[key] = schema
+      const result = await bigqueryStore.fetchTableSchemaWithAnyConnection(selectedDataset.value, tableId, selectedBigQueryProject.value)
+      schemas.value[key] = result.fields
+      tableMetadata.value[key] = result.metadata
 
       // Also populate the DuckDB _schemas table for autocompletion
       if (selectedBigQueryProject.value && selectedDataset.value && selectedProject.value) {
@@ -722,7 +818,7 @@ const loadSchema = async (tableId: string, key: string) => {
           selectedBigQueryProject.value,
           selectedDataset.value,
           tableId,
-          schema,
+          result.fields,
         )
       }
     } catch (err) {
@@ -1114,7 +1210,7 @@ defineExpose({
             >
               {{ DATABASE_INFO[project.type as DatabaseEngine].shortName }}
             </span>
-            <span class="item-name">{{ project.name }}</span>
+            <span v-tooltip-overflow class="item-name">{{ project.name }}</span>
           </div>
         </div>
       </div>
@@ -1177,7 +1273,7 @@ defineExpose({
             @mouseenter="hoveredTableItem = item.id"
             @mouseleave="hoveredTableItem = null"
           >
-            <span class="item-name">{{ item.name }}</span>
+            <span v-tooltip-overflow class="item-name">{{ item.name }}</span>
             <button
               v-if="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake'"
               v-tooltip="'Query this table'"
@@ -1260,7 +1356,7 @@ defineExpose({
             @mouseenter="hoveredTableItem = item.id"
             @mouseleave="hoveredTableItem = null"
           >
-            <span class="item-name">{{ item.name }}</span>
+            <span v-tooltip-overflow class="item-name">{{ item.name }}</span>
             <button
               v-if="selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery'"
               v-tooltip="'Query this table'"
@@ -1333,7 +1429,7 @@ defineExpose({
             @mouseenter="hoveredTableItem = table.id"
             @mouseleave="hoveredTableItem = null"
           >
-            <span class="item-name">{{ table.name }}</span>
+            <span v-tooltip-overflow class="item-name">{{ table.name }}</span>
             <button
               v-tooltip="'Query this table'"
               class="query-button"
@@ -1409,7 +1505,7 @@ defineExpose({
             @click="selectedColumn = selectedColumn === field.name ? null : field.name"
           >
             <span class="field-info">
-              <span class="field-name">{{ field.name }}</span>
+              <span v-tooltip-overflow class="field-name">{{ field.name }}</span>
               <button
                 v-if="!isUnsupportedType(field.type)"
                 v-tooltip="'View column analytics'"
@@ -1433,7 +1529,36 @@ defineExpose({
             <span class="field-type">{{ field.type }}</span>
           </div>
         </div>
+        <!-- Table metadata pane -->
+        <div
+          v-if="currentTableMetadata && !loadingSchema[selectedTable!]"
+          class="table-metadata-pane"
+        >
+          <div v-if="currentTableMetadata.rowCount !== null" class="metadata-row">
+            <span class="metadata-label">Rows</span>
+            <span class="metadata-value">{{ formatRowCountCompact(currentTableMetadata.rowCount!) }}</span>
+          </div>
+          <div v-if="currentTableMetadata.sizeBytes" class="metadata-row">
+            <span class="metadata-label">Size</span>
+            <span class="metadata-value">{{ formatBytes(currentTableMetadata.sizeBytes) }}</span>
+          </div>
+          <div v-if="currentTableMetadata.clusteringFields?.length" class="metadata-row">
+            <span class="metadata-label">Clustering</span>
+            <span v-tooltip-overflow class="metadata-value">{{ currentTableMetadata.clusteringFields!.join(', ') }}</span>
+          </div>
+          <div v-if="currentTableMetadata.partitioning" class="metadata-row">
+            <span class="metadata-label">Partitioning</span>
+            <span v-tooltip-overflow class="metadata-value">{{ currentTableMetadata.partitioning }}</span>
+          </div>
+          <div v-if="currentTableMetadata.tableType && currentTableMetadata.tableType !== 'TABLE'" class="metadata-row">
+            <span class="metadata-label">Type</span>
+            <span class="metadata-value">{{ currentTableMetadata.tableType }}</span>
+          </div>
+        </div>
       </div>
+
+      <!-- Spacer for smooth scroll transitions when columns collapse -->
+      <div ref="scrollSpacerRef" class="scroll-spacer" />
     </div>
   </BaseBox>
 </template>
@@ -1571,11 +1696,11 @@ defineExpose({
 .item {
   /* Performance: skip rendering off-screen items */
   content-visibility: auto;
-  contain-intrinsic-size: auto 32px;
+  contain-intrinsic-size: auto 26px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   cursor: pointer;
   user-select: none;
 }
@@ -1606,16 +1731,47 @@ defineExpose({
   flex-shrink: 0;
 }
 
+.table-metadata-pane {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-3);
+  border-top: var(--table-border-width) solid var(--border-secondary);
+  background: var(--surface-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-caption);
+}
+
+.metadata-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1px 0;
+}
+
+.metadata-label {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 10px;
+}
+
+.metadata-value {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .schema-field {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   gap: var(--space-2);
   cursor: pointer;
   /* Performance: skip rendering off-screen items */
   content-visibility: auto;
-  contain-intrinsic-size: auto 32px;
+  contain-intrinsic-size: auto 26px;
 }
 
 .schema-field:hover {
@@ -1706,5 +1862,9 @@ defineExpose({
 
 .field-info .analytics-btn:hover {
   color: var(--text-primary);
+}
+
+.scroll-spacer {
+  flex-shrink: 0;
 }
 </style>

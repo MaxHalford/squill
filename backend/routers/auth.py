@@ -12,6 +12,7 @@ from services.auth import create_session_token
 from services.encryption import TokenEncryption
 from services.github_oauth import GitHubOAuthService
 from services.google_oauth import GoogleOAuthService
+from services.microsoft_oauth import MicrosoftOAuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -39,6 +40,15 @@ def get_github_oauth() -> GitHubOAuthService:
     """Get cached GitHub OAuth service."""
     settings = get_settings()
     return GitHubOAuthService(settings.github_client_id, settings.github_client_secret)
+
+
+@lru_cache
+def get_microsoft_oauth() -> MicrosoftOAuthService:
+    """Get cached Microsoft OAuth service."""
+    settings = get_settings()
+    return MicrosoftOAuthService(
+        settings.microsoft_client_id, settings.microsoft_client_secret
+    )
 
 
 class GoogleCallbackRequest(BaseModel):
@@ -211,6 +221,84 @@ async def github_login(request: GitHubLoginRequest, db: AsyncSession = Depends(g
     session_token = create_session_token(user.id, user.email)
 
     return GitHubLoginResponse(
+        session_token=session_token,
+        user={
+            "id": user.id,
+            "email": user.email,
+            "plan": user.plan,
+            "is_vip": user.is_vip,
+        },
+    )
+
+
+class MicrosoftLoginRequest(BaseModel):
+    """Request for Microsoft OAuth login flow."""
+
+    code: str
+    redirect_uri: str
+
+
+class MicrosoftLoginResponse(BaseModel):
+    """Response for Microsoft OAuth login flow."""
+
+    session_token: str
+    user: dict
+
+
+@router.post("/microsoft/login", response_model=MicrosoftLoginResponse)
+async def microsoft_login(
+    request: MicrosoftLoginRequest, db: AsyncSession = Depends(get_db)
+):
+    """
+    Microsoft OAuth login flow. Creates/updates user account using Microsoft email.
+
+    Account linking: if the Microsoft email matches an existing user (e.g. from Google login),
+    the same account is reused.
+    """
+    microsoft_oauth = get_microsoft_oauth()
+    settings = get_settings()
+
+    if not settings.microsoft_client_id or not settings.microsoft_client_secret:
+        raise HTTPException(status_code=500, detail="Microsoft OAuth is not configured")
+
+    try:
+        tokens = await microsoft_oauth.exchange_code(request.code, request.redirect_uri)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to exchange code: {e}")
+
+    access_token = tokens.get("access_token")
+    if not access_token:
+        raise HTTPException(
+            status_code=400, detail="No access token received from Microsoft"
+        )
+
+    try:
+        email = await microsoft_oauth.get_user_email(access_token)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to get user info: {e}")
+
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail="No email found on your Microsoft account.",
+        )
+
+    # Upsert user account (same logic as other providers — links by email)
+    existing_user = await db.execute(select(User).where(User.email == email))
+    user = existing_user.scalar_one_or_none()
+
+    if not user:
+        user = User(email=email, plan="free", is_vip=is_vip_email(email))
+        db.add(user)
+    elif is_vip_email(email) and not user.is_vip:
+        user.is_vip = True
+
+    await db.commit()
+    await db.refresh(user)
+
+    session_token = create_session_token(user.id, user.email)
+
+    return MicrosoftLoginResponse(
         session_token=session_token,
         user={
             "id": user.id,

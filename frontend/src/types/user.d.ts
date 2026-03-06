@@ -6,7 +6,7 @@ export type PlanType = 'free' | 'pro'
 /**
  * OAuth provider used for authentication
  */
-export type AuthProvider = 'google' | 'github'
+export type AuthProvider = 'google' | 'github' | 'microsoft'
 
 /**
  * User account identified by email from OAuth provider

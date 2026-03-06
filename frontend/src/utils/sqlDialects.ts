@@ -196,6 +196,8 @@ const bigqueryCompletions: Completion[] = [
   { label: 'COUNTIF', type: 'function', boost: 85 },
   { label: 'SUMIF', type: 'function', boost: 84 },
   { label: 'APPROX_COUNT_DISTINCT', type: 'function', boost: 81 },
+  { label: 'GREATEST', type: 'function', boost: 29 },
+  { label: 'LEAST', type: 'function', boost: 29 },
 
   // BigQuery date functions
   { label: 'DATE_DIFF', type: 'function', boost: 18 },

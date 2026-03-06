@@ -148,6 +148,11 @@ const handleSignInGitHub = async () => {
   await userStore.loginWithGitHub()
 }
 
+const handleSignInMicrosoft = async () => {
+  closeDropdown()
+  await userStore.loginWithMicrosoft()
+}
+
 const toggleSignInDropdown = () => {
   activeDropdown.value = activeDropdown.value === 'signin' ? null : 'signin'
 }
@@ -536,11 +541,11 @@ const handleClickOutside = (e: Event) => {
 }
 
 onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('click', handleClickOutside, { capture: true })
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('click', handleClickOutside, { capture: true })
 })
 </script>
 
@@ -1084,6 +1089,18 @@ onUnmounted(() => {
                   <span>⌘+click table navigation</span>
                 </label>
               </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <input
+                    type="checkbox"
+                    :checked="settingsStore.sqlBoxLayout === 'horizontal'"
+                    class="setting-checkbox"
+                    @change="settingsStore.toggleSqlBoxLayout"
+                  >
+                  <span>Horizontal split</span>
+                </label>
+              </div>
             </div>
 
             <div class="settings-section">
@@ -1115,11 +1132,10 @@ onUnmounted(() => {
                   <select
                     :value="settingsStore.canvasPattern"
                     class="setting-select"
-                    @change="settingsStore.setCanvasPattern(($event.target as HTMLSelectElement).value as 'dots' | 'grid' | 'crosshatch' | 'waves' | 'none')"
+                    @change="settingsStore.setCanvasPattern(($event.target as HTMLSelectElement).value as 'dots' | 'grid' | 'waves' | 'none')"
                   >
                     <option value="dots">Dots</option>
                     <option value="grid">Grid</option>
-                    <option value="crosshatch">Crosshatch</option>
                     <option value="waves">Waves</option>
                     <option value="none">None</option>
                   </select>
@@ -1319,8 +1335,15 @@ onUnmounted(() => {
               class="dropdown-item"
               @click="handleSignInGitHub"
             >
-              <img class="provider-icon" src="/logos/github.svg" alt="">
+              <img class="provider-icon provider-icon-invert" src="/logos/github.svg" alt="">
               <span class="item-text">Continue with GitHub</span>
+            </button>
+            <button
+              class="dropdown-item"
+              @click="handleSignInMicrosoft"
+            >
+              <img class="provider-icon" src="/logos/microsoft.svg" alt="">
+              <span class="item-text">Continue with Microsoft</span>
             </button>
           </div>
         </Transition>
@@ -1606,6 +1629,10 @@ onUnmounted(() => {
   flex-shrink: 0;
   width: 14px;
   height: 14px;
+}
+
+html.dark .provider-icon-invert {
+  filter: invert(1);
 }
 
 /* Error Toast */

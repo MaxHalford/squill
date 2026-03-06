@@ -46,6 +46,7 @@ const rectangleCurrent = ref<Point>({ x: 0, y: 0 })
 
 // Space key panning state
 const isSpaceHeld = ref(false)
+const isMetaHeld = ref(false)
 
 // CSV drag state
 const isDraggingFile = ref(false)
@@ -224,14 +225,11 @@ const isOverBox = (element: HTMLElement | null): boolean => {
   return false
 }
 
+const SCROLLABLE_SELECTOR = '.table-container, .sql-editor, .query-editor, .datasets-list, .schema-browser, .detail-content, .search-results, .history-list, .preview-panel, .code-editor, .column-dropdown, .sticky-note-content, .messages, .explain-viewport, .node-detail, [data-scrollable]'
+
 const isOverScrollableArea = (element: HTMLElement | null): boolean => {
-  const scrollableClasses = ['table-container', 'sql-editor', 'query-editor', 'datasets-list', 'schema-browser', 'detail-content', 'search-results', 'history-list', 'preview-panel', 'code-editor', 'column-dropdown', 'sticky-note-content', 'messages']
-  let current = element
-  while (current && current !== canvasRef.value) {
-    if (scrollableClasses.some(cls => current!.classList?.contains(cls))) return true
-    current = current.parentElement
-  }
-  return false
+  if (!element) return false
+  return element.closest(SCROLLABLE_SELECTOR) !== null
 }
 
 const boxIntersectsRectangle = (box: Box, startX: number, startY: number, endX: number, endY: number): boolean => {
@@ -266,26 +264,34 @@ const handleWheel = (e: WheelEvent) => {
   markZoomActive()
 }
 
+// Capture-phase handler: intercepts CMD/Space + mousedown before children see it
+const handleMouseDownCapture = (e: MouseEvent) => {
+  if (e.button !== 0 || !canvasRef.value) return
+  const target = e.target as HTMLElement
+  const wantsPan = isSpaceHeld.value || ((e.ctrlKey || e.metaKey) && isOverBox(target))
+  if (!wantsPan) return
+
+  // Stop the event from reaching child elements (e.g. CodeMirror)
+  e.preventDefault()
+  e.stopPropagation()
+  isPanning.value = true
+  isActuallyPanning.value = false
+  panStart.value = {
+    x: e.clientX - pan.value.x,
+    y: e.clientY - pan.value.y
+  }
+  canvasRef.value.classList.remove('space-ready', 'meta-ready')
+  canvasRef.value.classList.add('pan-active')
+}
+
 const handleMouseDown = (e: MouseEvent) => {
   if (e.button !== 0 || !canvasRef.value) return
+  // Already handled by capture phase
+  if (isPanning.value) return
 
   const target = e.target as HTMLElement
 
-  // Space + drag panning (works anywhere, even over boxes)
-  if (isSpaceHeld.value) {
-    e.preventDefault()
-    e.stopPropagation()
-    isPanning.value = true
-    isActuallyPanning.value = false
-    panStart.value = {
-      x: e.clientX - pan.value.x,
-      y: e.clientY - pan.value.y
-    }
-    canvasRef.value.style.cursor = 'grabbing'
-    return
-  }
-
-  // Rectangle selection with Cmd/Ctrl
+  // Rectangle selection with Cmd/Ctrl on empty canvas
   if ((e.ctrlKey || e.metaKey) && !isOverBox(target)) {
     e.preventDefault()
     isRectangleSelecting.value = true
@@ -304,7 +310,7 @@ const handleMouseDown = (e: MouseEvent) => {
     x: e.clientX - pan.value.x,
     y: e.clientY - pan.value.y
   }
-  canvasRef.value.style.cursor = 'grabbing'
+  canvasRef.value.classList.add('pan-active')
 }
 
 let panRafId: number | null = null
@@ -368,16 +374,25 @@ const handleMouseUp = () => {
 
     canvasStore.setRectangleSelection(null)
     isRectangleSelecting.value = false
-    canvasRef.value.style.cursor = isSpaceHeld.value ? 'grab' : 'grab'
+    canvasRef.value.style.cursor = ''
+    updateModifierCursor()
     return
   }
 
   if (isPanning.value) {
-    if (!isActuallyPanning.value && !isSpaceHeld.value) emit('canvas-click')
+    if (!isActuallyPanning.value && !isSpaceHeld.value && !isMetaHeld.value) emit('canvas-click')
     isPanning.value = false
     isActuallyPanning.value = false
-    canvasRef.value.style.cursor = isSpaceHeld.value ? 'grab' : 'grab'
+    canvasRef.value.classList.remove('pan-active')
+    updateModifierCursor()
   }
+}
+
+const updateModifierCursor = () => {
+  if (!canvasRef.value) return
+  const active = !isPanning.value
+  canvasRef.value.classList.toggle('space-ready', active && isSpaceHeld.value)
+  canvasRef.value.classList.toggle('meta-ready', active && isMetaHeld.value && !isSpaceHeld.value)
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -389,24 +404,30 @@ const handleKeyDown = (e: KeyboardEvent) => {
     }
     e.preventDefault()
     isSpaceHeld.value = true
-    if (canvasRef.value && !isPanning.value) {
-      canvasRef.value.style.cursor = 'grab'
-    }
+    updateModifierCursor()
+  }
+  if ((e.key === 'Meta' || e.key === 'Control') && !isMetaHeld.value) {
+    isMetaHeld.value = true
+    updateModifierCursor()
   }
 }
 
 const handleKeyUp = (e: KeyboardEvent) => {
   if (e.code === 'Space') {
     isSpaceHeld.value = false
-    if (canvasRef.value && !isPanning.value) {
-      canvasRef.value.style.cursor = 'grab'
-    }
+    updateModifierCursor()
+  }
+  if (e.key === 'Meta' || e.key === 'Control') {
+    isMetaHeld.value = false
+    updateModifierCursor()
   }
 }
 
 const handleWindowBlur = () => {
-  // Reset space state when window loses focus to prevent stuck state
+  // Reset modifier state when window loses focus to prevent stuck state
   isSpaceHeld.value = false
+  isMetaHeld.value = false
+  canvasRef.value?.classList.remove('space-ready', 'meta-ready', 'pan-active')
 }
 
 // File drag and drop
@@ -451,6 +472,7 @@ const handleDrop = (e: DragEvent) => {
 
 onMounted(() => {
   canvasRef.value?.addEventListener('wheel', handleWheel, { passive: false, capture: true })
+  canvasRef.value?.addEventListener('mousedown', handleMouseDownCapture, { capture: true })
   window.addEventListener('mousemove', handleMouseMove)
   window.addEventListener('mouseup', handleMouseUp)
   window.addEventListener('keydown', handleKeyDown)
@@ -460,6 +482,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   canvasRef.value?.removeEventListener('wheel', handleWheel)
+  canvasRef.value?.removeEventListener('mousedown', handleMouseDownCapture, { capture: true })
   window.removeEventListener('mousemove', handleMouseMove)
   window.removeEventListener('mouseup', handleMouseUp)
   window.removeEventListener('keydown', handleKeyDown)
@@ -533,6 +556,27 @@ onUnmounted(() => {
   cursor: grab;
   /* CSS containment for performance */
   contain: layout size style;
+}
+
+/* Space held: grab cursor everywhere (pan from anywhere) */
+.infinite-canvas.space-ready,
+.infinite-canvas.space-ready :deep(*) {
+  cursor: grab !important;
+}
+
+/* Meta/Ctrl held: default cursor on canvas (rectangle select), grab over boxes (pan) */
+.infinite-canvas.meta-ready {
+  cursor: crosshair !important;
+}
+.infinite-canvas.meta-ready :deep(.resizable-box),
+.infinite-canvas.meta-ready :deep(.resizable-box *) {
+  cursor: grab !important;
+}
+
+/* Actively panning: grabbing cursor everywhere */
+.infinite-canvas.pan-active,
+.infinite-canvas.pan-active :deep(*) {
+  cursor: grabbing !important;
 }
 
 .viewport {

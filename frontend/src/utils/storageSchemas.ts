@@ -8,7 +8,9 @@ import { z } from 'zod'
 // Settings Schema
 // ============================================
 export const ThemePreferenceSchema = z.enum(['system', 'light', 'dark'])
-export const CanvasPatternSchema = z.enum(['dots', 'grid', 'crosshatch', 'waves', 'none'])
+export const CanvasPatternSchema = z.enum(['dots', 'grid', 'waves', 'none'])
+
+export const SqlBoxLayoutSchema = z.enum(['vertical', 'horizontal'])
 
 export const SettingsSchema = z.object({
   fetchBatchSize: z.number().positive(),
@@ -22,7 +24,8 @@ export const SettingsSchema = z.object({
   tableLinkEnabled: z.boolean(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   canvasPattern: CanvasPatternSchema,
-  voiceNotifyEnabled: z.boolean()
+  voiceNotifyEnabled: z.boolean(),
+  sqlBoxLayout: SqlBoxLayoutSchema
 }).partial() // All fields optional since we merge with defaults
 
 export type SettingsData = z.infer<typeof SettingsSchema>
@@ -30,7 +33,7 @@ export type SettingsData = z.infer<typeof SettingsSchema>
 // ============================================
 // Canvas/Box Schema
 // ============================================
-const BoxTypeSchema = z.enum(['sql', 'schema', 'note', 'detail', 'analytics', 'history', 'chat'])
+const BoxTypeSchema = z.enum(['sql', 'schema', 'note', 'detail', 'analytics', 'history', 'chat', 'explain'])
 
 const BoxSchema = z.object({
   id: z.number(),
@@ -109,7 +112,7 @@ export type ConnectionsStateData = z.infer<typeof ConnectionsStateSchema>
 // ============================================
 const PlanTypeSchema = z.enum(['free', 'pro'])
 
-const AuthProviderSchema = z.enum(['google', 'github'])
+const AuthProviderSchema = z.enum(['google', 'github', 'microsoft'])
 
 export const UserSchema = z.object({
   id: z.string(),

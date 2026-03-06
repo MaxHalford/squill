@@ -17,7 +17,7 @@ import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { Compartment, StateField, StateEffect, RangeSet, EditorState } from '@codemirror/state'
 import { Decoration, WidgetType, tooltips, lineNumbers, drawSelection, dropCursor, highlightSpecialChars, keymap } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, insertNewline, indentMore, indentLess } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentMore, indentLess } from '@codemirror/commands'
 import { syntaxHighlighting, HighlightStyle, bracketMatching, indentUnit } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, acceptCompletion } from '@codemirror/autocomplete'
@@ -41,12 +41,14 @@ const props = defineProps<{
   suggestion?: LineSuggestion | null
   connectionType?: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
   connectionId?: string
+  explainDisabledReason?: string
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'run': []
   'stop': []
+  'explain': [event: { clientX: number; clientY: number }]
   'accept-suggestion': []
   'dismiss-suggestion': []
   'navigate-to-table': [ref: TableReferenceWithPosition]
@@ -601,8 +603,20 @@ onMounted(() => {
             return true
           }
         },
-        // Override Enter to insert plain newline without auto-indent
-        { key: 'Enter', run: insertNewline },
+        // Enter: insert newline and copy indentation from the current line
+        {
+          key: 'Enter',
+          run: (view) => {
+            const { head } = view.state.selection.main
+            const line = view.state.doc.lineAt(head)
+            const indent = line.text.match(/^\s*/)?.[0] || ''
+            view.dispatch({
+              changes: { from: head, insert: '\n' + indent },
+              selection: { anchor: head + 1 + indent.length },
+            })
+            return true
+          }
+        },
         // Tab: accept autocomplete if open, indent selection, or insert spaces
         {
           key: 'Tab',
@@ -736,6 +750,36 @@ defineExpose({
     />
 
     <button
+      v-tooltip="explainDisabledReason || 'Explain query'"
+      class="explain-btn"
+      :disabled="disabled || isRunning || !!explainDisabledReason"
+      @click.stop="emit('explain', { clientX: $event.clientX, clientY: $event.clientY })"
+    >
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle
+          cx="11"
+          cy="11"
+          r="8"
+        />
+        <line
+          x1="21"
+          y1="21"
+          x2="16.65"
+          y2="16.65"
+        />
+      </svg>
+    </button>
+
+    <button
       v-tooltip="runButtonTooltip"
       class="run-btn"
       :disabled="disabled"
@@ -801,16 +845,16 @@ defineExpose({
   display: none;
 }
 
-/* Run Button */
-.run-btn {
+/* Explain Button — stacked above Run */
+.explain-btn {
   position: absolute;
-  bottom: var(--space-2);
+  bottom: calc(var(--space-2) + 28px);
   right: var(--space-2);
   display: flex;
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
-  background: var(--surface-primary);
+  background: transparent;
   border: none;
   border-radius: var(--border-radius-sm);
   color: var(--text-primary);
@@ -821,8 +865,30 @@ defineExpose({
   z-index: 1;
 }
 
-.run-btn:hover:not(:disabled) {
-  background: var(--surface-secondary);
+.explain-btn:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Run Button */
+.run-btn {
+  position: absolute;
+  bottom: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
 }
 
 .run-btn:disabled {

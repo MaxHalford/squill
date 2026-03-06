@@ -18,6 +18,16 @@ export function formatRowCount(count: number): string {
 }
 
 /**
+ * Format row count compactly (e.g. "1 row", "624 rows", "1.2K rows", "3.5M rows")
+ */
+export function formatRowCountCompact(count: number): string {
+  const label = count === 1 ? 'row' : 'rows'
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M ${label}`
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K ${label}`
+  return `${count} ${label}`
+}
+
+/**
  * Format a timestamp as relative time (e.g., "2m ago", "1h ago")
  */
 export function formatRelativeTime(timestamp: number): string {
@@ -56,6 +66,18 @@ export function formatNumber(val: number | null | unknown): string {
     return num.toLocaleString()
   }
   return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+}
+
+/**
+ * Format byte size compactly (e.g., "1.2 GB", "340 MB", "0 B")
+ */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined || bytes === 0) return '0 B'
+  if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(1)} TB`
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`
+  if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(1)} KB`
+  return `${bytes} B`
 }
 
 /**

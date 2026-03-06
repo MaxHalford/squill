@@ -508,11 +508,12 @@ onUnmounted(() => {
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid var(--border-secondary);
+  border: var(--border-width-thin) solid transparent;
   border-radius: var(--border-radius-sm);
-  background: var(--surface-primary);
-  color: var(--text-secondary);
+  background: transparent;
+  color: var(--text-tertiary);
   cursor: pointer;
+  transition: background 0.1s, color 0.1s;
 }
 
 .icon-btn:hover {

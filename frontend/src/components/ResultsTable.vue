@@ -32,6 +32,8 @@ const props = withDefaults(defineProps<{
   showAnalytics?: boolean
   connectionName?: string
   boxId?: number | null  // For accessing fetch state
+  autoPinnedColumns?: string[]  // Column names to auto-pin (e.g. pivot row fields)
+  heatmap?: boolean  // Color numeric cells by value intensity
 }>(), {
   tableName: null,
   stats: null,
@@ -40,7 +42,9 @@ const props = withDefaults(defineProps<{
   connectionName: undefined,
   showRowDetail: true,
   showAnalytics: true,
-  boxId: null
+  boxId: null,
+  autoPinnedColumns: undefined,
+  heatmap: false
 })
 
 const emit = defineEmits<{
@@ -82,6 +86,81 @@ const tableContainerRef = ref<HTMLElement | null>(null)
 const scrollLeft = ref(0)
 const containerWidth = ref(800)
 const COLUMN_BUFFER = 2 // Render 2 extra columns on each side
+
+// Pinned/frozen columns state — individual columns can be pinned
+const pinnedSet = ref<Set<string>>(new Set())
+
+// Pinned columns in the order they were pinned (Set preserves insertion order)
+const pinnedCols = computed(() => [...pinnedSet.value].filter(c => columns.value.includes(c)))
+const unpinnedCols = computed(() => columns.value.filter(c => !pinnedSet.value.has(c)))
+
+const pinnedColumnOffsets = computed(() => {
+  const offsets: number[] = []
+  let left = rowNumberColWidth.value
+  for (const col of pinnedCols.value) {
+    offsets.push(left)
+    left += columnWidths.value[col] || 150
+  }
+  return offsets
+})
+
+const pinnedColumnsWidth = computed(() => {
+  let w = 0
+  for (const col of pinnedCols.value) {
+    w += columnWidths.value[col] || 150
+  }
+  return w
+})
+
+const togglePin = (colName: string) => {
+  const next = new Set(pinnedSet.value)
+  if (next.has(colName)) next.delete(colName)
+  else next.add(colName)
+  pinnedSet.value = next
+}
+
+// Type icon SVGs by category (avoids duplicating in template)
+const TYPE_ICONS: Record<string, string> = {
+  number: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="5" width="3" height="8" rx="0.5"/><rect x="6.5" y="7" width="3" height="6" rx="0.5"/><rect x="11" y="3" width="3" height="10" rx="0.5"/></svg>',
+  text: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 3a.5.5 0 0 0 0 1h11a.5.5 0 0 0 0-1h-11zM2.5 6a.5.5 0 0 0 0 1h9a.5.5 0 0 0 0-1h-9zM2.5 9a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7zM2.5 12a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5z"/></svg>',
+  date: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="3" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="1.5"/><line x1="5" y1="1" x2="5" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="1" x2="11" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  boolean: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/></svg>',
+  binary: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.526 13.09c.976 0 1.524-.79 1.524-2.205 0-1.412-.548-2.203-1.524-2.203-.978 0-1.526.79-1.526 2.203 0 1.415.548 2.206 1.526 2.206zm-.832-2.205c0-1.05.29-1.612.832-1.612.358 0 .607.247.733.721L4.7 11.137a6.749 6.749 0 0 1-.006-.252zm.832 1.614c-.36 0-.606-.246-.732-.718l1.556-1.145c.003.079.005.164.005.258 0 1.05-.29 1.605-.829 1.605zm5.329.501v-.595H9.73V8.772h-.69l-1.19.786v.688L8.986 9.5h.05v2.906h-1.18V13h3z"/></svg>',
+  json: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2C2.5 2 2 3 2 4v2.5c0 .5-.5 1.5-1.5 1.5 1 0 1.5 1 1.5 1.5V12c0 1 .5 2 2 2"/><path d="M12 2c1.5 0 2 1 2 2v2.5c0 .5.5 1.5 1.5 1.5-1 0-1.5 1-1.5 1.5V12c0 1-.5 2-2 2"/></svg>',
+}
+const typeIconSvg = (colType: string) => TYPE_ICONS[getTypeCategory(colType)] || ''
+
+// Heatmap: compute min/max per numeric column for background coloring
+const heatmapRanges = computed(() => {
+  if (!props.heatmap) return null
+  const ranges: Record<string, { min: number; max: number }> = {}
+  for (const col of columns.value) {
+    if (getTypeCategory(columnTypes.value[col] || '') !== 'number') continue
+    let min = Infinity, max = -Infinity
+    for (const row of pageData.value) {
+      const v = row[col]
+      if (v === null || v === undefined) continue
+      const n = Number(v)
+      if (!isFinite(n)) continue
+      if (n < min) min = n
+      if (n > max) max = n
+    }
+    if (min < max) ranges[col] = { min, max }
+  }
+  return ranges
+})
+
+const heatmapStyle = (col: string, value: unknown): Record<string, string> | undefined => {
+  if (!heatmapRanges.value) return undefined
+  const range = heatmapRanges.value[col]
+  if (!range || value === null || value === undefined) return undefined
+  const n = Number(value)
+  if (!isFinite(n)) return undefined
+  const t = (n - range.min) / (range.max - range.min) // 0..1
+  // Green intensity: low values = no color, high values = strong green
+  const alpha = (t * 0.45).toFixed(2)
+  return { background: `rgba(34, 197, 94, ${alpha})` }
+}
 
 // Row virtualization via TanStack Virtual
 const ROW_HEIGHT_ESTIMATE = 22
@@ -158,9 +237,9 @@ const tableStyle = computed(() => {
   return { width: (rowNumberColWidth.value + totalColumnWidth) + 'px' }
 })
 
-// Column virtualization: only render visible columns
+// Column virtualization: only render visible columns (unpinned portion)
 const visibleColumnsData = computed(() => {
-  const cols = columns.value
+  const cols = unpinnedCols.value
   if (cols.length < 20) {
     // Don't virtualize small column counts
     return {
@@ -172,7 +251,7 @@ const visibleColumnsData = computed(() => {
     }
   }
 
-  // Calculate cumulative widths
+  // Calculate cumulative widths for unpinned columns
   let cumWidth = 0
   const positions: number[] = [0]
   for (const col of cols) {
@@ -180,8 +259,8 @@ const visibleColumnsData = computed(() => {
     positions.push(cumWidth)
   }
 
-  // Find first visible column (accounting for row number column)
-  const viewStart = scrollLeft.value
+  // Subtract pinned columns width from view calculations
+  const viewStart = Math.max(0, scrollLeft.value - pinnedColumnsWidth.value)
   const viewEnd = viewStart + containerWidth.value
 
   let startIndex = 0
@@ -236,9 +315,10 @@ const rowPaddingAfter = computed(() => {
   return totalRowHeight.value - items[items.length - 1].end
 })
 
-// Total colspan for spacer rows (row number + padding cells + visible columns)
+// Total colspan for spacer rows (row number + pinned + padding cells + visible columns)
 const totalColspan = computed(() => {
   let count = 1 // row number column
+  count += pinnedCols.value.length
   if (visibleColumnsData.value.paddingLeft > 0) count++
   count += visibleColumns.value.length
   if (visibleColumnsData.value.paddingRight > 0) count++
@@ -317,6 +397,7 @@ const calculateInitialColumnWidths = () => {
 watch(() => props.tableName, async (newTableName) => {
   currentPage.value = 1
   columnWidths.value = {} // Reset column widths for new table
+  pinnedSet.value = new Set()
 
   if (newTableName) {
     await fetchRowCount()
@@ -330,6 +411,13 @@ watch(() => props.tableName, async (newTableName) => {
     duckdbRowCount.value = 0
   }
 }, { immediate: true })
+
+// Auto-pin columns when autoPinnedColumns prop is provided
+watch(columns, (cols) => {
+  if (!props.autoPinnedColumns?.length || !cols.length) return
+  const colSet = new Set(cols)
+  pinnedSet.value = new Set(props.autoPinnedColumns.filter(name => colSet.has(name)))
+})
 
 // Watch pagination changes - check if we need more data from source
 watch(currentPage, async () => {
@@ -735,6 +823,11 @@ defineExpose({ resetPagination, triggerReveal })
             class="row-number-col"
             :style="{ width: rowNumberColWidth + 'px' }"
           >
+          <col
+            v-for="col in pinnedCols"
+            :key="'pin-' + col"
+            :style="{ width: (columnWidths[col] || 150) + 'px' }"
+          >
           <!-- Padding for virtualized columns before visible range -->
           <col
             v-if="visibleColumnsData.paddingLeft > 0"
@@ -757,6 +850,30 @@ defineExpose({ resetPagination, triggerReveal })
               scope="col"
               class="row-number-col"
             />
+            <!-- Pinned column headers -->
+            <th
+              v-for="(column, i) in pinnedCols"
+              :key="'pin-' + column"
+              scope="col"
+              class="pinned-col"
+              :class="{
+                'number-cell': getTypeCategory(columnTypes[column] || '') === 'number',
+                'pinned-col-last': i === pinnedCols.length - 1
+              }"
+              :style="{ left: pinnedColumnOffsets[i] + 'px' }"
+              @mouseenter="hoveredColumn = column"
+              @mouseleave="hoveredColumn = null"
+            >
+              <span class="column-header">
+                <span class="column-info">
+                  <span v-tooltip="simplifyTypeName(columnTypes[column])" class="type-icon" v-html="typeIconSvg(columnTypes[column] || '')" />
+                  <span class="column-name">{{ column }}</span>
+                  <button v-if="showAnalytics" v-tooltip="'View column analytics'" class="analytics-btn" :class="{ visible: hoveredColumn === column, hidden: getTypeCategory(columnTypes[column] || '') === 'binary' || getTypeCategory(columnTypes[column] || '') === 'json' }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="handleShowAnalytics($event, column)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6" /></svg></button>
+                  <button v-tooltip="'Unpin column'" class="pin-btn pinned" :class="{ visible: hoveredColumn === column }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="togglePin(column)"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="2" x2="2" y2="14" /><path d="M13 5L7 8L13 11" /></svg></button>
+                </span>
+              </span>
+              <div class="resize-handle" @mousedown.stop.prevent="startResize($event, column)" />
+            </th>
             <!-- Padding cell for virtualized columns before visible range -->
             <th
               v-if="visibleColumnsData.paddingLeft > 0"
@@ -773,167 +890,14 @@ defineExpose({ resetPagination, triggerReveal })
               @mouseleave="hoveredColumn = null"
             >
               <span class="column-header">
-                <!-- Left group: type icon, column name, analytics button -->
                 <span class="column-info">
-                  <!-- Type icon -->
-                  <span
-                    v-tooltip="simplifyTypeName(columnTypes[column])"
-                    class="type-icon"
-                  >
-                    <!-- Number type -->
-                    <svg
-                      v-if="getTypeCategory(columnTypes[column] || '') === 'number'"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                    >
-                      <rect
-                        x="2"
-                        y="5"
-                        width="3"
-                        height="8"
-                        rx="0.5"
-                      />
-                      <rect
-                        x="6.5"
-                        y="7"
-                        width="3"
-                        height="6"
-                        rx="0.5"
-                      />
-                      <rect
-                        x="11"
-                        y="3"
-                        width="3"
-                        height="10"
-                        rx="0.5"
-                      />
-                    </svg>
-                    <!-- Text type -->
-                    <svg
-                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'text'"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                    >
-                      <path d="M2.5 3a.5.5 0 0 0 0 1h11a.5.5 0 0 0 0-1h-11zM2.5 6a.5.5 0 0 0 0 1h9a.5.5 0 0 0 0-1h-9zM2.5 9a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7zM2.5 12a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5z" />
-                    </svg>
-                    <!-- Date type -->
-                    <svg
-                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'date'"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                    >
-                      <rect
-                        x="2"
-                        y="3"
-                        width="12"
-                        height="11"
-                        rx="1"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                      />
-                      <line
-                        x1="2"
-                        y1="6"
-                        x2="14"
-                        y2="6"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                      />
-                      <line
-                        x1="5"
-                        y1="1"
-                        x2="5"
-                        y2="4"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                        stroke-linecap="round"
-                      />
-                      <line
-                        x1="11"
-                        y1="1"
-                        x2="11"
-                        y2="4"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                        stroke-linecap="round"
-                      />
-                    </svg>
-                    <!-- Boolean type -->
-                    <svg
-                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'boolean'"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                    >
-                      <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z" />
-                    </svg>
-                    <!-- Binary type -->
-                    <svg
-                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'binary'"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                    >
-                      <path d="M5.526 13.09c.976 0 1.524-.79 1.524-2.205 0-1.412-.548-2.203-1.524-2.203-.978 0-1.526.79-1.526 2.203 0 1.415.548 2.206 1.526 2.206zm-.832-2.205c0-1.05.29-1.612.832-1.612.358 0 .607.247.733.721L4.7 11.137a6.749 6.749 0 0 1-.006-.252zm.832 1.614c-.36 0-.606-.246-.732-.718l1.556-1.145c.003.079.005.164.005.258 0 1.05-.29 1.605-.829 1.605zm5.329.501v-.595H9.73V8.772h-.69l-1.19.786v.688L8.986 9.5h.05v2.906h-1.18V13h3z" />
-                    </svg>
-                    <!-- JSON/struct type - curly braces -->
-                    <svg
-                      v-else-if="getTypeCategory(columnTypes[column] || '') === 'json'"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M4 2C2.5 2 2 3 2 4v2.5c0 .5-.5 1.5-1.5 1.5 1 0 1.5 1 1.5 1.5V12c0 1 .5 2 2 2" />
-                      <path d="M12 2c1.5 0 2 1 2 2v2.5c0 .5.5 1.5 1.5 1.5-1 0-1.5 1-1.5 1.5V12c0 1-.5 2-2 2" />
-                    </svg>
-                  </span>
+                  <span v-tooltip="simplifyTypeName(columnTypes[column])" class="type-icon" v-html="typeIconSvg(columnTypes[column] || '')" />
                   <span class="column-name">{{ column }}</span>
-                  <!-- Analytics button (right next to column name) -->
-                  <button
-                    v-if="showAnalytics"
-                    v-tooltip="'View column analytics'"
-                    class="analytics-btn"
-                    :class="{
-                      visible: hoveredColumn === column,
-                      hidden: getTypeCategory(columnTypes[column] || '') === 'binary' ||
-                        getTypeCategory(columnTypes[column] || '') === 'json'
-                    }"
-                    :tabindex="hoveredColumn === column ? 0 : -1"
-                    @click.stop="handleShowAnalytics($event, column)"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M18 20V10M12 20V4M6 20v-6" />
-                    </svg>
-                  </button>
+                  <button v-if="showAnalytics" v-tooltip="'View column analytics'" class="analytics-btn" :class="{ visible: hoveredColumn === column, hidden: getTypeCategory(columnTypes[column] || '') === 'binary' || getTypeCategory(columnTypes[column] || '') === 'json' }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="handleShowAnalytics($event, column)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6" /></svg></button>
+                  <button v-tooltip="'Pin column'" class="pin-btn" :class="{ visible: hoveredColumn === column }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="togglePin(column)"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="2" x2="2" y2="14" /><path d="M13 5L7 8L13 11" /></svg></button>
                 </span>
               </span>
-              <div
-                class="resize-handle"
-                @mousedown.stop.prevent="startResize($event, column)"
-              />
+              <div class="resize-handle" @mousedown.stop.prevent="startResize($event, column)" />
             </th>
             <!-- Padding cell for virtualized columns after visible range -->
             <th
@@ -992,6 +956,22 @@ defineExpose({ resetPagination, triggerReveal })
                 </svg>
               </button>
             </th>
+            <!-- Pinned data cells -->
+            <td
+              v-for="(column, i) in pinnedCols"
+              :key="'pin-' + column"
+              class="pinned-col"
+              :class="{
+                'pinned-col-last': i === pinnedCols.length - 1,
+                'null-value': pageData[vRow.index][column] === null,
+                'number-cell': getTypeCategory(columnTypes[column] || '') === 'number',
+                'bool-true': getTypeCategory(columnTypes[column] || '') === 'boolean' && pageData[vRow.index][column] === true,
+                'bool-false': getTypeCategory(columnTypes[column] || '') === 'boolean' && pageData[vRow.index][column] === false
+              }"
+              :style="[{ left: pinnedColumnOffsets[i] + 'px' }, heatmapStyle(column, pageData[vRow.index][column])]"
+            >
+              {{ formatCellValue(pageData[vRow.index][column], columnTypes[column] || '') }}
+            </td>
             <!-- Padding cell for virtualized columns before visible range -->
             <td
               v-if="visibleColumnsData.paddingLeft > 0"
@@ -1006,6 +986,7 @@ defineExpose({ resetPagination, triggerReveal })
                 'bool-true': getTypeCategory(columnTypes[column] || '') === 'boolean' && pageData[vRow.index][column] === true,
                 'bool-false': getTypeCategory(columnTypes[column] || '') === 'boolean' && pageData[vRow.index][column] === false
               }"
+              :style="heatmapStyle(column, pageData[vRow.index][column])"
             >
               {{ formatCellValue(pageData[vRow.index][column], columnTypes[column] || '') }}
             </td>
@@ -1721,6 +1702,39 @@ defineExpose({ resetPagination, triggerReveal })
   color: var(--text-secondary);
   font-size: var(--font-size-body);
 }
+
+/* Pinned/frozen columns - matches row-number-col pattern */
+.results-table .pinned-col {
+  position: sticky;
+  z-index: 1;
+  background: var(--surface-primary);
+  backface-visibility: hidden; /* Force GPU layer to prevent sub-pixel flickering */
+}
+.results-table thead .pinned-col { z-index: 3; background: var(--table-header-bg); }
+.results-table tbody tr.stripe .pinned-col { background: var(--table-row-stripe-bg); }
+.results-table tbody tr:hover .pinned-col { background: var(--table-row-hover-bg); }
+.pinned-col-last { box-shadow: 2px 0 0 0 var(--border-primary); }
+
+/* Pin button - mirrors analytics-btn */
+.pin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.pin-btn.visible { opacity: 1; }
+.pin-btn.pinned { opacity: 1; color: var(--color-accent); }
+.pin-btn:hover { color: var(--text-primary); }
+.pin-btn:focus-visible { opacity: 1; outline: 1px solid var(--text-tertiary); }
 
 /* Virtual scrolling padding cells */
 .virtual-padding-cell {

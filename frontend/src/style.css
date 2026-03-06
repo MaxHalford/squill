@@ -20,8 +20,8 @@
   /* ===== COLORS ===== */
 
   /* Surface Colors */
-  --surface-primary: white;       /* Main background */
-  --surface-secondary: #f9fafb;   /* Subtle backgrounds, hover states */
+  --surface-primary: #fafafa;       /* Main background */
+  --surface-secondary: #f2f2f2;   /* Subtle backgrounds, hover states */
   --surface-tertiary: #e8e8e8;    /* Deeper backgrounds, active states */
   --surface-inverse: black;       /* Inverse backgrounds (headers) */
 
@@ -108,8 +108,8 @@
   --table-cell-padding: 3px 8px;
   --table-border-width: var(--border-width-thin);
   --table-font-size: 12px;
-  --table-row-hover-bg: #f5f5f5;
-  --table-row-stripe-bg: #fafafa;
+  --table-row-hover-bg: #ebebeb;
+  --table-row-stripe-bg: #f2f2f2;
   --table-header-bg: var(--surface-primary);
   --table-border-color: var(--border-secondary);
 
@@ -263,6 +263,11 @@ html.dark {
   box-sizing: border-box;
 }
 
+html {
+  overscroll-behavior-x: none;
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   font-family: var(--font-family-ui);
@@ -270,6 +275,8 @@ body {
   font-weight: 400;
   color: var(--text-primary);
   background: var(--surface-primary);
+  overscroll-behavior-x: none;
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -452,14 +459,6 @@ html.dark .canvas-grid {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px) !important;
-}
-
-/* Crosshatch pattern */
-.canvas-crosshatch {
-  background-image:
-    linear-gradient(45deg, var(--canvas-dot-color) 1px, transparent 1px),
-    linear-gradient(-45deg, var(--canvas-dot-color) 1px, transparent 1px) !important;
-  background-size: 10px 10px !important;
 }
 
 /* Waves pattern - horizontal sine waves */

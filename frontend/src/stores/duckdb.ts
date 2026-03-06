@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
+import { DataType as ArrowDataType } from 'apache-arrow'
 import { loadCsvWithDuckDB } from '../services/csvHandler'
 import { sanitizeTableName, escapeSqlString } from '../utils/sqlSanitize'
 import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
@@ -62,16 +63,37 @@ const getErrorMessage = (err: unknown): string => {
 
 // Convert DuckDB/Arrow values to JSON-serializable types
 // Arrow types implement toJSON(), so we leverage JSON.stringify/parse for clean conversion
-const serializeDuckDBValue = (value: unknown): SerializableValue => {
+const serializeDuckDBValue = (value: unknown, fieldType?: { typeId: number; scale?: number }): SerializableValue => {
   if (value === null || value === undefined) return null
-  if (typeof value === 'bigint') return Number(value) // BigInt not supported by JSON
+  if (typeof value === 'bigint') {
+    // BigInt from DECIMAL: apply scale if available
+    if (fieldType && ArrowDataType.isDecimal(fieldType) && fieldType.scale > 0) {
+      return Number(value) / Math.pow(10, fieldType.scale)
+    }
+    return Number(value)
+  }
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return value
+  }
+  // Arrow Decimal types: String(value) gives the unscaled integer.
+  // Apply scale divisor to get the correct value.
+  if (fieldType && ArrowDataType.isDecimal(fieldType)) {
+    const str = String(value)
+    if (/^-?\d+$/.test(str)) {
+      const raw = Number(str)
+      return fieldType.scale > 0 ? raw / Math.pow(10, fieldType.scale) : raw
+    }
   }
   // Use JSON round-trip to leverage Arrow's built-in toJSON() methods
   // This handles Structs, Lists, Maps, Dates, etc. correctly
   try {
-    return JSON.parse(JSON.stringify(value))
+    const parsed = JSON.parse(JSON.stringify(value))
+    // Guard against Arrow types whose toJSON() wraps numbers in quotes
+    if (typeof parsed === 'string') {
+      const stripped = parsed.replace(/^"|"$/g, '')
+      if (/^-?\d+(\.\d+)?$/.test(stripped)) return Number(stripped)
+    }
+    return parsed
   } catch {
     return String(value)
   }
@@ -504,7 +526,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       const rows = result.toArray().map(row => {
         const obj: Record<string, SerializableValue> = {}
         result.schema.fields.forEach((field) => {
-          obj[field.name] = serializeDuckDBValue(row[field.name])
+          obj[field.name] = serializeDuckDBValue(row[field.name], field.type)
         })
         return obj
       })
@@ -547,10 +569,14 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       result.schema.fields.forEach(f => {
         columnTypes[f.name] = f.type.toString()
       })
+      const fieldTypes: Record<string, unknown> = {}
+      result.schema.fields.forEach(f => {
+        fieldTypes[f.name] = f.type
+      })
       const rows = result.toArray().map(row => {
         const obj: Record<string, SerializableValue> = {}
         columns.forEach(col => {
-          obj[col] = serializeDuckDBValue(row[col])
+          obj[col] = serializeDuckDBValue(row[col], fieldTypes[col] as { typeId: number; scale?: number })
         })
         return obj
       })

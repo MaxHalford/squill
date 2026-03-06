@@ -8,6 +8,7 @@ import { loadItem, saveItem, deleteItem } from '../utils/storage'
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || ''
+const MICROSOFT_CLIENT_ID = import.meta.env.VITE_MICROSOFT_CLIENT_ID || ''
 const OAUTH_STATE_KEY = 'squill-oauth-state'
 
 // Generate cryptographically secure random state for CSRF protection
@@ -241,6 +242,30 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /**
+   * Login with Microsoft OAuth.
+   * Uses standard redirect flow via Azure AD common endpoint.
+   */
+  const loginWithMicrosoft = async (): Promise<void> => {
+    if (!MICROSOFT_CLIENT_ID) {
+      throw new Error('Microsoft Client ID not configured. Please set VITE_MICROSOFT_CLIENT_ID in your .env file')
+    }
+
+    const csrfToken = generateOAuthState()
+    const state = `${csrfToken}:microsoft-login`
+    sessionStorage.setItem(OAUTH_STATE_KEY, state)
+
+    const params = new URLSearchParams({
+      client_id: MICROSOFT_CLIENT_ID,
+      redirect_uri: `${window.location.origin}/auth/callback`,
+      response_type: 'code',
+      scope: 'User.Read',
+      state,
+    })
+
+    window.location.href = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`
+  }
+
+  /**
    * Delete user account and all associated data
    */
   const deleteAccount = async (): Promise<boolean> => {
@@ -375,6 +400,7 @@ export const useUserStore = defineStore('user', () => {
     logout,
     loginWithGoogle,
     loginWithGitHub,
+    loginWithMicrosoft,
     deleteAccount,
     clearError,
     upgradeToProCheckout,

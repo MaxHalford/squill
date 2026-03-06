@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useConnectionsStore } from './connections'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
-import type { BigQueryProject, BigQueryDataset, BigQueryTable, BigQueryField, BigQueryQueryResponse } from '../types/bigquery'
+import type { BigQueryProject, BigQueryDataset, BigQueryTable, BigQueryField, BigQueryQueryResponse, BigQueryTableDetail } from '../types/bigquery'
+import type { TableMetadataInfo } from '../types/database'
 import { convertBigQueryRows, extractSimpleSchema } from '../utils/bigqueryConversion'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
@@ -54,6 +55,7 @@ export interface BigQueryPaginatedQueryResult {
   totalRows: number | null
   hasMore: boolean
   pageToken?: string
+  jobReference?: { projectId: string; jobId: string }
   stats: {
     totalBytesProcessed?: string
     cacheHit?: boolean
@@ -446,33 +448,45 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     )
   }
 
-  // Fetch table schema
-  const fetchTableSchema = async (datasetId: string, tableId: string, targetProjectId: string | null = null) => {
+  // Extract table metadata from BigQuery tables.get response
+  const extractTableMetadata = (data: BigQueryTableDetail): TableMetadataInfo => ({
+    rowCount: data.numRows ? parseInt(data.numRows, 10) : null,
+    sizeBytes: data.numBytes ? parseInt(data.numBytes, 10) : null,
+    tableType: data.type || null,
+    clusteringFields: data.clustering?.fields,
+    partitioning: data.timePartitioning
+      ? `${data.timePartitioning.type || 'DAY'}${data.timePartitioning.field ? ` on ${data.timePartitioning.field}` : ''}`
+      : undefined,
+    engine: 'bigquery',
+  })
+
+  // Fetch table schema + metadata
+  const fetchTableSchema = async (datasetId: string, tableId: string, targetProjectId: string | null = null): Promise<{ fields: BigQueryField[]; metadata: TableMetadataInfo }> => {
     const project = targetProjectId || projectId.value
     if (!project) {
       throw new Error('No project specified')
     }
 
-    const data = await apiCallWithRefresh<{ schema?: { fields?: BigQueryField[] } }>(
+    const data = await apiCallWithRefresh<BigQueryTableDetail>(
       (token) => fetch(
         `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables/${tableId}`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
     )
 
-    return data.schema?.fields || []
+    return { fields: data.schema?.fields || [], metadata: extractTableMetadata(data) }
   }
 
-  // Fetch table schema using any BigQuery connection (for SchemaBox when BigQuery is not active)
-  const fetchTableSchemaWithAnyConnection = async (datasetId: string, tableId: string, targetProjectId: string) => {
-    const data = await apiCallWithAnyBigQueryConnection<{ schema?: { fields?: BigQueryField[] } }>(
+  // Fetch table schema + metadata using any BigQuery connection (for SchemaBox when BigQuery is not active)
+  const fetchTableSchemaWithAnyConnection = async (datasetId: string, tableId: string, targetProjectId: string): Promise<{ fields: BigQueryField[]; metadata: TableMetadataInfo }> => {
+    const data = await apiCallWithAnyBigQueryConnection<BigQueryTableDetail>(
       (token) => fetch(
         `https://bigquery.googleapis.com/bigquery/v2/projects/${targetProjectId}/datasets/${datasetId}/tables/${tableId}`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       )
     )
 
-    return data.schema?.fields || []
+    return { fields: data.schema?.fields || [], metadata: extractTableMetadata(data) }
   }
 
   // Run BigQuery query
@@ -684,6 +698,11 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     // Check if there are more results
     const hasMore = !!data.pageToken
 
+    // Extract jobReference for explain plan support
+    const jobReference = data.jobReference
+      ? { projectId: data.jobReference.projectId, jobId: data.jobReference.jobId }
+      : undefined
+
     // Transform BigQuery response with proper types
     if (data.schema && data.rows) {
       const rows = convertBigQueryRows(data.rows, data.schema.fields)
@@ -694,6 +713,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
         totalRows,
         hasMore,
         pageToken: data.pageToken,
+        jobReference,
         stats
       }
     }
@@ -703,6 +723,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       columns: [],
       totalRows: 0,
       hasMore: false,
+      jobReference,
       stats
     }
   }
@@ -1002,6 +1023,35 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     }
   }
 
+  /**
+   * Fetch the query execution plan for a completed BigQuery job.
+   * Uses the jobs.get REST API to retrieve statistics.query.queryPlan.
+   */
+  const fetchQueryPlan = async (
+    targetProjectId: string,
+    jobId: string,
+    targetConnectionId?: string
+  ): Promise<unknown> => {
+    const connectionId = targetConnectionId || connectionsStore.activeConnectionId
+    if (!connectionId) throw new Error('No BigQuery connection available')
+
+    let token = connectionsStore.getAccessToken(connectionId)
+    if (!token) {
+      token = await connectionsStore.refreshAccessToken(connectionId)
+    }
+
+    const data = await executeWithTokenRefresh<{
+      statistics?: { query?: { queryPlan?: unknown } }
+    }>(connectionId, token, (t) =>
+      fetch(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${targetProjectId}/jobs/${jobId}`,
+        { headers: { 'Authorization': `Bearer ${t}` } }
+      )
+    )
+
+    return data.statistics?.query?.queryPlan ?? null
+  }
+
   return {
     ready,
     accessToken,
@@ -1027,5 +1077,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     dryRunQuery,
     fetchAllSchemas,
     restoreSession,
+    fetchQueryPlan,
   }
 })

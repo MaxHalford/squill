@@ -172,6 +172,40 @@ export const showTooltipFor = (el: HTMLElement, value: TooltipValue) => {
 
 export { hideTooltip }
 
+/**
+ * Directive that shows a tooltip only when the element's text is truncated (ellipsis).
+ * Usage: v-tooltip-overflow on any element with text-overflow: ellipsis.
+ * The tooltip text is taken from the element's textContent.
+ */
+export const vTooltipOverflow: Directive<HTMLElement> = {
+  mounted(el) {
+    const h = {
+      mouseenter: () => {
+        if (el.scrollWidth > el.clientWidth) {
+          currentValues.set(el, el.textContent?.trim() || '')
+          showTooltip(el)
+        }
+      },
+      mouseleave: hideTooltip,
+    }
+
+    handlers.set(el, { ...h, focus: h.mouseenter, blur: hideTooltip })
+    el.addEventListener('mouseenter', h.mouseenter)
+    el.addEventListener('mouseleave', h.mouseleave)
+  },
+
+  unmounted(el) {
+    const h = handlers.get(el)
+    if (h) {
+      el.removeEventListener('mouseenter', h.mouseenter)
+      el.removeEventListener('mouseleave', h.mouseleave)
+      handlers.delete(el)
+    }
+    currentValues.delete(el)
+    if (currentTarget === el) hideTooltip()
+  },
+}
+
 export const vTooltip: Directive<HTMLElement, TooltipValue> = {
   mounted(el, binding: DirectiveBinding<TooltipValue>) {
     if (!binding.value) return

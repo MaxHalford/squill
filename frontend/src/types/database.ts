@@ -107,6 +107,18 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
 export const getDatabaseInfo = (engine: DatabaseEngine): DatabaseInfo => DATABASE_INFO[engine]
 
 /**
+ * Metadata about a table, displayed in the SchemaBox metadata pane.
+ */
+export interface TableMetadataInfo {
+  rowCount: number | null
+  sizeBytes: number | null
+  tableType?: string | null
+  clusteringFields?: string[]
+  partitioning?: string | null
+  engine: DatabaseEngine
+}
+
+/**
  * Event emitted when a query completes execution.
  * Extracted here so plain .ts files can import it without depending on .vue module resolution.
  */

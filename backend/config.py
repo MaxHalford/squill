@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     github_client_id: str = ""
     github_client_secret: str = ""
 
+    # Microsoft OAuth (optional — leave empty to disable Microsoft login)
+    microsoft_client_id: str = ""
+    microsoft_client_secret: str = ""
+
     # Encryption key for refresh tokens (32-byte base64-encoded)
     token_encryption_key: str
 

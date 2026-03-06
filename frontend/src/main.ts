@@ -3,7 +3,7 @@ import { createPinia } from 'pinia'
 import './style.css'
 import App from './App.vue'
 import type { RouteRecordRaw } from 'vue-router'
-import { vTooltip } from './directives/tooltip'
+import { vTooltip, vTooltipOverflow } from './directives/tooltip'
 
 // Eagerly load landing page for fast initial render
 import LandingPage from './views/LandingPage.vue'
@@ -59,5 +59,6 @@ export const createApp = ViteSSG(
     const pinia = createPinia()
     app.use(pinia)
     app.directive('tooltip', vTooltip)
+    app.directive('tooltip-overflow', vTooltipOverflow)
   }
 )

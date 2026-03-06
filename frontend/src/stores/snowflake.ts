@@ -7,6 +7,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useConnectionsStore } from './connections'
 import { useUserStore } from './user'
+import type { TableMetadataInfo } from '../types/database'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -79,6 +80,7 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
   const schemasCache = ref<Map<string, SnowflakeSchemaInfo[]>>(new Map())
   const tablesCache = ref<Map<string, SnowflakeTableInfo[]>>(new Map())
   const columnsCache = ref<Map<string, SnowflakeColumnInfo[]>>(new Map())
+  const metadataCache = ref<Map<string, TableMetadataInfo>>(new Map())
 
   // Loading states
   const isConnecting = ref(false)
@@ -578,16 +580,53 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
   }
 
   /**
+   * Fetch table metadata (row count, size) for a specific table.
+   */
+  const fetchTableMetadata = async (
+    connectionId: string,
+    databaseName: string,
+    schemaName: string,
+    tableName: string
+  ): Promise<TableMetadataInfo> => {
+    const cacheKey = `${connectionId}:${databaseName}.${schemaName}.${tableName}`
+    const cached = metadataCache.value.get(cacheKey)
+    if (cached) return cached
+
+    const response = await fetch(
+      `${BACKEND_URL}/snowflake/schema/${connectionId}/table-metadata/${encodeURIComponent(databaseName)}/${encodeURIComponent(schemaName)}/${encodeURIComponent(tableName)}`,
+      { headers: userStore.getAuthHeaders() }
+    )
+
+    if (!response.ok) throw new Error('Failed to fetch table metadata')
+
+    const data = await response.json()
+    const metadata: TableMetadataInfo = {
+      rowCount: data.row_count,
+      sizeBytes: data.size_bytes,
+      tableType: data.table_type,
+      engine: 'snowflake',
+    }
+
+    metadataCache.value.set(cacheKey, metadata)
+    return metadata
+  }
+
+  /**
    * Clear cached data for a connection.
    */
   const clearConnectionCache = (connectionId: string): void => {
     credentialsCache.value.delete(connectionId)
     tablesCache.value.delete(connectionId)
 
-    // Clear all column caches for this connection
+    // Clear all column and metadata caches for this connection
     for (const key of columnsCache.value.keys()) {
       if (key.startsWith(`${connectionId}:`)) {
         columnsCache.value.delete(key)
+      }
+    }
+    for (const key of metadataCache.value.keys()) {
+      if (key.startsWith(`${connectionId}:`)) {
+        metadataCache.value.delete(key)
       }
     }
   }
@@ -636,6 +675,7 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
     fetchTables,
     fetchColumns,
     fetchAllColumns,
+    fetchTableMetadata,
     deleteConnection,
     clearConnectionCache,
     hasCredentials,

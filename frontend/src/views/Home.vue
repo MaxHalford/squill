@@ -13,9 +13,10 @@ const SqlBox = defineAsyncComponent(() => import('../components/SqlBox.vue'))
 const SchemaBox = defineAsyncComponent(() => import('../components/SchemaBox.vue'))
 const StickyNoteBox = defineAsyncComponent(() => import('../components/StickyNoteBox.vue'))
 const RowDetailBox = defineAsyncComponent(() => import('../components/RowDetailBox.vue'))
-const ColumnAnalyticsBox = defineAsyncComponent(() => import('../components/ColumnAnalyticsBox.vue'))
+const PivotBox = defineAsyncComponent(() => import('../components/PivotBox.vue'))
 const HistoryBox = defineAsyncComponent(() => import('../components/HistoryBox.vue'))
 const ChatBox = defineAsyncComponent(() => import('../components/ChatBox.vue'))
+const ExplainBox = defineAsyncComponent(() => import('../components/ExplainBox.vue'))
 
 // Lazy-load modals - only loaded when opened
 const PostgresConnectionModal = defineAsyncComponent(() => import('../components/PostgresConnectionModal.vue'))
@@ -598,6 +599,31 @@ const handleShowColumnAnalytics = (data: {
   }
 }
 
+const handleShowExplain = (data: {
+  planData: unknown
+  engine: string
+  query: string
+  clickX: number
+  clickY: number
+}, sourceBoxId: number, sourceBoxName: string) => {
+  try {
+    const position = canvasRef.value?.screenToCanvas(data.clickX, data.clickY) || { x: 400, y: 300 }
+    const boxId = canvasStore.addBox('explain', position)
+
+    canvasStore.updateBoxName(boxId, `${sourceBoxName}.plan`)
+    canvasStore.updateBoxQuery(boxId, JSON.stringify({
+      engine: data.engine,
+      query: data.query,
+      plan: data.planData,
+    }))
+
+    canvasStore.updateBoxDependencies(boxId, [sourceBoxId])
+    selectBox(boxId, { shouldPan: true })
+  } catch (error) {
+    console.error('Failed to create explain box:', error)
+  }
+}
+
 // Handle Cmd+click navigation from SQL query to table in Schema browser
 const handleNavigateToTable = async (info: {
   connectionType: string
@@ -1000,6 +1026,7 @@ onUnmounted(() => {
           @maximize="handleMaximize(box.id)"
           @show-row-detail="handleShowRowDetail"
           @show-column-analytics="handleShowColumnAnalytics"
+          @show-explain="(e: any) => handleShowExplain(e, box.id, box.name)"
           @drag-start="handleDragStart"
           @drag-end="handleDragEnd"
           @navigate-to-table="handleNavigateToTable"
@@ -1069,8 +1096,8 @@ onUnmounted(() => {
           @maximize="handleMaximize(box.id)"
         />
 
-        <!-- Column Analytics Box -->
-        <ColumnAnalyticsBox
+        <!-- Pivot Table Box -->
+        <PivotBox
           v-else-if="box.type === 'analytics'"
           :box-id="box.id"
           :initial-x="box.x"
@@ -1132,6 +1159,26 @@ onUnmounted(() => {
           @maximize="handleMaximize(box.id)"
           @drag-start="handleDragStart"
           @drag-end="handleDragEnd"
+        />
+
+        <!-- Explain Plan Box -->
+        <ExplainBox
+          v-else-if="box.type === 'explain'"
+          :box-id="box.id"
+          :initial-x="box.x"
+          :initial-y="box.y"
+          :initial-width="box.width"
+          :initial-height="box.height"
+          :initial-z-index="box.zIndex"
+          :initial-data="box.query"
+          :initial-name="box.name"
+          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
+          @select="selectBox(box.id, $event)"
+          @update:position="handleUpdatePosition(box.id, $event)"
+          @update:size="handleUpdateSize(box.id, $event)"
+          @update:name="handleUpdateName(box.id, $event)"
+          @delete="handleDelete(box.id)"
+          @maximize="handleMaximize(box.id)"
         />
       </template>
     </InfiniteCanvas>

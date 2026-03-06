@@ -548,6 +548,79 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
         </div>
 
         <div class="feature-card">
+          <div class="feature-icon icon-plan">
+            <svg
+              width="36"
+              height="36"
+              viewBox="0 0 36 36"
+              fill="none"
+            >
+              <rect
+                x="12"
+                y="2"
+                width="12"
+                height="8"
+                stroke="var(--surface-inverse)"
+                stroke-width="2.5"
+                fill="var(--surface-tertiary)"
+              />
+              <line
+                x1="18"
+                y1="10"
+                x2="18"
+                y2="16"
+                stroke="var(--surface-inverse)"
+                stroke-width="2.5"
+              />
+              <line
+                x1="8"
+                y1="16"
+                x2="28"
+                y2="16"
+                stroke="var(--surface-inverse)"
+                stroke-width="2.5"
+              />
+              <line
+                x1="8"
+                y1="16"
+                x2="8"
+                y2="22"
+                stroke="var(--surface-inverse)"
+                stroke-width="2.5"
+              />
+              <line
+                x1="28"
+                y1="16"
+                x2="28"
+                y2="22"
+                stroke="var(--surface-inverse)"
+                stroke-width="2.5"
+              />
+              <rect
+                x="2"
+                y="22"
+                width="12"
+                height="8"
+                stroke="var(--surface-inverse)"
+                stroke-width="2.5"
+                fill="var(--surface-tertiary)"
+              />
+              <rect
+                x="22"
+                y="22"
+                width="12"
+                height="8"
+                stroke="var(--surface-inverse)"
+                stroke-width="2.5"
+                fill="var(--surface-tertiary)"
+              />
+            </svg>
+          </div>
+          <h3>Query plan explorer</h3>
+          <p>Visualize query execution plans for all database flavors. See hotspots at a glance.</p>
+        </div>
+
+        <div class="feature-card">
           <div class="feature-icon icon-opensource">
             <div class="opensource-icon">
               &lt;/&gt;

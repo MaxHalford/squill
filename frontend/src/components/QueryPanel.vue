@@ -79,15 +79,16 @@ const emit = defineEmits<{
   'navigate-to-table': [ref: TableReferenceWithPosition]
   'show-row-detail': [payload: { rowData: Record<string, unknown>; columnTypes: Record<string, string>; rowIndex: number; globalRowIndex: number; clickX: number; clickY: number }]
   'show-column-analytics': [payload: { columnName: string; columnType: string; typeCategory: string; tableName: string; clickX: number; clickY: number; sourceEngine?: string; originalQuery?: string; connectionId?: string; availableColumns?: string[] }]
+  'show-explain': [payload: { planData: unknown; engine: string; query: string; clickX: number; clickY: number }]
 }>()
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const MIN_EDITOR_HEIGHT = 100
+const MIN_EDITOR_SIZE = 100
 const MIN_RESULTS_FRACTION = 0.1
-const SPLITTER_HEIGHT = 4
+const SPLITTER_SIZE = 4
 
 // ---------------------------------------------------------------------------
 // State
@@ -95,9 +96,11 @@ const SPLITTER_HEIGHT = 4
 
 // Splitter
 const isDraggingSplitter = ref(false)
-const editorHeight = ref(props.initialEditorHeight)
-const panelHeight = ref(500) // tracked via ResizeObserver
-const dragStart = ref({ y: 0 })
+const editorSize = ref(props.initialEditorHeight) // height in vertical, width in horizontal
+const panelSize = ref(500) // tracked via ResizeObserver
+const dragStart = ref({ x: 0, y: 0 })
+
+const isHorizontal = computed(() => settingsStore.sqlBoxLayout === 'horizontal')
 
 // Query state
 const queryText = ref(props.modelValue)
@@ -112,6 +115,20 @@ let backgroundLoadController: AbortController | null = null
 // Fix suggestion state
 const suggestion = ref<LineSuggestion | null>(null)
 const isFetchingFix = ref(false)
+
+// BigQuery job reference for post-execution explain
+const lastBigQueryJobRef = ref<{ projectId: string; jobId: string } | null>(null)
+const lastBigQueryCacheHit = ref(false)
+
+// Explain: button always visible, but may be disabled with a reason
+const explainDisabledReason = computed(() => {
+  const engine = currentEngine.value
+  if (engine === 'bigquery') {
+    if (lastBigQueryJobRef.value === null) return 'Run query to see its execution plan'
+    if (lastBigQueryCacheHit.value) return 'No plan available for cached results'
+  }
+  return ''
+})
 
 const editorRef = ref<InstanceType<typeof QueryEditor> | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
@@ -221,6 +238,17 @@ const updateEditorSchema = async () => {
     editorSchema.value = duckdbSchema
   }
 }
+
+// When layout switches, re-read the correct dimension and reset editor size
+watch(isHorizontal, () => {
+  if (rootRef.value) {
+    const rect = rootRef.value.getBoundingClientRect()
+    panelSize.value = isHorizontal.value ? rect.width : rect.height
+  }
+  // Reset to half of panel on layout switch for a sensible default
+  editorSize.value = (panelSize.value - SPLITTER_SIZE) / 2
+  emit('update:editorHeight', editorSize.value)
+})
 
 const handleEditorActivate = () => {
   if (!isEditorActive.value) {
@@ -366,6 +394,13 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
         const paginatedResult = await bigqueryStore.runQueryPaginated(
           query, batchSize, undefined, abortController.signal, connectionId,
         )
+
+        // Store job reference for post-execution explain (disabled on cache hit — no plan available)
+        if (paginatedResult.jobReference) {
+          lastBigQueryJobRef.value = paginatedResult.jobReference
+        }
+        lastBigQueryCacheHit.value = paginatedResult.stats.cacheHit ?? false
+
         await duckdbStore.storeResults(props.boxName || 'untitled', paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns, 'bigquery')
         if (props.boxId !== null) {
           queryResultsStore.initQueryResult(props.boxId, 'bigquery', {
@@ -488,6 +523,54 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
   }
 }
 
+const explainQuery = async (event: { clientX: number; clientY: number }) => {
+  const query = cleanQueryForExecution(editorRef.value?.getQuery() ?? queryText.value)
+  if (!query.trim()) return
+
+  const engine = currentEngine.value
+  const connectionId = boxConnection.value?.id
+
+  try {
+    let planData: unknown
+
+    if (engine === 'duckdb') {
+      const result = await duckdbStore.runQuery(`EXPLAIN (ANALYZE, FORMAT JSON) ${query}`)
+      // EXPLAIN returns column "explain_value", EXPLAIN ANALYZE may use a different column name
+      const row = result.rows[0]
+      const raw = row?.explain_value ?? (row ? Object.values(row)[0] : null) ?? result.rows
+      planData = typeof raw === 'string' ? JSON.parse(raw) : raw
+    } else if (engine === 'postgres') {
+      if (!connectionId) throw new Error('No Postgres connection')
+      const result = await postgresStore.runQuery(connectionId, `EXPLAIN (ANALYZE, FORMAT JSON) ${query}`)
+      // PG returns [{"QUERY PLAN": "<json string>"}] — unwrap the stringified plan
+      const raw = result.rows?.[0]?.['QUERY PLAN'] ?? result.rows
+      planData = typeof raw === 'string' ? JSON.parse(raw) : raw
+    } else if (engine === 'snowflake') {
+      if (!connectionId) throw new Error('No Snowflake connection')
+      const result = await snowflakeStore.runQuery(connectionId, `EXPLAIN USING JSON ${query}`)
+      planData = result.rows
+    } else if (engine === 'bigquery') {
+      if (!lastBigQueryJobRef.value) throw new Error('Run the query first to get its execution plan')
+      planData = await bigqueryStore.fetchQueryPlan(
+        lastBigQueryJobRef.value.projectId,
+        lastBigQueryJobRef.value.jobId,
+        connectionId,
+      )
+    }
+
+    emit('show-explain', {
+      planData,
+      engine,
+      query,
+      clickX: event.clientX,
+      clickY: event.clientY,
+    })
+  } catch (err) {
+    console.error('Explain failed:', err)
+    error.value = `Explain failed: ${err instanceof Error ? err.message : String(err)}`
+  }
+}
+
 const stopQuery = () => {
   if (abortController) abortController.abort()
   if (backgroundLoadController) {
@@ -513,7 +596,7 @@ const handleSplitterMouseDown = (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
   isDraggingSplitter.value = true
-  dragStart.value.y = e.clientY
+  dragStart.value = { x: e.clientX, y: e.clientY }
   window.addEventListener('mousemove', handleMouseMove)
   window.addEventListener('mouseup', handleMouseUp)
 }
@@ -521,14 +604,16 @@ const handleSplitterMouseDown = (e: MouseEvent) => {
 const handleMouseMove = (e: MouseEvent) => {
   if (isDraggingSplitter.value) {
     const zoom = canvasZoom.value
-    const deltaY = (e.clientY - dragStart.value.y) / zoom
-    const newHeight = editorHeight.value + deltaY
-    const contentHeight = panelHeight.value
-    const minResultsHeight = contentHeight * MIN_RESULTS_FRACTION
-    const maxEditorHeight = contentHeight - SPLITTER_HEIGHT - minResultsHeight
-    if (newHeight >= MIN_EDITOR_HEIGHT && newHeight <= maxEditorHeight) {
-      editorHeight.value = newHeight
-      dragStart.value.y = e.clientY
+    const delta = isHorizontal.value
+      ? (e.clientX - dragStart.value.x) / zoom
+      : (e.clientY - dragStart.value.y) / zoom
+    const newSize = editorSize.value + delta
+    const containerSize = panelSize.value
+    const minResultsSize = containerSize * MIN_RESULTS_FRACTION
+    const maxEditorSize = containerSize - SPLITTER_SIZE - minResultsSize
+    if (newSize >= MIN_EDITOR_SIZE && newSize <= maxEditorSize) {
+      editorSize.value = newSize
+      dragStart.value = { x: e.clientX, y: e.clientY }
     }
   }
 }
@@ -536,15 +621,15 @@ const handleMouseMove = (e: MouseEvent) => {
 const handleMouseUp = () => {
   if (isDraggingSplitter.value) {
     isDraggingSplitter.value = false
-    emit('update:editorHeight', editorHeight.value)
+    emit('update:editorHeight', editorSize.value)
     window.removeEventListener('mousemove', handleMouseMove)
     window.removeEventListener('mouseup', handleMouseUp)
   }
 }
 
 const handleSplitterDblClick = () => {
-  editorHeight.value = (panelHeight.value - SPLITTER_HEIGHT) / 2
-  emit('update:editorHeight', editorHeight.value)
+  editorSize.value = (panelSize.value - SPLITTER_SIZE) / 2
+  emit('update:editorHeight', editorSize.value)
 }
 
 // ---------------------------------------------------------------------------
@@ -556,7 +641,9 @@ onMounted(() => {
   if (rootRef.value) {
     resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        panelHeight.value = entry.contentRect.height
+        panelSize.value = isHorizontal.value
+          ? entry.contentRect.width
+          : entry.contentRect.height
       }
     })
     resizeObserver.observe(rootRef.value)
@@ -587,6 +674,7 @@ onUnmounted(() => {
 defineExpose({
   runQuery,
   stopQuery,
+  explainQuery,
   getQuery: () => editorRef.value?.getQuery() || queryText.value,
   focusEditor: () => editorRef.value?.focus(),
 })
@@ -596,11 +684,12 @@ defineExpose({
   <div
     ref="rootRef"
     class="query-panel"
+    :class="{ 'query-panel--horizontal': isHorizontal }"
   >
     <QueryEditor
       ref="editorRef"
       v-model="queryText"
-      :height="editorHeight"
+      :height="editorSize"
       :is-running="isRunning"
       :disabled="isEngineLoading"
       :dialect="currentDialect"
@@ -608,8 +697,10 @@ defineExpose({
       :suggestion="showAutofix ? suggestion : undefined"
       :connection-type="boxConnection?.type"
       :connection-id="boxConnection?.id"
+      :explain-disabled-reason="explainDisabledReason"
       @run="runQuery()"
       @stop="stopQuery"
+      @explain="explainQuery"
       @accept-suggestion="handleAcceptSuggestion"
       @dismiss-suggestion="suggestion = null"
       @navigate-to-table="emit('navigate-to-table', $event)"
@@ -653,6 +744,10 @@ defineExpose({
   overflow: hidden;
 }
 
+.query-panel--horizontal {
+  flex-direction: row;
+}
+
 /* Splitter - acts as the visual border between editor and results */
 .splitter {
   height: var(--border-width-thin);
@@ -664,11 +759,21 @@ defineExpose({
   isolation: isolate;
 }
 
+.query-panel--horizontal .splitter {
+  width: var(--border-width-thin);
+  height: auto;
+  cursor: ew-resize;
+}
+
 .results-wrapper {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.query-panel--horizontal .results-wrapper {
+  min-width: 0;
 }
 
 .results-wrapper.interaction-freeze {
@@ -693,5 +798,19 @@ defineExpose({
   left: 0;
   right: 0;
   z-index: 10;
+}
+
+.query-panel--horizontal .splitter::before {
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  right: -6px;
+}
+
+/* In horizontal mode, QueryEditor uses width instead of height */
+.query-panel--horizontal :deep(.query-editor-wrapper) {
+  height: 100% !important;
+  width: v-bind("editorSize + 'px'");
+  flex-shrink: 0;
 }
 </style>

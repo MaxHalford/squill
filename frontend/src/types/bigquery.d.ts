@@ -48,3 +48,16 @@ export interface BigQueryTable {
     tableId: string
   }
 }
+
+/** Full response from the BigQuery tables.get API */
+export interface BigQueryTableDetail {
+  schema?: { fields?: BigQueryField[] }
+  numRows?: string
+  numBytes?: string
+  numLongTermBytes?: string
+  creationTime?: string
+  lastModifiedTime?: string
+  type?: string
+  clustering?: { fields?: string[] }
+  timePartitioning?: { type?: string; field?: string }
+}
