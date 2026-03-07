@@ -93,6 +93,9 @@ const markZoomActive = () => {
   }, ZOOM_IDLE_DELAY)
 }
 
+// Precision rounding — keeps CSS transform strings short, avoids sub-pixel jitter
+const r4 = (v: number) => Math.round(v * 1e4) / 1e4
+
 // Hybrid zoom: transform during active zoom (smooth), CSS zoom when idle (crisp)
 const viewportStyle = computed(() => {
   const currentZoom = zoom.value
@@ -100,21 +103,26 @@ const viewportStyle = computed(() => {
 
   if (isActivelyZooming.value) {
     // During active zooming: use transform scale relative to committed CSS zoom
-    const relativeScale = currentZoom / baseZoom
+    const relativeScale = r4(currentZoom / baseZoom)
     return {
       zoom: baseZoom,
-      transform: `translate3d(${pan.value.x / baseZoom}px, ${pan.value.y / baseZoom}px, 0) scale(${relativeScale})`
+      transform: `translate3d(${r4(pan.value.x / baseZoom)}px, ${r4(pan.value.y / baseZoom)}px, 0) scale(${relativeScale})`
     }
   } else {
     // Idle: use CSS zoom for crisp text, transform only for panning
     return {
       zoom: currentZoom,
-      transform: `translate3d(${pan.value.x / currentZoom}px, ${pan.value.y / currentZoom}px, 0)`
+      transform: `translate3d(${r4(pan.value.x / currentZoom)}px, ${r4(pan.value.y / currentZoom)}px, 0)`
     }
   }
 })
 
-provide('canvasZoom', zoom)
+// Provide frozen zoom to dependents — only updates when zoom settles,
+// preventing all consumers from recomputing on every wheel tick
+provide('canvasZoom', committedZoom)
+
+// LOD: disable expensive effects at very low zoom levels
+const isLowZoom = computed(() => committedZoom.value < 0.35)
 
 const isAnimatingPan = ref(false)
 
@@ -136,8 +144,8 @@ const animateTo = (
     const progress = Math.min((currentTime - startTime) / duration, 1)
     const eased = 1 - Math.pow(1 - progress, 3)
     pan.value = {
-      x: startPan.x + (targets.pan.x - startPan.x) * eased,
-      y: startPan.y + (targets.pan.y - startPan.y) * eased,
+      x: r4(startPan.x + (targets.pan.x - startPan.x) * eased),
+      y: r4(startPan.y + (targets.pan.y - startPan.y) * eased),
     }
     if (targets.zoom !== undefined) {
       zoom.value = startZoom + (targets.zoom - startZoom) * eased
@@ -512,7 +520,7 @@ onUnmounted(() => {
   <div
     ref="canvasRef"
     class="infinite-canvas"
-    :class="[canvasPatternClass, { 'dragging-file': isDraggingFile }]"
+    :class="[canvasPatternClass, { 'dragging-file': isDraggingFile, 'low-zoom': isLowZoom }]"
     @mousedown="handleMouseDown"
     @dragenter="handleDragEnter"
     @dragleave="handleDragLeave"
@@ -522,7 +530,6 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="viewport"
-      :class="{ 'is-moving': isPanning || isRectangleSelecting || isActivelyZooming }"
       :style="viewportStyle"
     >
       <slot />
@@ -541,6 +548,10 @@ onUnmounted(() => {
         }"
       />
     </div>
+
+    <!-- Hit-test blocker: single overlay at max z-index blocks all pointer events
+         during camera movement, avoiding per-element style recalculation -->
+    <div v-show="isPanning || isRectangleSelecting || isActivelyZooming || isAnimatingPan" class="hit-test-blocker" />
   </div>
 </template>
 
@@ -592,9 +603,17 @@ onUnmounted(() => {
   -webkit-backface-visibility: hidden;
 }
 
-/* Disable pointer events during pan to prevent accidental interactions */
-.viewport.is-moving {
-  pointer-events: none;
+/* Single overlay that blocks all hit-testing during camera movement */
+.hit-test-blocker {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  pointer-events: all;
+}
+
+/* Disable expensive effects at very low zoom levels */
+.infinite-canvas.low-zoom :deep(.resizable-box) {
+  box-shadow: none !important;
 }
 
 .selection-rectangle {

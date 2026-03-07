@@ -84,6 +84,9 @@ provide('registerBoxExecutor', registerBoxExecutor)
 provide('unregisterBoxExecutor', unregisterBoxExecutor)
 provide('executeBoxQuery', executeBoxQuery)
 
+// Stable DOM order: sort by ID so DOM nodes never move (z-index handles visual stacking)
+const sortedBoxes = computed(() => [...canvasStore.boxes].sort((a, b) => a.id - b.id))
+
 // Computed: show onboarding when there are no connections, no boxes, and not dismissed
 const showOnboarding = computed(() => {
   return isStoresReady.value && connectionsStore.connections.length === 0 && canvasStore.boxes.length === 0 && !onboardingDismissed.value
@@ -997,7 +1000,7 @@ onUnmounted(() => {
       />
 
       <template
-        v-for="box in canvasStore.boxes"
+        v-for="box in sortedBoxes"
         :key="box.id"
       >
         <!-- SQL Editor Box -->

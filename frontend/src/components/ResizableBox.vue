@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, inject, provide } from 'vue'
+import { ref, watch, watchEffect, onUnmounted, inject, provide } from 'vue'
 import { useBoxVisibility } from '../composables/useBoxVisibility'
 
 interface Position {
@@ -16,6 +16,7 @@ type ResizeDirection = 'n' | 'e' | 's' | 'w' | 'ne' | 'se' | 'sw' | 'nw'
 
 const MIN_WIDTH = 200
 const MIN_HEIGHT = 150
+const r4 = (v: number) => Math.round(v * 1e4) / 1e4
 
 const props = defineProps<{
   boxId: number
@@ -59,6 +60,16 @@ watch(() => props.initialWidth, (v) => { if (v !== undefined) size.value.width =
 watch(() => props.initialHeight, (v) => { if (v !== undefined) size.value.height = v })
 watch(() => props.initialX, (v) => { if (v !== undefined) position.value.x = v })
 watch(() => props.initialY, (v) => { if (v !== undefined) position.value.y = v })
+
+// Direct DOM writes — bypass Vue's vDOM diff for the most frequent style updates
+watchEffect(() => {
+  const el = boxRef.value
+  if (!el) return
+  el.style.transform = `translate3d(${r4(position.value.x)}px, ${r4(position.value.y)}px, 0)`
+  el.style.width = `${r4(size.value.width)}px`
+  el.style.height = `${r4(size.value.height)}px`
+  el.style.zIndex = String(zIndex.value)
+})
 
 const handleContentClick = (e: MouseEvent) => {
   e.stopPropagation()
@@ -173,12 +184,6 @@ onUnmounted(() => {
     class="resizable-box"
     :class="{ selected: isSelected, dragging: isDragging || isResizing }"
     :data-box-id="boxId"
-    :style="{
-      transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
-      width: `${size.width}px`,
-      height: `${size.height}px`,
-      zIndex
-    }"
   >
     <header
       ref="headerRef"
@@ -245,8 +250,8 @@ onUnmounted(() => {
   border-radius: var(--box-border-radius);
   box-shadow: var(--box-shadow);
   isolation: isolate;
-  /* Strong containment: isolate layout calculations from parent zoom changes */
-  contain: layout style paint;
+  /* Strong containment: each box is an independent layout boundary */
+  contain: size layout style paint;
   /* Entry animation */
   animation: box-enter 0.12s ease-out;
 }
