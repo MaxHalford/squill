@@ -56,7 +56,7 @@ const dragCounter = ref(0)
 const isActivelyZooming = ref(false)
 const committedZoom = ref(1) // The zoom level applied via CSS zoom
 let zoomIdleTimer: ReturnType<typeof setTimeout> | null = null
-const ZOOM_IDLE_DELAY = 150 // ms to wait before switching to CSS zoom
+const ZOOM_IDLE_DELAY = 80 // ms to wait before committing CSS zoom
 
 // Scroll preserver registry — lets child components (e.g. CodeMirror editors)
 // save/restore scroll state across CSS zoom commits that trigger reflows
@@ -100,7 +100,6 @@ const viewportStyle = computed(() => {
 
   if (isActivelyZooming.value) {
     // During active zooming: use transform scale relative to committed CSS zoom
-    // This keeps zooming at 60fps while maintaining the last crisp state as base
     const relativeScale = currentZoom / baseZoom
     return {
       zoom: baseZoom,
@@ -523,7 +522,7 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="viewport"
-      :class="{ 'is-moving': isPanning || isRectangleSelecting }"
+      :class="{ 'is-moving': isPanning || isRectangleSelecting || isActivelyZooming }"
       :style="viewportStyle"
     >
       <slot />
