@@ -27,6 +27,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
+import { useSqlGlotStore } from '../stores/sqlglot'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
 import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
 
@@ -35,6 +36,7 @@ const settingsStore = useSettingsStore()
 const duckdbStore = useDuckDBStore()
 const connectionsStore = useConnectionsStore()
 const bigqueryStore = useBigQueryStore()
+const sqlglotStore = useSqlGlotStore()
 const canvasRef = ref<InstanceType<typeof InfiniteCanvas> | null>(null)
 const copiedBoxId = ref<number | null>(null)
 const copiedBoxIds = ref<number[]>([])
@@ -909,6 +911,11 @@ onMounted(async () => {
   // Ensure DuckDB local connection always exists in the selector
   connectionsStore.addDuckDBConnection()
 
+  // Initialize SQLGlot (Pyodide WASM) — non-blocking, runs in background
+  sqlglotStore.initialize().catch(err => {
+    console.warn('SQLGlot initialization failed:', err)
+  })
+
   await nextTick()
   isStoresReady.value = true
 
@@ -1199,14 +1206,14 @@ onUnmounted(() => {
     <!-- Bottom progress bar for DuckDB init and schema refresh -->
     <Transition name="slide">
       <div
-        v-if="duckdbStore.isInitializing || duckdbStore.schemaRefreshMessage"
+        v-if="duckdbStore.isInitializing || duckdbStore.schemaRefreshMessage || sqlglotStore.isLoading"
         class="bottom-progress"
       >
         <div class="progress-bar">
           <div class="progress-bar-indeterminate" />
         </div>
         <div class="progress-info">
-          <span class="progress-text">{{ duckdbStore.schemaRefreshMessage || 'Initializing DuckDB...' }}</span>
+          <span class="progress-text">{{ duckdbStore.schemaRefreshMessage || (duckdbStore.isInitializing ? 'Initializing DuckDB...' : 'Loading SQL tools...') }}</span>
         </div>
       </div>
     </Transition>

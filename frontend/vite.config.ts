@@ -20,7 +20,32 @@ export default defineConfig(() => ({
         // Increase max file size for WASM (~35MB)
         maximumFileSizeToCacheInBytes: 50 * 1024 * 1024,
         // Disable navigation fallback since we only cache DuckDB files
-        navigateFallback: null
+        navigateFallback: null,
+        // Cache Pyodide WASM + SQLGlot wheel from CDN after first load
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/pyodide\/.*/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pyodide-cache',
+              expiration: {
+                maxEntries: 30,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+              },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/files\.pythonhosted\.org\/.*/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pyodide-packages-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+              },
+            },
+          },
+        ],
       },
       manifest: false
     })

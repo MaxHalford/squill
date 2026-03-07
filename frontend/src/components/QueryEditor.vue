@@ -28,6 +28,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useBigQueryStore, type DryRunResult } from '../stores/bigquery'
 import { createTableLinkExtension } from '../utils/tableLinkExtension'
 import { attachTooltip } from '../directives/tooltip'
+import { useSqlGlotStore, type SqlGlotError } from '../stores/sqlglot'
 import type { TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import type { SchemaNamespace } from '../utils/schemaBuilder'
 
@@ -58,6 +59,7 @@ const emit = defineEmits<{
 
 const settingsStore = useSettingsStore()
 const bigqueryStore = useBigQueryStore()
+const sqlglotStore = useSqlGlotStore()
 
 const editorRef = ref<HTMLElement | null>(null)
 const editorView = ref<EditorView | null>(null)
@@ -72,6 +74,35 @@ const dryRunResult = ref<DryRunResult | null>(null)
 const isDryRunLoading = ref(false)
 let dryRunDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let lastDryRunQuery = ''
+
+// SQLGlot error tooltip state
+const hoveredError = ref<{ message: string; top: number } | null>(null)
+let validateTimer: ReturnType<typeof setTimeout> | null = null
+
+// Debounced SQLGlot validation
+const triggerValidation = () => {
+  if (!sqlglotStore.isReady) return
+  if (validateTimer) clearTimeout(validateTimer)
+  validateTimer = setTimeout(async () => {
+    const view = editorView.value
+    if (!view) return
+    const query = view.state.doc.toString()
+    if (!query.trim()) {
+      view.dispatch({ effects: setSqlGlotErrors.of({ errors: [], doc: query }) })
+      return
+    }
+    try {
+      const dialect = props.connectionType || props.dialect || 'duckdb'
+      const errors = await sqlglotStore.validate(query, dialect)
+      // Only apply if the document hasn't changed since we started
+      if (view.state.doc.toString() === query) {
+        view.dispatch({ effects: setSqlGlotErrors.of({ errors, doc: query }) })
+      }
+    } catch {
+      // Validation failed — silently ignore
+    }
+  }, 200)
+}
 
 // Trigger dry run on hover (debounced)
 const triggerDryRun = () => {
@@ -131,6 +162,31 @@ const runButtonTooltip = computed(() => {
   return base
 })
 
+// Format button handler
+const handleFormat = async () => {
+  const view = editorView.value
+  if (!view || !sqlglotStore.isReady) return
+  const query = view.state.doc.toString()
+  if (!query.trim()) return
+  const dialect = props.connectionType || props.dialect || 'duckdb'
+  try {
+    const formatted = await sqlglotStore.format(query, dialect)
+    if (formatted && formatted !== query) {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: formatted }
+      })
+    }
+  } catch {
+    // Format failed — silently ignore
+  }
+}
+
+const formatButtonTooltip = computed(() => {
+  if (sqlglotStore.isLoading) return 'Loading formatter...'
+  if (!sqlglotStore.isReady) return 'Formatter unavailable'
+  return 'Format SQL'
+})
+
 const languageCompartment = new Compartment()
 const lineNumbersCompartment = new Compartment()
 const autocompleteCompartment = new Compartment()
@@ -146,6 +202,68 @@ const fontSizeExtension = (size: number) => EditorView.theme({
 
 // State effect to set suggestions
 const setSuggestions = StateEffect.define<LineSuggestion | null>()
+
+// SQLGlot error decorations — squiggly red underlines
+const setSqlGlotErrors = StateEffect.define<{ errors: SqlGlotError[]; doc: string }>()
+
+const sqlglotErrorField = StateField.define<{
+  errors: SqlGlotError[]
+  decorations: RangeSet<Decoration>
+}>({
+  create() {
+    return { errors: [], decorations: Decoration.none }
+  },
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setSqlGlotErrors)) {
+        const { errors } = effect.value
+        if (errors.length === 0) {
+          return { errors: [], decorations: Decoration.none }
+        }
+
+        const decorations: Array<{ from: number; to: number }> = []
+        const doc = tr.state.doc
+
+        for (const err of errors) {
+          const lineNum = err.line
+          if (lineNum < 1 || lineNum > doc.lines) continue
+
+          const line = doc.line(lineNum)
+          const col = err.col > 0 ? err.col - 1 : 0 // Convert 1-indexed to 0-indexed
+
+          const from = Math.min(line.from + col, line.to)
+          // If we have a highlight string, use its length for the span
+          const highlightLen = err.highlight ? err.highlight.trim().length : 0
+          const to = highlightLen > 0
+            ? Math.min(from + highlightLen, line.to)
+            : line.to // No highlight info — mark to end of line
+
+          if (from < to) {
+            decorations.push({ from, to })
+          }
+        }
+
+        // Sort and deduplicate
+        decorations.sort((a, b) => a.from - b.from || a.to - b.to)
+
+        return {
+          errors,
+          decorations: Decoration.set(
+            decorations.map(d =>
+              Decoration.mark({ class: 'cm-sqlglot-error' }).range(d.from, d.to)
+            )
+          ),
+        }
+      }
+    }
+    // Map decorations through document changes
+    if (tr.docChanged) {
+      return { errors: value.errors, decorations: value.decorations.map(tr.changes) }
+    }
+    return value
+  },
+  provide: f => EditorView.decorations.from(f, v => v.decorations),
+})
 
 // Widget to display the suggested fix below the error line
 class SuggestionWidget extends WidgetType {
@@ -294,6 +412,17 @@ const suggestionField = StateField.define<{
     return value
   },
   provide: (f) => EditorView.decorations.from(f, (value) => value.decorations),
+})
+
+// Theme for SQLGlot error squiggly underlines
+const sqlglotErrorTheme = EditorView.theme({
+  '.cm-sqlglot-error': {
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3'%3E%3Cpath d='M0 3 L1 2 L2 3 L3 2 L4 3 L5 2 L6 3' fill='none' stroke='%23e53e3e' stroke-width='0.7'/%3E%3C/svg%3E")`,
+    backgroundPosition: 'bottom left',
+    backgroundRepeat: 'repeat-x',
+    backgroundSize: '6px 3px',
+    paddingBottom: '1px',
+  },
 })
 
 // Theme for error/suggestion styling
@@ -494,6 +623,11 @@ watch(() => settingsStore.tableLinkEnabled, (enabled) => {
   }
 })
 
+// Re-validate when SQLGlot becomes ready
+watch(() => sqlglotStore.isReady, () => {
+  triggerValidation()
+})
+
 // Watch for font size setting changes
 watch(() => settingsStore.editorFontSize, (size) => {
   if (editorView.value) {
@@ -645,13 +779,50 @@ onMounted(() => {
       editorTheme,
       suggestionField,
       suggestionTheme,
+      sqlglotErrorField,
+      sqlglotErrorTheme,
       keyboardHandlers,
       tableLinkCompartment.of(settingsStore.tableLinkEnabled ? createTableLinkExtension((ref) => emit('navigate-to-table', ref)) : []),
       tooltips({ parent: document.body }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           emit('update:modelValue', update.state.doc.toString())
+          triggerValidation()
         }
+      }),
+      // Hover detection for SQLGlot error tooltips
+      EditorView.domEventHandlers({
+        mousemove(event, view) {
+          const target = event.target as HTMLElement
+          const errorSpan = target.closest('.cm-sqlglot-error') as HTMLElement | null
+          if (!errorSpan) {
+            hoveredError.value = null
+            return false
+          }
+          // Find the error at this position
+          const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
+          if (pos === null) return false
+          const errorState = view.state.field(sqlglotErrorField)
+          const lineNum = view.state.doc.lineAt(pos).number
+          const matchingError = errorState.errors.find(e => e.line === lineNum)
+          if (matchingError) {
+            const coords = view.coordsAtPos(pos)
+            if (coords) {
+              const wrapperRect = editorRef.value?.getBoundingClientRect()
+              if (wrapperRect) {
+                hoveredError.value = {
+                  message: matchingError.message,
+                  top: coords.top - wrapperRect.top,
+                }
+              }
+            }
+          }
+          return false
+        },
+        mouseleave() {
+          hoveredError.value = null
+          return false
+        },
       })
     ],
     parent: editorRef.value,
@@ -677,6 +848,7 @@ onUnmounted(() => {
   editorView.value?.destroy()
   if (timerInterval) clearInterval(timerInterval)
   if (dryRunDebounceTimer) clearTimeout(dryRunDebounceTimer)
+  if (validateTimer) clearTimeout(validateTimer)
 })
 
 // Accept the current suggestion by replacing or inserting a line
@@ -748,6 +920,47 @@ defineExpose({
       ref="editorRef"
       class="query-editor"
     />
+
+    <!-- SQLGlot error tooltip — side-anchored -->
+    <div
+      v-if="hoveredError"
+      class="sqlglot-error-tooltip"
+      :style="{ top: hoveredError.top + 'px' }"
+    >
+      {{ hoveredError.message }}
+    </div>
+
+    <button
+      v-tooltip="formatButtonTooltip"
+      class="format-btn"
+      :disabled="disabled || isRunning || !sqlglotStore.isReady"
+      @click.stop="handleFormat"
+    >
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="4 7 4 4 20 4 20 7" />
+        <line
+          x1="9"
+          y1="20"
+          x2="15"
+          y2="20"
+        />
+        <line
+          x1="12"
+          y1="4"
+          x2="12"
+          y2="20"
+        />
+      </svg>
+    </button>
 
     <button
       v-tooltip="explainDisabledReason || 'Explain query'"
@@ -843,6 +1056,50 @@ defineExpose({
 
 .query-editor :deep(.cm-scroller)::-webkit-scrollbar {
   display: none;
+}
+
+/* Format Button — stacked above Explain */
+.format-btn {
+  position: absolute;
+  bottom: calc(var(--space-2) + 56px);
+  right: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.format-btn:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* SQLGlot error tooltip */
+.sqlglot-error-tooltip {
+  position: absolute;
+  right: calc(var(--space-2) + 32px);
+  max-width: 300px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-primary);
+  border: 2px solid var(--color-error);
+  color: var(--color-error);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  line-height: 1.3;
+  z-index: 2;
+  pointer-events: none;
+  white-space: pre-wrap;
+  box-shadow: var(--shadow-md);
 }
 
 /* Explain Button — stacked above Run */
