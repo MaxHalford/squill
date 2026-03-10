@@ -226,7 +226,7 @@ describe('Cross-dialect consistency', () => {
     })
 
     const sql = buildAggregationQuery(c, 'snowflake')
-    expect(sql).toContain('"metric_value"')
+    expect(sql).toContain('"sum_revenue"')
     expect(sql).toContain('"d_month"')
   })
 })

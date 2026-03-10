@@ -451,7 +451,7 @@ describe('buildAggregationQuery', () => {
         metrics: [{ field: 'revenue', aggregation: 'sum' }],
       })
       const sql = buildAggregationQuery(config, 'snowflake')
-      expect(sql).toContain('"metric_value"')
+      expect(sql).toContain('"sum_revenue"')
     })
   })
 
