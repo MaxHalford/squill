@@ -751,7 +751,7 @@ defineExpose({
 /* Splitter - acts as the visual border between editor and results */
 .splitter {
   height: var(--border-width-thin);
-  background: var(--border-primary);
+  background: var(--border-secondary);
   cursor: ns-resize;
   flex-shrink: 0;
   position: relative;
