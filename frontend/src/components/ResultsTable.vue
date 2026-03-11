@@ -32,6 +32,7 @@ const props = withDefaults(defineProps<{
   showAnalytics?: boolean
   connectionName?: string
   boxId?: number | null  // For accessing fetch state
+  isRunning?: boolean
   autoPinnedColumns?: string[]  // Column names to auto-pin (e.g. pivot row fields)
   heatmap?: boolean  // Color numeric cells by value intensity
 }>(), {
@@ -51,7 +52,25 @@ const emit = defineEmits<{
   'show-row-detail': [payload: { rowData: Record<string, unknown>; columnTypes: Record<string, string>; rowIndex: number; globalRowIndex: number; clickX: number; clickY: number }]
   'show-column-analytics': [payload: { columnName: string; columnType: string; typeCategory: string; tableName: string; clickX: number; clickY: number; sourceEngine?: string; originalQuery?: string; connectionId?: string; availableColumns?: string[] }]
   'request-more-data': [neededRows: number]
+  'run-query': []
+  'stop-query': []
 }>()
+
+// Elapsed timer for running queries
+const elapsedTime = ref(0)
+let timerInterval: ReturnType<typeof setInterval> | null = null
+
+watch(() => props.isRunning, (running) => {
+  if (running) {
+    elapsedTime.value = 0
+    timerInterval = setInterval(() => {
+      elapsedTime.value += 0.1
+    }, 100)
+  } else if (timerInterval) {
+    clearInterval(timerInterval)
+    timerInterval = null
+  }
+})
 
 // UI state
 const hoveredRowIndex = ref<number | null>(null)
@@ -122,11 +141,12 @@ const togglePin = (colName: string) => {
 // Type icon SVGs by category (avoids duplicating in template)
 const TYPE_ICONS: Record<string, string> = {
   number: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="5" width="3" height="8" rx="0.5"/><rect x="6.5" y="7" width="3" height="6" rx="0.5"/><rect x="11" y="3" width="3" height="10" rx="0.5"/></svg>',
-  text: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 3a.5.5 0 0 0 0 1h11a.5.5 0 0 0 0-1h-11zM2.5 6a.5.5 0 0 0 0 1h9a.5.5 0 0 0 0-1h-9zM2.5 9a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7zM2.5 12a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5z"/></svg>',
+  text: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
   date: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="3" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="1.5"/><line x1="5" y1="1" x2="5" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="1" x2="11" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   boolean: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/></svg>',
   binary: '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M5.526 13.09c.976 0 1.524-.79 1.524-2.205 0-1.412-.548-2.203-1.524-2.203-.978 0-1.526.79-1.526 2.203 0 1.415.548 2.206 1.526 2.206zm-.832-2.205c0-1.05.29-1.612.832-1.612.358 0 .607.247.733.721L4.7 11.137a6.749 6.749 0 0 1-.006-.252zm.832 1.614c-.36 0-.606-.246-.732-.718l1.556-1.145c.003.079.005.164.005.258 0 1.05-.29 1.605-.829 1.605zm5.329.501v-.595H9.73V8.772h-.69l-1.19.786v.688L8.986 9.5h.05v2.906h-1.18V13h3z"/></svg>',
   json: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2C2.5 2 2 3 2 4v2.5c0 .5-.5 1.5-1.5 1.5 1 0 1.5 1 1.5 1.5V12c0 1 .5 2 2 2"/><path d="M12 2c1.5 0 2 1 2 2v2.5c0 .5.5 1.5 1.5 1.5-1 0-1.5 1-1.5 1.5V12c0 1-.5 2-2 2"/></svg>',
+  struct: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="5.5,5 3,8 5.5,11"/><polyline points="10.5,5 13,8 10.5,11"/></svg>',
 }
 const typeIconSvg = (colType: string) => TYPE_ICONS[getTypeCategory(colType)] || ''
 
@@ -736,6 +756,7 @@ onMounted(() => {
   }
 })
 onUnmounted(() => {
+  if (timerInterval) clearInterval(timerInterval)
   document.removeEventListener('copy', handleCopy)
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('mousemove', handleResize)
@@ -810,8 +831,17 @@ defineExpose({ resetPagination, triggerReveal })
       aria-label="Query results"
       tabindex="0"
     >
+      <div
+        v-if="isRunning"
+        class="idle-state"
+      >
+        <span class="running-text">
+          <span class="elapsed">{{ elapsedTime.toFixed(1) }}s</span>
+          <button class="stop-link" @click="emit('stop-query')">Cancel</button>
+        </span>
+      </div>
       <table
-        v-if="hasResults && !isBackgroundLoading"
+        v-else-if="hasResults && !isBackgroundLoading"
         ref="tableRef"
         class="results-table"
         :style="tableStyle"
@@ -866,8 +896,8 @@ defineExpose({ resetPagination, triggerReveal })
             >
               <span class="column-header">
                 <span class="column-info">
-                  <span v-tooltip="simplifyTypeName(columnTypes[column])" class="type-icon" v-html="typeIconSvg(columnTypes[column] || '')" />
-                  <span class="column-name">{{ column }}</span>
+                  <span v-tooltip-overflow class="column-name">{{ column }}</span>
+                  <span v-tooltip="simplifyTypeName(columnTypes[column])" class="type-icon" :class="{ visible: hoveredColumn === column }" v-html="typeIconSvg(columnTypes[column] || '')" />
                   <button v-if="showAnalytics" v-tooltip="'View column analytics'" class="analytics-btn" :class="{ visible: hoveredColumn === column, hidden: getTypeCategory(columnTypes[column] || '') === 'binary' || getTypeCategory(columnTypes[column] || '') === 'json' }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="handleShowAnalytics($event, column)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6" /></svg></button>
                   <button v-tooltip="'Unpin column'" class="pin-btn pinned" :class="{ visible: hoveredColumn === column }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="togglePin(column)"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="2" x2="2" y2="14" /><path d="M13 5L7 8L13 11" /></svg></button>
                 </span>
@@ -891,8 +921,8 @@ defineExpose({ resetPagination, triggerReveal })
             >
               <span class="column-header">
                 <span class="column-info">
-                  <span v-tooltip="simplifyTypeName(columnTypes[column])" class="type-icon" v-html="typeIconSvg(columnTypes[column] || '')" />
-                  <span class="column-name">{{ column }}</span>
+                  <span v-tooltip-overflow class="column-name">{{ column }}</span>
+                  <span v-tooltip="simplifyTypeName(columnTypes[column])" class="type-icon" :class="{ visible: hoveredColumn === column }" v-html="typeIconSvg(columnTypes[column] || '')" />
                   <button v-if="showAnalytics" v-tooltip="'View column analytics'" class="analytics-btn" :class="{ visible: hoveredColumn === column, hidden: getTypeCategory(columnTypes[column] || '') === 'binary' || getTypeCategory(columnTypes[column] || '') === 'json' }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="handleShowAnalytics($event, column)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6" /></svg></button>
                   <button v-tooltip="'Pin column'" class="pin-btn" :class="{ visible: hoveredColumn === column }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="togglePin(column)"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="2" x2="2" y2="14" /><path d="M13 5L7 8L13 11" /></svg></button>
                 </span>
@@ -1015,6 +1045,12 @@ defineExpose({ resetPagination, triggerReveal })
         class="empty-state"
       >
         Empty table
+      </div>
+      <div
+        v-else-if="!tableName && !error"
+        class="idle-state"
+      >
+        <span class="idle-text"><button class="run-link" @click="emit('run-query')">Run</button> query to view results</span>
       </div>
     </div>
 
@@ -1322,14 +1358,21 @@ defineExpose({ resetPagination, triggerReveal })
   height: 12px;
   color: var(--text-tertiary);
   flex-shrink: 0;
+  opacity: 0;
+  margin-left: 4px;
+}
+
+.type-icon.visible {
+  opacity: 1;
 }
 
 .type-icon svg {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 
 .column-name {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1691,6 +1734,60 @@ defineExpose({ resetPagination, triggerReveal })
   height: 100%;
   color: var(--text-secondary);
   font-size: var(--font-size-body);
+}
+
+/* Idle State — no query run yet */
+.idle-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-body-sm);
+}
+
+.run-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-link);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline 1px;
+  text-underline-offset: 2px;
+}
+
+.run-link:hover {
+  color: var(--text-link-hover, var(--text-primary));
+}
+
+.running-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.running-text .elapsed {
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.stop-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.stop-link:hover {
+  color: var(--text-primary);
 }
 
 /* Loading State */

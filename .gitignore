@@ -27,3 +27,4 @@ dist-ssr
 *.pyc
 *.db
 .ruff_cache
+/*.jpeg

@@ -4,7 +4,7 @@
  * Shared type detection and categorization functions for database column types.
  */
 
-export type TypeCategory = 'number' | 'text' | 'date' | 'boolean' | 'binary' | 'json'
+export type TypeCategory = 'number' | 'text' | 'date' | 'boolean' | 'binary' | 'json' | 'struct'
 
 /**
  * Map Arrow/DuckDB/PostgreSQL/BigQuery/Snowflake type strings to categories
@@ -32,10 +32,14 @@ export const getTypeCategory = (typeStr: string): TypeCategory => {
       t.includes('varbinary')) {
     return 'binary'
   }
-  // JSON/struct/list/map types
-  if (t.includes('json') || t.includes('struct') || t.includes('list') ||
+  // Structured/nested types (RECORD, STRUCT, ARRAY, LIST, MAP)
+  if (t.includes('struct') || t.includes('record') || t.includes('list') ||
       t.includes('map') || t.includes('array') || t.startsWith('{') ||
-      t.includes('variant') || t.includes('object')) {
+      t.endsWith('[]')) {
+    return 'struct'
+  }
+  // JSON type (text-encoded JSON, distinct from native struct types)
+  if (t.includes('json') || t.includes('variant') || t.includes('object')) {
     return 'json'
   }
   // Default to text (varchar, char, text, uuid, etc.)

@@ -17,6 +17,9 @@ interface TableMetadata {
   lastUpdated: number
   originalBoxName?: string
   boxId?: number | null
+  // Native column types from the source database (Postgres, BigQuery, Snowflake).
+  // When present, these are served back to the UI instead of DuckDB/Arrow types.
+  nativeColumnTypes?: Record<string, string>
 }
 
 /** Row in the _schemas DuckDB table */
@@ -273,7 +276,8 @@ export const useDuckDBStore = defineStore('duckdb', () => {
           columns: schema?.map(c => c.name) || [],
           lastUpdated: Date.now(),
           originalBoxName: boxName,
-          boxId: boxId
+          boxId: boxId,
+          nativeColumnTypes: schema ? Object.fromEntries(schema.map(c => [c.name, c.type])) : undefined
         }
 
         return tableName
@@ -334,7 +338,8 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         columns: columns,
         lastUpdated: Date.now(),
         originalBoxName: boxName,
-        boxId: boxId
+        boxId: boxId,
+        nativeColumnTypes: schema ? Object.fromEntries(schema.map(c => [c.name, c.type])) : undefined
       }
 
       return tableName
@@ -452,6 +457,17 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // Execute DuckDB query and store results as a table using CTAS
   // Returns only metadata - data stays in DuckDB and is fetched page-by-page
   // by ResultsTable via queryTablePage() for optimal memory usage
+  // Get accurate DuckDB SQL type names via DESCRIBE (e.g. "JSON", "VARCHAR", "BIGINT")
+  // rather than Arrow's internal names ("Utf8", "Int64") from f.type.toString()
+  const describeTableTypes = async (tableName: string): Promise<Record<string, string>> => {
+    const result = await conn.value!.query(`DESCRIBE ${tableName}`)
+    const types: Record<string, string> = {}
+    result.toArray().forEach(row => {
+      types[row.column_name as string] = row.column_type as string
+    })
+    return types
+  }
+
   const runQueryWithStorage = async (
     query: string,
     boxName: string,
@@ -475,13 +491,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       const countData = countResult.toArray()
       const rowCount = Number(countData[0]?.count || 0)
 
-      // Get schema (columns + types) without fetching any data
+      // Get schema (columns + types) — use DESCRIBE for accurate DuckDB SQL type names
       const schemaResult = await conn.value!.query(`SELECT * FROM ${tableName} LIMIT 0`)
       const columns = schemaResult.schema.fields.map(f => f.name)
-      const columnTypes: Record<string, string> = {}
-      schemaResult.schema.fields.forEach(f => {
-        columnTypes[f.name] = f.type.toString()
-      })
+      const columnTypes = await describeTableTypes(tableName)
 
       // Update metadata
       tables.value[tableName] = {
@@ -565,10 +578,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     try {
       const result = await conn.value!.query(query)
       const columns = result.schema.fields.map(f => f.name)
-      const columnTypes: Record<string, string> = {}
-      result.schema.fields.forEach(f => {
-        columnTypes[f.name] = f.type.toString()
-      })
+      // Prefer native source DB types if we have them; fall back to DuckDB DESCRIBE
+      const columnTypes = tables.value[tableName]?.nativeColumnTypes
+        ?? await describeTableTypes(tableName)
       const fieldTypes: Record<string, unknown> = {}
       result.schema.fields.forEach(f => {
         fieldTypes[f.name] = f.type

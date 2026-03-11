@@ -29,6 +29,7 @@ import { useBigQueryStore, type DryRunResult } from '../stores/bigquery'
 import { createTableLinkExtension } from '../utils/tableLinkExtension'
 import { attachTooltip } from '../directives/tooltip'
 import { useSqlGlotStore, type SqlGlotError } from '../stores/sqlglot'
+import { useUserStore } from '../stores/user'
 import type { TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import type { SchemaNamespace } from '../utils/schemaBuilder'
 
@@ -60,6 +61,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 const bigqueryStore = useBigQueryStore()
 const sqlglotStore = useSqlGlotStore()
+const userStore = useUserStore()
 
 const editorRef = ref<HTMLElement | null>(null)
 const editorView = ref<EditorView | null>(null)
@@ -143,7 +145,7 @@ const runButtonTooltip = computed(() => {
   const base = 'Run query (⌘⏎)'
 
   if (props.disabled) return 'Loading database...'
-  if (props.isRunning) return 'Stop query'
+  if (props.isRunning) return 'Query running...'
 
   // Only show cost for BigQuery
   if (props.connectionType !== 'bigquery') return base
@@ -163,6 +165,7 @@ const runButtonTooltip = computed(() => {
 })
 
 // Format button handler
+const justFormatted = ref(false)
 const handleFormat = async () => {
   const view = editorView.value
   if (!view || !sqlglotStore.isReady) return
@@ -176,12 +179,15 @@ const handleFormat = async () => {
         changes: { from: 0, to: view.state.doc.length, insert: formatted }
       })
     }
+    justFormatted.value = true
+    setTimeout(() => { justFormatted.value = false }, 2000)
   } catch {
     // Format failed — silently ignore
   }
 }
 
 const formatButtonTooltip = computed(() => {
+  if (justFormatted.value) return 'Formatted'
   if (sqlglotStore.isLoading) return 'Loading formatter...'
   if (!sqlglotStore.isReady) return 'Formatter unavailable'
   return 'Format SQL'
@@ -417,11 +423,10 @@ const suggestionField = StateField.define<{
 // Theme for SQLGlot error squiggly underlines
 const sqlglotErrorTheme = EditorView.theme({
   '.cm-sqlglot-error': {
-    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3'%3E%3Cpath d='M0 3 L1 2 L2 3 L3 2 L4 3 L5 2 L6 3' fill='none' stroke='%23e53e3e' stroke-width='0.7'/%3E%3C/svg%3E")`,
-    backgroundPosition: 'bottom left',
-    backgroundRepeat: 'repeat-x',
-    backgroundSize: '6px 3px',
-    paddingBottom: '1px',
+    textDecoration: 'underline',
+    textDecorationColor: 'var(--color-error)',
+    textDecorationThickness: '1px',
+    textUnderlineOffset: '3px',
   },
 })
 
@@ -493,21 +498,6 @@ const sqlHighlightStyle = HighlightStyle.define([
   { tag: tags.variableName, color: 'var(--text-primary)' },
 ])
 
-// Timer for query execution
-const elapsedTime = ref(0)
-let timerInterval: ReturnType<typeof setInterval> | null = null
-
-watch(() => props.isRunning, (running) => {
-  if (running) {
-    elapsedTime.value = 0
-    timerInterval = setInterval(() => {
-      elapsedTime.value += 0.1
-    }, 100)
-  } else if (timerInterval) {
-    clearInterval(timerInterval)
-    timerInterval = null
-  }
-})
 
 // CodeMirror theme - values match CSS variables in style.css
 const editorTheme = EditorView.theme({
@@ -846,7 +836,6 @@ onMounted(() => {
 onUnmounted(() => {
   unregisterScrollPreserver?.(scrollPreserverId)
   editorView.value?.destroy()
-  if (timerInterval) clearInterval(timerInterval)
   if (dryRunDebounceTimer) clearTimeout(dryRunDebounceTimer)
   if (validateTimer) clearTimeout(validateTimer)
 })
@@ -930,13 +919,44 @@ defineExpose({
       {{ hoveredError.message }}
     </div>
 
+    <!-- Wand button — hidden for free users, disabled for pro/vip (reserved for future use) -->
+    <button
+      v-if="userStore.isPro"
+      v-tooltip="'Coming soon'"
+      class="wand-btn"
+      disabled
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" />
+        <path d="m14 7 3 3" />
+        <path d="M5 6v4" />
+        <path d="M19 14v4" />
+        <path d="M10 2v2" />
+        <path d="M7 8H3" />
+        <path d="M21 16h-4" />
+        <path d="M11 3H9" />
+      </svg>
+    </button>
+
     <button
       v-tooltip="formatButtonTooltip"
       class="format-btn"
+      :class="{ formatted: justFormatted }"
       :disabled="disabled || isRunning || !sqlglotStore.isReady"
       @click.stop="handleFormat"
     >
+      <!-- Checkmark when just formatted -->
       <svg
+        v-if="justFormatted"
         width="10"
         height="10"
         viewBox="0 0 24 24"
@@ -946,19 +966,23 @@ defineExpose({
         stroke-linecap="round"
         stroke-linejoin="round"
       >
-        <polyline points="4 7 4 4 20 4 20 7" />
-        <line
-          x1="9"
-          y1="20"
-          x2="15"
-          y2="20"
-        />
-        <line
-          x1="12"
-          y1="4"
-          x2="12"
-          y2="20"
-        />
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+      <!-- Paintbrush icon (Lucide) -->
+      <svg
+        v-else
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m14.622 17.897-10.68-2.913" />
+        <path d="M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0z" />
+        <path d="M9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.507.507 0 0 0-.302.819l7.32 8.883a1 1 0 0 0 1.185.204C12.735 20.405 16 16.792 16 15" />
       </svg>
     </button>
 
@@ -969,61 +993,38 @@ defineExpose({
       @click.stop="emit('explain', { clientX: $event.clientX, clientY: $event.clientY })"
     >
       <svg
-        width="10"
-        height="10"
+        width="12"
+        height="12"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        stroke-width="2.5"
+        stroke-width="2"
         stroke-linecap="round"
         stroke-linejoin="round"
       >
-        <circle
-          cx="11"
-          cy="11"
-          r="8"
-        />
-        <line
-          x1="21"
-          y1="21"
-          x2="16.65"
-          y2="16.65"
-        />
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.34-4.34" />
       </svg>
     </button>
 
     <button
       v-tooltip="runButtonTooltip"
       class="run-btn"
-      :disabled="disabled"
+      :disabled="disabled || isRunning"
       @mouseenter="triggerDryRun"
-      @click.stop="isRunning ? emit('stop') : emit('run')"
+      @click.stop="emit('run')"
     >
-      <template v-if="isRunning">
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-        >
-          <rect
-            x="4"
-            y="4"
-            width="16"
-            height="16"
-            rx="2"
-          />
-        </svg>
-        <span class="elapsed">{{ elapsedTime.toFixed(1) }}s</span>
-      </template>
       <svg
-        v-else
         width="12"
         height="12"
         viewBox="0 0 24 24"
-        fill="currentColor"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       >
-        <path d="M8 5v14l11-7z" />
+        <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
       </svg>
     </button>
   </div>
@@ -1058,6 +1059,24 @@ defineExpose({
   display: none;
 }
 
+/* Wand Button — stacked above Format */
+.wand-btn {
+  position: absolute;
+  bottom: calc(var(--space-2) + 84px);
+  right: var(--space-2);
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-tertiary);
+  line-height: 1;
+  cursor: not-allowed;
+  z-index: 1;
+  opacity: 0.4;
+}
+
 /* Format Button — stacked above Explain */
 .format-btn {
   position: absolute;
@@ -1070,12 +1089,20 @@ defineExpose({
   background: transparent;
   border: none;
   border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body-sm);
   line-height: 1;
   cursor: pointer;
   z-index: 1;
+}
+
+.format-btn:not(:disabled):hover {
+  color: var(--text-primary);
+}
+
+.format-btn.formatted {
+  color: var(--text-primary);
 }
 
 .format-btn:disabled {
@@ -1114,12 +1141,16 @@ defineExpose({
   background: transparent;
   border: none;
   border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body-sm);
   line-height: 1;
   cursor: pointer;
   z-index: 1;
+}
+
+.explain-btn:not(:disabled):hover {
+  color: var(--text-primary);
 }
 
 .explain-btn:disabled {
@@ -1140,12 +1171,16 @@ defineExpose({
   background: transparent;
   border: none;
   border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body-sm);
   line-height: 1;
   cursor: pointer;
   z-index: 1;
+}
+
+.run-btn:not(:disabled):hover {
+  color: var(--text-primary);
 }
 
 .run-btn:disabled {
@@ -1154,7 +1189,4 @@ defineExpose({
   opacity: 0.5;
 }
 
-.elapsed {
-  font-variant-numeric: tabular-nums;
-}
 </style>

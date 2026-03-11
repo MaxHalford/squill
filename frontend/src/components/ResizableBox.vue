@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, watchEffect, onUnmounted, inject, provide } from 'vue'
 import { useBoxVisibility } from '../composables/useBoxVisibility'
+import type { Ref } from 'vue'
 
 interface Position {
   x: number
@@ -29,6 +30,7 @@ const props = defineProps<{
 }>()
 
 const canvasZoom = inject('canvasZoom', ref(1))
+const canvasRoot = inject<Ref<HTMLElement | null>>('canvasRoot', ref(null))
 
 const emit = defineEmits<{
   'select': [payload: { shouldPan: boolean }]
@@ -40,7 +42,7 @@ const emit = defineEmits<{
 
 const boxRef = ref<HTMLElement | null>(null)
 const headerRef = ref<HTMLElement | null>(null)
-const { isVisible: boxVisible } = useBoxVisibility(boxRef)
+const { isVisible: boxVisible } = useBoxVisibility(boxRef, '500px', canvasRoot)
 provide('boxVisible', boxVisible)
 
 const position = ref<Position>({ x: props.initialX ?? 100, y: props.initialY ?? 100 })

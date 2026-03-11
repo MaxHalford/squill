@@ -530,6 +530,7 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="viewport"
+      :class="{ 'viewport--zooming': isActivelyZooming }"
       :style="viewportStyle"
     >
       <slot />
@@ -594,13 +595,15 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   position: relative;
-  /* GPU acceleration for smooth transforms */
-  will-change: transform;
   /* Contain layout recalcs to this element */
   contain: layout style;
-  /* Fix blurry text at scaled sizes */
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+}
+
+/* Promote to GPU layer only during active zoom gestures for smooth transform scaling.
+   At idle (CSS zoom committed, scale=1), we drop the hint so the browser doesn't keep a
+   pre-rasterized texture that gets interpolated on the next gesture → no jitter. */
+.viewport--zooming {
+  will-change: transform;
 }
 
 /* Single overlay that blocks all hit-testing during camera movement */

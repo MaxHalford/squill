@@ -421,7 +421,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
         const paginatedResult = await store.runQueryPaginated(
           connectionId, query, batchSize, 0, true, abortController.signal,
         )
-        await duckdbStore.storeResults(props.boxName || 'untitled', paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns)
+        await duckdbStore.storeResults(props.boxName || 'untitled', paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns, engine as DatabaseEngine)
         if (props.boxId !== null) {
           queryResultsStore.initQueryResult(props.boxId, engine as DatabaseEngine, {
             totalRows: paginatedResult.totalRows,
@@ -729,7 +729,10 @@ defineExpose({
         :show-analytics="showAnalytics"
         @show-row-detail="emit('show-row-detail', $event)"
         @show-column-analytics="emit('show-column-analytics', $event)"
+        :is-running="isRunning"
         @request-more-data="handleRequestMoreData"
+        @run-query="runQuery()"
+        @stop-query="stopQuery"
       />
     </div>
   </div>

@@ -27,7 +27,7 @@ const iconSize = props.size === 'sm' ? 12 : 16
 
 <template>
   <button
-    v-tooltip="copied ? 'Copied!' : (tooltip ?? 'Copy to clipboard')"
+    v-tooltip="copied ? 'Copied' : (tooltip ?? 'Copy to clipboard')"
     class="copy-btn"
     :class="[size ?? 'md', { copied }]"
     @click.stop="copy"

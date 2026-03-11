@@ -17,14 +17,7 @@ export function boostedSqlKeywords(dialect: SqlDialect = 'duckdb') {
     const word = context.matchBefore(/\w*/)
     if (!word || (word.from === word.to && !context.explicit)) return null
 
-    // Filter out keywords that exactly match the current word (case-insensitive)
-    // This prevents the typed word from appearing as a suggestion
-    const currentWord = context.state.sliceDoc(word.from, word.to).toUpperCase()
-    const filteredOptions = keywords.filter(
-      opt => opt.label.toUpperCase() !== currentWord
-    )
-
-    return { from: word.from, options: filteredOptions }
+    return { from: word.from, options: keywords }
   }
 }
 

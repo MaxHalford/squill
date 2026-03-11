@@ -55,11 +55,17 @@ def _clean_message(msg):
     return msg
 
 def validate_sql(query, dialect="duckdb"):
+    # Keywords that are universally valid and should never be flagged as errors
+    FALSE_POSITIVE_KEYWORDS = {"AS", "BY", "ON"}
+
     errors = []
     try:
         sqlglot.parse(query, read=dialect, error_level=ErrorLevel.RAISE)
     except ParseError as e:
         for err in e.errors:
+            highlight = err.get("highlight", "").strip().upper()
+            if highlight in FALSE_POSITIVE_KEYWORDS:
+                continue
             msg = err.get("description", str(e))
             errors.append({
                 "message": _clean_message(msg),
@@ -68,7 +74,7 @@ def validate_sql(query, dialect="duckdb"):
                 "highlight": err.get("highlight", ""),
             })
         if not errors:
-            errors.append({"message": _clean_message(str(e)), "line": 1, "col": 0, "highlight": ""})
+            return json.dumps([])
         return json.dumps(errors)
     except Exception as e:
         return json.dumps([{"message": str(e), "line": 1, "col": 0, "highlight": ""}])
