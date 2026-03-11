@@ -136,7 +136,7 @@ const webApplicationSchema = {
   '@type': 'WebApplication',
   name: 'Squill',
   url: 'https://squill.dev',
-  description: 'Free, open source online SQL editor. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. Infinite canvas, drag-and-drop CSV, AI query fixer. No install needed.',
+  description: 'Open source SQL canvas in the browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. Infinite canvas, drag-and-drop CSV, AI query fixer. No install needed.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Any',
   browserRequirements: 'Requires JavaScript, WebAssembly support',
@@ -169,7 +169,7 @@ const webApplicationSchema = {
     'Drag and drop CSV file analysis',
     'Schema browser',
     'Go to definition (Cmd+click)',
-    'Hex remover - AI SQL fixer (Pro)',
+    'AI SQL line fixer (Pro)',
     'Ask a wizard - AI chat (Pro, coming soon)'
   ]
 }
@@ -189,14 +189,14 @@ const faqSchema = {
 
 // SEO Meta Tags
 useHead({
-  title: 'Squill - Free Online SQL Editor | DuckDB, PostgreSQL, BigQuery, Snowflake',
+  title: 'Squill - Open Source SQL Canvas | DuckDB, PostgreSQL, BigQuery, Snowflake',
   meta: [
     {
       name: 'description',
       content: 'Open source SQL editor that runs in your browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. Infinite canvas, drag-and-drop CSV, schema browser, AI query fixer. No install needed.'
     },
     // Open Graph
-    { property: 'og:title', content: 'Squill - Free Online SQL Editor' },
+    { property: 'og:title', content: 'Squill - Open Source SQL Canvas' },
     { property: 'og:description', content: 'Open source SQL editor in the browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. No install needed.' },
     { property: 'og:url', content: 'https://squill.dev/' },
     { property: 'og:type', content: 'website' },
@@ -205,13 +205,13 @@ useHead({
     { property: 'og:image', content: 'https://squill.dev/og-image.png' },
     { property: 'og:image:width', content: '1200' },
     { property: 'og:image:height', content: '630' },
-    { property: 'og:image:alt', content: 'Squill - Free Online SQL Editor' },
+    { property: 'og:image:alt', content: 'Squill - Open Source SQL Canvas' },
     // Twitter
     { name: 'twitter:card', content: 'summary_large_image' },
-    { name: 'twitter:title', content: 'Squill - Free Online SQL Editor' },
+    { name: 'twitter:title', content: 'Squill - Open Source SQL Canvas' },
     { name: 'twitter:description', content: 'Open source SQL editor in the browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. No install needed.' },
     { name: 'twitter:image', content: 'https://squill.dev/og-image.png' },
-    { name: 'twitter:image:alt', content: 'Squill - Free Online SQL Editor' },
+    { name: 'twitter:image:alt', content: 'Squill - Open Source SQL Canvas' },
   ],
   link: [
     { rel: 'canonical', href: 'https://squill.dev/' }
@@ -400,7 +400,7 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
           SQUILL
         </h1>
         <p class="hero-tagline">
-          Open source SQL editor in the browser
+          Open source SQL canvas
         </p>
         <button
           class="btn-primary"
@@ -425,7 +425,7 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
         WHAT YOU GET
       </h2>
       <p class="features-subtitle">
-        A free, open source online SQL editor. No download, no install — just open your browser and start querying DuckDB, PostgreSQL, BigQuery, and Snowflake.
+        An open source SQL canvas. No download, no install — just open your browser and start querying DuckDB, PostgreSQL, BigQuery, and Snowflake.
       </p>
       <div class="features-grid">
         <div class="feature-card">
