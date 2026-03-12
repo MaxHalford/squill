@@ -44,6 +44,7 @@ export interface CanvasMeta {
   name: string
   createdAt: number
   updatedAt: number
+  isShared?: boolean
 }
 
 export interface CanvasData {

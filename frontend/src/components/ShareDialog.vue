@@ -66,6 +66,7 @@ const createShare = async (permission: 'read' | 'write') => {
     if (!res.ok) throw new Error('Failed to create share link')
     const share = await res.json()
     shares.value.push(share)
+    canvasStore.setCanvasShared(canvasId.value!, true)
     copyToClipboard(share.share_token)
   } catch {
     error.value = 'Could not create share link.'
@@ -83,6 +84,7 @@ const revokeShare = async (token: string) => {
     })
     if (!res.ok) throw new Error('Failed to revoke share')
     shares.value = shares.value.filter(s => s.share_token !== token)
+    if (shares.value.length === 0) canvasStore.setCanvasShared(canvasId.value!, false)
   } catch {
     error.value = 'Could not revoke share link.'
   }

@@ -492,6 +492,13 @@ export const useCanvasStore = defineStore('canvas', () => {
     saveIndex()
   }
 
+  const setCanvasShared = (canvasId: string, isShared: boolean) => {
+    const meta = canvasIndex.value.find(c => c.id === canvasId)
+    if (!meta) return
+    meta.isShared = isShared
+    saveIndex()
+  }
+
   const getCanvasList = (): CanvasMeta[] => {
     return [...canvasIndex.value].sort((a, b) => b.updatedAt - a.updatedAt)
   }
@@ -1001,6 +1008,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     deleteCanvas,
     duplicateCanvas,
     renameCanvas,
+    setCanvasShared,
     getCanvasList,
 
     // Current canvas state

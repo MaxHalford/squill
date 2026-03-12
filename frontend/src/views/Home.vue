@@ -953,24 +953,26 @@ const initCollaboration = async () => {
     return
   }
 
-  // Normal Pro user: enable collaboration for active canvas
+  // Normal Pro user: enable collaboration only if the canvas has been shared
   if (userStore.isPro && userStore.sessionToken && canvasStore.activeCanvasId) {
     const canvasId = canvasStore.activeCanvasId
-    // Ensure the canvas exists on the server
-    try {
-      const meta = canvasStore.canvasIndex.find(c => c.id === canvasId)
-      await fetch(`${BACKEND_URL}/canvas`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${userStore.sessionToken}`,
-        },
-        body: JSON.stringify({ id: canvasId, name: meta?.name ?? 'Canvas' }),
-      })
-    } catch (err) {
-      console.warn('Failed to register canvas on server:', err)
+    const meta = canvasStore.canvasIndex.find(c => c.id === canvasId)
+    if (meta?.isShared) {
+      // Ensure the canvas exists on the server
+      try {
+        await fetch(`${BACKEND_URL}/canvas`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${userStore.sessionToken}`,
+          },
+          body: JSON.stringify({ id: canvasId, name: meta.name }),
+        })
+      } catch (err) {
+        console.warn('Failed to register canvas on server:', err)
+      }
+      canvasStore.enableCollaboration(canvasId, userStore.sessionToken)
     }
-    canvasStore.enableCollaboration(canvasId, userStore.sessionToken)
   }
 }
 
@@ -983,16 +985,17 @@ watch(() => canvasStore.activeCanvasId, async (newId, oldId) => {
   if (!newId || !userStore.isPro || !userStore.sessionToken) return
   // Share link flow manages its own collaboration session — don't interfere
   if (new URLSearchParams(window.location.search).get('share')) return
+  const meta = canvasStore.canvasIndex.find(c => c.id === newId)
+  if (!meta?.isShared) return
   // Ensure canvas exists on server, then connect
   try {
-    const meta = canvasStore.canvasIndex.find(c => c.id === newId)
     await fetch(`${BACKEND_URL}/canvas`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${userStore.sessionToken}`,
       },
-      body: JSON.stringify({ id: newId, name: meta?.name ?? 'Canvas' }),
+      body: JSON.stringify({ id: newId, name: meta.name }),
     })
   } catch (err) {
     console.warn('Failed to register canvas on server:', err)
