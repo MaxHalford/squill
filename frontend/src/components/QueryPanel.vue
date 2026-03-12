@@ -379,7 +379,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
     const query = cleanQueryForExecution(editorRef.value?.getQuery() ?? queryText.value)
     const startTime = performance.now()
 
-    const availableTables = await duckdbStore.getFreshTableNames()
+    const availableTables = duckdbStore.getTableNames
     const connectionType = boxConnection.value?.type
     const engine = getEffectiveEngine(connectionType, query, availableTables)
     detectedEngine.value = engine

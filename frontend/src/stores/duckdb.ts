@@ -475,8 +475,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   ): Promise<QueryResult> => {
     await ensureInit()
 
-    await loadTablesMetadata()
-
     const tableName = sanitizeTableName(boxName)
     const startTime = performance.now()
 
@@ -496,13 +494,14 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       const columns = schemaResult.schema.fields.map(f => f.name)
       const columnTypes = await describeTableTypes(tableName)
 
-      // Update metadata
+      // Update metadata (cache columnTypes so queryTablePage skips DESCRIBE)
       tables.value[tableName] = {
         rowCount,
         columns,
         lastUpdated: Date.now(),
         originalBoxName: boxName,
-        boxId
+        boxId,
+        nativeColumnTypes: columnTypes
       }
 
       // Trigger reactive updates for dependent components

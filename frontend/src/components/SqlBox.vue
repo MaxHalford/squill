@@ -111,7 +111,7 @@ const runMissingDependencies = async (query: string) => {
   const tableRefs = extractTableReferences(query)
   if (tableRefs.length === 0) return
 
-  const availableTables = await duckdbStore.getFreshTableNames()
+  const availableTables = duckdbStore.getTableNames
 
   const missingTables = tableRefs
     .filter(ref => {
