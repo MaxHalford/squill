@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "bun --watch src/server.ts",
-    "start": "bun src/server.ts"
+    "build": "bun build src/server.ts --outfile dist/server.js --target bun",
+    "start": "bun dist/server.js"
   },
   "dependencies": {
     "@hocuspocus/server": "^2.13.5",
