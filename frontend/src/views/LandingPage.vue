@@ -66,12 +66,6 @@ const proFeatures: ProFeature[] = [
     released: false
   },
   {
-    title: 'Usage analytics',
-    description: 'Track your query patterns. Measure table/column usage.',
-    longDescription: '',
-    released: false
-  },
-  {
     title: 'Shareable dashboards',
     description: 'Publish your analysis. Share with stakeholders.',
     longDescription: '',

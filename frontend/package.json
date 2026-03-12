@@ -18,6 +18,7 @@
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-sql": "^6.10.0",
     "@duckdb/duckdb-wasm": "^1.28.0",
+    "@hocuspocus/provider": "^3.4.4",
     "@polar-sh/checkout": "^0.2.0",
     "@tanstack/vue-virtual": "^3.13.19",
     "codemirror": "^6.0.2",
@@ -27,6 +28,7 @@
     "treeflex": "^2.0.1",
     "vue": "^3.5.24",
     "vue-router": "^4.6.3",
+    "yjs": "^13.6.29",
     "zod": "^4.3.5"
   },
   "devDependencies": {

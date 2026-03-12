@@ -334,19 +334,24 @@ const fetchNextBatch = async (
   }
 }
 
-const handleRequestMoreData = async (_neededRows: number) => {
+const handleRequestMoreData = async (neededRows: number) => {
   if (props.boxId === null) return
-  const fetchState = queryResultsStore.getFetchState(props.boxId)
-  if (!fetchState || !fetchState.hasMoreRows || fetchState.isFetching || fetchState.isBackgroundLoading) return
 
-  const engine = fetchState.sourceEngine
-  const query = fetchState.originalQuery
-  const tableName = resultTableName.value
-  const schema = fetchState.schema
-  if (!query || !tableName || !schema) return
+  // Keep fetching batches until we have enough rows to cover neededRows
+  while (true) {
+    const fetchState = queryResultsStore.getFetchState(props.boxId)
+    if (!fetchState || !fetchState.hasMoreRows || fetchState.isFetching || fetchState.isBackgroundLoading) return
+    if (fetchState.fetchedRows >= neededRows) return
 
-  const pageTokenOrOffset = engine === 'bigquery' ? fetchState.pageToken : fetchState.nextOffset
-  await fetchNextBatch(engine, query, tableName, schema, pageTokenOrOffset)
+    const engine = fetchState.sourceEngine
+    const query = fetchState.originalQuery
+    const tableName = resultTableName.value
+    const schema = fetchState.schema
+    if (!query || !tableName || !schema) return
+
+    const pageTokenOrOffset = engine === 'bigquery' ? fetchState.pageToken : fetchState.nextOffset
+    await fetchNextBatch(engine, query, tableName, schema, pageTokenOrOffset)
+  }
 }
 
 // ---------------------------------------------------------------------------

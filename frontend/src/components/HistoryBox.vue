@@ -7,6 +7,7 @@ import { useConnectionsStore } from '../stores/connections'
 import { DATABASE_INFO } from '../types/database'
 import type { QueryHistoryEntry } from '../utils/storageSchemas'
 import { formatRelativeTime, formatExecutionTime, formatRowCount, getFirstLine } from '../utils/formatUtils'
+import { getConnectionDisplayName } from '../utils/connectionHelpers'
 import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
@@ -98,7 +99,7 @@ const connectionOptions = computed(() => {
     seenIds.add(entry.connectionId)
 
     const connection = connectionsStore.connections.find(c => c.id === entry.connectionId)
-    const name = connection?.name || entry.connectionId
+    const name = getConnectionDisplayName(connection)
     const type = entry.connectionType
 
     options.push({ id: entry.connectionId, name, type })
@@ -124,7 +125,7 @@ const selectedEntry = computed(() => {
 // Get connection name for tooltip
 function getConnectionName(entry: QueryHistoryEntry): string {
   const connection = connectionsStore.connections.find(c => c.id === entry.connectionId)
-  return connection?.name || entry.connectionId
+  return getConnectionDisplayName(connection)
 }
 
 // Select an entry

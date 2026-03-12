@@ -358,7 +358,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   background: var(--surface-primary);
-  border-top: var(--border-width-thin) solid var(--border-primary);
+  border-top: var(--border-width-thin) solid var(--border-secondary);
   overflow: hidden;
 }
 

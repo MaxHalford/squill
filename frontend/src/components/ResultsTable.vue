@@ -237,10 +237,6 @@ const isWaitingForData = computed(() => {
   return false
 })
 
-// Check if background loading is in progress (for footer indicator)
-const isBackgroundLoading = computed(() => {
-  return fetchState.value?.isBackgroundLoading ?? false
-})
 
 // Compute row number column width based on current page's max row number
 const rowNumberColWidth = computed(() => {
@@ -441,16 +437,16 @@ watch(columns, (cols) => {
 
 // Watch pagination changes - check if we need more data from source
 watch(currentPage, async () => {
-  // Check if the requested page needs data beyond what's fetched
+  // Scroll to top before the reveal animation
+  if (tableContainerRef.value) tableContainerRef.value.scrollTop = 0
+
+  // Request data for current page AND prefetch next page in one shot
   if (props.boxId !== null) {
     const fetchState = queryResultsStore.getFetchState(props.boxId)
     if (fetchState && fetchState.hasMoreRows) {
-      const neededStartRow = (currentPage.value - 1) * pageSize.value
-      const neededEndRow = neededStartRow + pageSize.value
-
-      // If we need rows beyond what's fetched, request more data
-      if (neededEndRow > fetchState.fetchedRows) {
-        emit('request-more-data', neededEndRow)
+      const nextPageEndRow = (currentPage.value + 1) * pageSize.value
+      if (nextPageEndRow > fetchState.fetchedRows) {
+        emit('request-more-data', nextPageEndRow)
       }
     }
   }
@@ -841,7 +837,7 @@ defineExpose({ resetPagination, triggerReveal })
         </span>
       </div>
       <table
-        v-else-if="hasResults && !isBackgroundLoading"
+        v-else-if="hasResults && pageData.length > 0"
         ref="tableRef"
         class="results-table"
         :style="tableStyle"
@@ -1035,7 +1031,7 @@ defineExpose({ resetPagination, triggerReveal })
       </table>
 
       <div
-        v-else-if="isWaitingForData || isBackgroundLoading"
+        v-else-if="isWaitingForData"
         class="loading-state"
       >
         Fetching...

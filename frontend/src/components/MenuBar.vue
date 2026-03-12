@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useCanvasStore } from '../stores/canvas'
+
+const ShareDialog = defineAsyncComponent(() => import('./ShareDialog.vue'))
 import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
@@ -127,6 +129,7 @@ onUnmounted(() => {
 
 // Single dropdown state - opening one closes others
 const activeDropdown = ref<string | null>(null) // 'canvas', 'connection', 'box', 'settings', 'user'
+const showShareDialog = ref(false)
 
 const userInitial = computed(() => {
   const email = userStore.user?.email || '?'
@@ -565,6 +568,21 @@ onUnmounted(() => {
         @toggle-dropdown="toggleDropdown"
         @close-dropdown="closeDropdown"
       />
+
+      <!-- Share button (Pro users only) -->
+      <div
+        v-if="userStore.isPro"
+        class="menu-item"
+      >
+        <button
+          class="menu-button share-button"
+          :disabled="!canvasStore.isHocuspocusConnected"
+          :title="canvasStore.isHocuspocusConnected ? undefined : 'Collaboration server not connected'"
+          @click.stop="canvasStore.isHocuspocusConnected && (showShareDialog = true)"
+        >
+          Share
+        </button>
+      </div>
 
       <!-- Unified Connection Dropdown -->
       <div
@@ -1363,6 +1381,12 @@ onUnmounted(() => {
     :show="showSnowflakeModal"
     @close="showSnowflakeModal = false"
     @connected="handleSnowflakeConnected"
+  />
+
+  <!-- Share Dialog (Pro only) -->
+  <ShareDialog
+    :show="showShareDialog"
+    @close="showShareDialog = false"
   />
 </template>
 

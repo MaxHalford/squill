@@ -11,6 +11,7 @@ from config import get_settings
 from routers.auth import router as auth_router
 from routers.bigquery import router as bigquery_router
 from routers.billing import router as billing_router
+from routers.canvas import router as canvas_router
 from routers.connections import router as connections_router
 from routers.hex_remover import router as hex_remover_router
 from routers.postgres import router as postgres_router
@@ -68,6 +69,7 @@ app.add_middleware(
 # Routers
 app.include_router(auth_router)
 app.include_router(bigquery_router)
+app.include_router(canvas_router)
 app.include_router(billing_router)
 app.include_router(hex_remover_router)
 app.include_router(connections_router)

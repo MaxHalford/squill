@@ -1,10 +1,17 @@
 import { defineStore } from 'pinia'
-import { ref, watch, computed, onScopeDispose } from 'vue'
+import { ref, shallowRef, watch, computed, onScopeDispose } from 'vue'
 import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex } from '../types/canvas'
 import type { DatabaseEngine } from '../types/database'
 import { getDefaultQuery } from '../constants/defaultQueries'
 import { CanvasDataSchema, MultiCanvasIndexSchema } from '../utils/storageSchemas'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
+import {
+  createCollaborationSession,
+  destroyCollaborationSession,
+  ymapToBox,
+  boxToYmap,
+  type CollaborationSession,
+} from '../utils/collaboration'
 
 // Debounce utility for auto-save
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
@@ -156,9 +163,17 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Rectangle selection state
   const rectangleSelection = ref<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
 
-  // Undo/Redo stacks
+  // Undo/Redo stacks (used in non-collaborative mode only)
   const undoStack = ref<UndoRedoState[]>([])
   const redoStack = ref<UndoRedoState[]>([])
+
+  // Collaborative mode (Yjs + Hocuspocus, Pro users only)
+  // shallowRef prevents Vue from deep-proxying Yjs/Hocuspocus internals
+  const session = shallowRef<CollaborationSession | null>(null)
+  const isCollaborative = computed(() => session.value !== null)
+  const isHocuspocusConnected = ref(false)
+  const isReadOnly = ref(false)
+  let unobserveYjs: (() => void) | null = null
 
   // Computed: active canvas name for display
   const activeCanvasName = computed(() => {
@@ -278,9 +293,9 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Debounced auto-save to prevent IDB thrashing during drag operations
   const debouncedSaveState = debounce(saveState, 500)
 
-  // Watch for changes and auto-save (debounced)
+  // Watch for changes and auto-save to IDB (debounced, skipped in collaborative mode)
   watch([boxes, nextBoxId], () => {
-    debouncedSaveState()
+    if (!isCollaborative.value) debouncedSaveState()
   }, { deep: true })
 
   // Flush pending saves when store scope is disposed
@@ -293,8 +308,8 @@ export const useCanvasStore = defineStore('canvas', () => {
   // ============================================
 
   const createCanvas = (name?: string): string => {
-    // Save current canvas first if exists
-    if (activeCanvasId.value) {
+    // Save current canvas first if exists (IDB only; collaborative saves are handled by Hocuspocus)
+    if (activeCanvasId.value && !isCollaborative.value) {
       saveCanvasData(activeCanvasId.value)
     }
 
@@ -339,11 +354,14 @@ export const useCanvasStore = defineStore('canvas', () => {
   const switchCanvas = async (canvasId: string) => {
     if (canvasId === activeCanvasId.value) return
 
-    // Flush pending saves before switching
-    debouncedSaveState.flush()
+    // Disconnect collaboration before switching canvases
+    disableCollaboration()
 
-    // Save current canvas
-    if (activeCanvasId.value) {
+    // Flush pending saves before switching (IDB only)
+    if (!isCollaborative.value) debouncedSaveState.flush()
+
+    // Save current canvas (IDB only; Hocuspocus handles collaborative saves)
+    if (activeCanvasId.value && !isCollaborative.value) {
       saveCanvasData(activeCanvasId.value)
     }
 
@@ -394,8 +412,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     const sourceData = await loadCanvasData(canvasId)
     if (!sourceData) return null
 
-    // Save current canvas first
-    if (activeCanvasId.value) {
+    // Save current canvas first (IDB only)
+    if (activeCanvasId.value && !isCollaborative.value) {
       saveCanvasData(activeCanvasId.value)
     }
 
@@ -488,6 +506,8 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   const saveToUndoStack = () => {
+    // In collaborative mode, Y.UndoManager tracks history automatically
+    if (isCollaborative.value) return
     undoStack.value.push({
       boxes: JSON.parse(JSON.stringify(boxes.value)),
       selectedBoxId: selectedBoxId.value,
@@ -500,6 +520,10 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   const undo = () => {
+    if (isCollaborative.value) {
+      session.value!.undoManager.undo()
+      return
+    }
     if (undoStack.value.length === 0) return
 
     redoStack.value.push({
@@ -515,6 +539,10 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   const redo = () => {
+    if (isCollaborative.value) {
+      session.value!.undoManager.redo()
+      return
+    }
     if (redoStack.value.length === 0) return
 
     undoStack.value.push({
@@ -583,7 +611,15 @@ export const useCanvasStore = defineStore('canvas', () => {
       dependencies: [],
       connectionId: connectionId
     }
-    boxes.value.push(newBox)
+    if (isCollaborative.value) {
+      const s = session.value!
+      s.doc.transact(() => {
+        s.boxesArray.push([boxToYmap(newBox)])
+        s.canvasMap.set('nextBoxId', nextBoxId.value)
+      })
+    } else {
+      boxes.value.push(newBox)
+    }
     return newBox.id
   }
 
@@ -595,7 +631,13 @@ export const useCanvasStore = defineStore('canvas', () => {
     const index = boxes.value.findIndex(box => box.id === id)
     if (index !== -1) {
       saveToUndoStack()
-      boxes.value.splice(index, 1)
+      if (isCollaborative.value) {
+        session.value!.doc.transact(() => {
+          session.value!.boxesArray.delete(index, 1)
+        })
+      } else {
+        boxes.value.splice(index, 1)
+      }
 
       selectionHistory.value = selectionHistory.value.filter(historyId => historyId !== id)
 
@@ -628,7 +670,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     if (box) {
       const maxZ = getMaxZIndex()
       if (box.zIndex < maxZ) {
-        box.zIndex = maxZ + 1
+        updateBoxZIndex(id, maxZ + 1)
       }
     }
   }
@@ -678,68 +720,74 @@ export const useCanvasStore = defineStore('canvas', () => {
     saveToUndoStack()
 
     const idsToRemove = new Set(boxIds)
-    boxes.value = boxes.value.filter(box => !idsToRemove.has(box.id))
+    if (isCollaborative.value) {
+      const s = session.value!
+      s.doc.transact(() => {
+        // Delete from highest index to lowest to preserve indices
+        const indices: number[] = []
+        s.boxesArray.toArray().forEach((ymap, i) => {
+          if (idsToRemove.has(ymap.get('id') as number)) indices.push(i)
+        })
+        for (let i = indices.length - 1; i >= 0; i--) {
+          s.boxesArray.delete(indices[i], 1)
+        }
+      })
+    } else {
+      boxes.value = boxes.value.filter(box => !idsToRemove.has(box.id))
+    }
 
     selectedBoxId.value = null
     selectedBoxIds.value.clear()
   }
 
-  const updateBoxPosition = (id: number, position: Position) => {
-    const box = boxes.value.find(b => b.id === id)
-    if (box) {
-      box.x = position.x
-      box.y = position.y
+  // Helper: update one or more fields on a box Y.Map (collaborative) or plain object (local)
+  const updateBoxFields = (id: number, fields: Partial<Box>) => {
+    if (isCollaborative.value) {
+      const s = session.value!
+      const ymap = s.boxesArray.toArray().find(m => m.get('id') === id)
+      if (ymap) {
+        s.doc.transact(() => {
+          for (const [key, value] of Object.entries(fields)) {
+            if (value !== undefined) ymap.set(key, value)
+          }
+        })
+      }
+    } else {
+      const box = boxes.value.find(b => b.id === id)
+      if (box) Object.assign(box, fields)
     }
+  }
+
+  const updateBoxPosition = (id: number, position: Position) => {
+    updateBoxFields(id, { x: position.x, y: position.y })
   }
 
   const updateBoxSize = (id: number, size: Size) => {
-    const box = boxes.value.find(b => b.id === id)
-    if (box) {
-      box.width = size.width
-      box.height = size.height
-    }
+    updateBoxFields(id, { width: size.width, height: size.height })
   }
 
   const updateBoxQuery = (id: number, query: string) => {
-    const box = boxes.value.find(b => b.id === id)
-    if (box) {
-      box.query = query
-    }
+    updateBoxFields(id, { query })
   }
 
   const updateBoxName = (id: number, name: string) => {
-    const box = boxes.value.find(b => b.id === id)
-    if (box) {
-      box.name = name
-    }
+    updateBoxFields(id, { name })
   }
 
   const updateBoxEditorHeight = (id: number, height: number) => {
-    const box = boxes.value.find(b => b.id === id)
-    if (box) {
-      box.editorHeight = height
-    }
+    updateBoxFields(id, { editorHeight: height })
   }
 
   const updateBoxZIndex = (id: number, zIndex: number) => {
-    const box = boxes.value.find(b => b.id === id)
-    if (box) {
-      box.zIndex = zIndex
-    }
+    updateBoxFields(id, { zIndex })
   }
 
   const updateBoxDependencies = (id: number, dependencies: number[]) => {
-    const box = boxes.value.find(b => b.id === id)
-    if (box) {
-      box.dependencies = dependencies
-    }
+    updateBoxFields(id, { dependencies })
   }
 
   const updateBoxConnectionId = (id: number, connectionId: string | undefined) => {
-    const box = boxes.value.find(b => b.id === id)
-    if (box) {
-      box.connectionId = connectionId
-    }
+    updateBoxFields(id, { connectionId })
   }
 
   const clearAll = () => {
@@ -784,7 +832,15 @@ export const useCanvasStore = defineStore('canvas', () => {
       connectionId: originalBox.connectionId,
       editorHeight: originalBox.editorHeight
     }
-    boxes.value.push(newBox)
+    if (isCollaborative.value) {
+      const s = session.value!
+      s.doc.transact(() => {
+        s.boxesArray.push([boxToYmap(newBox)])
+        s.canvasMap.set('nextBoxId', nextBoxId.value)
+      })
+    } else {
+      boxes.value.push(newBox)
+    }
     return newBox.id
   }
 
@@ -826,12 +882,112 @@ export const useCanvasStore = defineStore('canvas', () => {
         connectionId: originalBox.connectionId,
         editorHeight: originalBox.editorHeight
       }
-      boxes.value.push(newBox)
+      if (isCollaborative.value) {
+        const s = session.value!
+        s.doc.transact(() => {
+          s.boxesArray.push([boxToYmap(newBox)])
+          s.canvasMap.set('nextBoxId', nextBoxId.value)
+        })
+      } else {
+        boxes.value.push(newBox)
+      }
       newBoxIds.push(boxId)
     })
 
     return newBoxIds
   }
+
+  // ============================================
+  // Collaboration (Yjs + Hocuspocus, Pro only)
+  // ============================================
+
+  /**
+   * Enable real-time collaboration for a canvas.
+   * Connects to Hocuspocus and syncs state via Yjs.
+   * If the server has no state yet, migrates local boxes on first sync.
+   */
+  const enableCollaboration = (canvasId: string, token: string) => {
+    // Snapshot local IDB boxes NOW — before disableCollaboration or clearing
+    const localBoxes = [...boxes.value]
+    const localNextBoxId = nextBoxId.value
+    console.log(`[collab] enableCollaboration canvas=${canvasId} localBoxes=${localBoxes.length}`)
+
+    // Tear down any existing session first
+    disableCollaboration()
+
+    // Clear stale content immediately; Yjs will repopulate once synced
+    boxes.value = []
+
+    const s = createCollaborationSession(canvasId, token)
+    session.value = s
+
+    // Observe Yjs changes → keep boxes.value in sync
+    const syncFromYjs = () => {
+      const incoming = s.boxesArray.toArray().map(ymapToBox)
+      console.log(`[collab] syncFromYjs boxes=${incoming.length}`)
+      boxes.value = incoming
+      const nextId = s.canvasMap.get('nextBoxId') as number | undefined
+      if (nextId !== undefined) nextBoxId.value = nextId
+    }
+    s.boxesArray.observeDeep(syncFromYjs)
+    s.canvasMap.observe(syncFromYjs)
+    unobserveYjs = () => {
+      s.boxesArray.unobserveDeep(syncFromYjs)
+      s.canvasMap.unobserve(syncFromYjs)
+    }
+
+    // Track WebSocket connection status
+    s.provider.on('status', ({ status }: { status: string }) => {
+      console.log(`[collab] status=${status}`)
+      isHocuspocusConnected.value = status === 'connected'
+    })
+
+    s.provider.on('authenticationFailed', ({ reason }: { reason: string }) => {
+      console.error(`[collab] authenticationFailed: ${reason}`)
+    })
+
+    // After initial sync: migrate local IDB data into Yjs if server has none,
+    // or sync down server state as a safety net if observeDeep hasn't fired.
+    s.provider.on('synced', () => {
+      console.log(`[collab] synced yjsBoxes=${s.boxesArray.length} localBoxes=${localBoxes.length}`)
+      if (s.boxesArray.length === 0 && localBoxes.length > 0) {
+        console.log(`[collab] migrating ${localBoxes.length} local boxes to Yjs`)
+        // Server has no state — push local IDB data up
+        s.doc.transact(() => {
+          s.canvasMap.set('nextBoxId', localNextBoxId)
+          for (const box of localBoxes) {
+            s.boxesArray.push([boxToYmap(box)])
+          }
+        })
+      } else {
+        console.log(`[collab] syncing ${s.boxesArray.length} boxes from server`)
+        // Server has data — ensure boxes.value reflects it (safety net for observeDeep)
+        syncFromYjs()
+      }
+    })
+  }
+
+  /**
+   * Disable collaborative mode and disconnect from Hocuspocus.
+   * Canvas data stays in PostgreSQL; local boxes.value is unchanged.
+   */
+  const disableCollaboration = () => {
+    if (unobserveYjs) {
+      unobserveYjs()
+      unobserveYjs = null
+    }
+    if (session.value) {
+      destroyCollaborationSession(session.value)
+      session.value = null
+    }
+    isHocuspocusConnected.value = false
+    isReadOnly.value = false
+  }
+
+  // Clean up on store dispose
+  onScopeDispose(() => {
+    disableCollaboration()
+  })
 
   return {
     // Multi-canvas state
@@ -886,6 +1042,13 @@ export const useCanvasStore = defineStore('canvas', () => {
     copyMultipleBoxes,
     undo,
     redo,
-    setCanvasRef
+    setCanvasRef,
+
+    // Collaboration
+    isCollaborative,
+    isHocuspocusConnected,
+    isReadOnly,
+    enableCollaboration,
+    disableCollaboration,
   }
 })

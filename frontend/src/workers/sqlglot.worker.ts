@@ -90,7 +90,6 @@ def format_sql(query, dialect="duckdb"):
 `
 
 async function initPyodide(): Promise<void> {
-  // Load Pyodide script
   importScripts(`${PYODIDE_CDN}pyodide.js`)
   pyodide = await loadPyodide({ indexURL: PYODIDE_CDN })
   await pyodide!.loadPackage('micropip')

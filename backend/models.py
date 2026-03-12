@@ -97,6 +97,55 @@ class PostgresConnection(Base):
     )
 
 
+class Canvas(Base):
+    """Canvas owned by a Pro user, persisted via Yjs binary state."""
+
+    __tablename__ = "canvases"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Raw Yjs encoded state as binary; null until the first sync from the client
+    yjs_state: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CanvasShare(Base):
+    """Share link granting read or write access to a canvas."""
+
+    __tablename__ = "canvas_shares"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    canvas_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("canvases.id", ondelete="CASCADE"), nullable=False
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    # URL-safe token used in share links (UUID without dashes)
+    share_token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    permission: Mapped[str] = mapped_column(
+        String(10), nullable=False
+    )  # 'read' | 'write'
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class SnowflakeConnection(Base):
     """Snowflake connection with encrypted credentials."""
 

@@ -1,0 +1,21 @@
+{
+  "name": "squill-hocuspocus",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun --watch src/server.ts",
+    "start": "bun src/server.ts"
+  },
+  "dependencies": {
+    "@hocuspocus/server": "^2.13.5",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.3",
+    "yjs": "^13.6.23"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/pg": "^8.11.11",
+    "typescript": "^5.8.2"
+  }
+}

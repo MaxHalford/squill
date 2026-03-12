@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, provide, computed, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, provide, computed, watch, defineAsyncComponent } from 'vue'
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
@@ -23,15 +23,19 @@ const PostgresConnectionModal = defineAsyncComponent(() => import('../components
 const SnowflakeConnectionModal = defineAsyncComponent(() => import('../components/SnowflakeConnectionModal.vue'))
 const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/KeyboardShortcutsModal.vue'))
 import { useCanvasStore } from '../stores/canvas'
+import { useUserStore } from '../stores/user'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useSqlGlotStore } from '../stores/sqlglot'
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
 import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
 
 const canvasStore = useCanvasStore()
+const userStore = useUserStore()
 const settingsStore = useSettingsStore()
 const duckdbStore = useDuckDBStore()
 const connectionsStore = useConnectionsStore()
@@ -898,6 +902,104 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 }
 
+/**
+ * Enable Yjs collaboration for Pro users, or handle share links.
+ *
+ * Called after all stores are ready:
+ * - If URL has ?share=TOKEN: validate token, connect as viewer/editor
+ * - Else if user is Pro: connect own active canvas
+ */
+const shareError = ref<string | null>(null)
+
+const initCollaboration = async () => {
+  const params = new URLSearchParams(window.location.search)
+  const shareToken = params.get('share')
+
+  if (shareToken) {
+    // Shared canvas flow
+    try {
+      const res = await fetch(`${BACKEND_URL}/share/${shareToken}`)
+      if (!res.ok) {
+        shareError.value = res.status === 410 ? 'This share link has expired.' : 'Invalid share link.'
+        return
+      }
+      const { canvas_id, permission } = await res.json()
+
+      if (permission === 'write' && !userStore.isLoggedIn) {
+        // Save share token and redirect to login, preserving the share param
+        sessionStorage.setItem('pending-share-token', shareToken)
+        // Fall through — user will need to log in; we just load the canvas read-only for now
+      }
+
+      // Load the shared canvas (create a local meta entry so the canvas renders)
+      const existingMeta = canvasStore.canvasIndex.find(c => c.id === canvas_id)
+      if (!existingMeta) {
+        canvasStore.canvasIndex.push({ id: canvas_id, name: 'Shared canvas', createdAt: Date.now(), updatedAt: Date.now() })
+        canvasStore.activeCanvasId = canvas_id
+      } else if (canvasStore.activeCanvasId !== canvas_id) {
+        await canvasStore.switchCanvas(canvas_id)
+      }
+
+      // Connect to Hocuspocus with the share token as auth
+      const token = permission === 'write' && userStore.sessionToken
+        ? userStore.sessionToken
+        : shareToken
+      canvasStore.isReadOnly = permission === 'read'
+      canvasStore.enableCollaboration(canvas_id, token)
+    } catch (err) {
+      console.error('Failed to load shared canvas:', err)
+      shareError.value = 'Failed to load the shared canvas.'
+    }
+    return
+  }
+
+  // Normal Pro user: enable collaboration for active canvas
+  if (userStore.isPro && userStore.sessionToken && canvasStore.activeCanvasId) {
+    const canvasId = canvasStore.activeCanvasId
+    // Ensure the canvas exists on the server
+    try {
+      const meta = canvasStore.canvasIndex.find(c => c.id === canvasId)
+      await fetch(`${BACKEND_URL}/canvas`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userStore.sessionToken}`,
+        },
+        body: JSON.stringify({ id: canvasId, name: meta?.name ?? 'Canvas' }),
+      })
+    } catch (err) {
+      console.warn('Failed to register canvas on server:', err)
+    }
+    canvasStore.enableCollaboration(canvasId, userStore.sessionToken)
+  }
+}
+
+// Re-enable collaboration when a Pro user switches to a different canvas
+watch(() => canvasStore.activeCanvasId, async (newId, oldId) => {
+  // oldId is null on initial page load (loadState sets activeCanvasId for first time).
+  // initCollaboration() already handles that case — skip here to avoid a second
+  // enableCollaboration call with empty localBoxes that would prevent migration.
+  if (!oldId) return
+  if (!newId || !userStore.isPro || !userStore.sessionToken) return
+  // Share link flow manages its own collaboration session — don't interfere
+  if (new URLSearchParams(window.location.search).get('share')) return
+  // Ensure canvas exists on server, then connect
+  try {
+    const meta = canvasStore.canvasIndex.find(c => c.id === newId)
+    await fetch(`${BACKEND_URL}/canvas`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userStore.sessionToken}`,
+      },
+      body: JSON.stringify({ id: newId, name: meta?.name ?? 'Canvas' }),
+    })
+  } catch (err) {
+    console.warn('Failed to register canvas on server:', err)
+  }
+  canvasStore.enableCollaboration(newId, userStore.sessionToken)
+})
+
 onMounted(async () => {
   // Await all stores that need hydration before rendering.
   // DuckDB is included because it hosts the _schemas table (persisted via IDB).
@@ -919,6 +1021,9 @@ onMounted(async () => {
   await nextTick()
   isStoresReady.value = true
 
+  // Enable collaboration for Pro users, or handle incoming share links
+  await initCollaboration()
+
   window.addEventListener('keydown', handleKeyDown)
 
   // Set canvas ref in store so it can be used when adding boxes
@@ -926,10 +1031,24 @@ onMounted(async () => {
     canvasStore.setCanvasRef(canvasRef.value)
   }
 
-  // Fit to view immediately after boxes render (before network calls)
-  await nextTick()
-  if (canvasRef.value) {
-    canvasRef.value.fitToView()
+  if (canvasStore.isCollaborative) {
+    // Boxes arrive asynchronously from Yjs — fit to view once the first batch lands
+    const stopWatch = watch(
+      () => canvasStore.boxes.length,
+      async (len) => {
+        if (len > 0) {
+          stopWatch()
+          await nextTick()
+          canvasRef.value?.fitToView()
+        }
+      },
+    )
+    // Give up after 15s (empty canvas or connection failure)
+    setTimeout(stopWatch, 15_000)
+  } else {
+    // Local mode: boxes are already loaded from IDB
+    await nextTick()
+    canvasRef.value?.fitToView()
   }
 
   // Restore BigQuery session (refresh access token from backend)

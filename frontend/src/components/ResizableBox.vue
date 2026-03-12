@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, watchEffect, onUnmounted, inject, provide } from 'vue'
 import { useBoxVisibility } from '../composables/useBoxVisibility'
+import { useCanvasStore } from '../stores/canvas'
 import type { Ref } from 'vue'
 
 interface Position {
@@ -31,6 +32,7 @@ const props = defineProps<{
 
 const canvasZoom = inject('canvasZoom', ref(1))
 const canvasRoot = inject<Ref<HTMLElement | null>>('canvasRoot', ref(null))
+const canvasStore = useCanvasStore()
 
 const emit = defineEmits<{
   'select': [payload: { shouldPan: boolean }]
@@ -80,6 +82,7 @@ const handleContentClick = (e: MouseEvent) => {
 
 const handleHeaderMouseDown = (e: MouseEvent) => {
   if (!headerRef.value?.contains(e.target as Node)) return
+  if (canvasStore.isReadOnly) return
 
   e.stopPropagation()
   emit('select', { shouldPan: false })
@@ -96,6 +99,7 @@ const handleHeaderMouseDown = (e: MouseEvent) => {
 }
 
 const handleResizeStart = (e: MouseEvent, direction: ResizeDirection) => {
+  if (canvasStore.isReadOnly) return
   e.stopPropagation()
   e.preventDefault()
   emit('select', { shouldPan: false })
@@ -202,8 +206,8 @@ onUnmounted(() => {
       <slot />
     </div>
 
-    <!-- Resize handles (only when selected) -->
-    <template v-if="isSelected">
+    <!-- Resize handles (only when selected and not read-only) -->
+    <template v-if="isSelected && !canvasStore.isReadOnly">
       <div
         class="resize-handle n"
         @mousedown="handleResizeStart($event, 'n')"
