@@ -131,6 +131,10 @@ onUnmounted(() => {
 const activeDropdown = ref<string | null>(null) // 'canvas', 'connection', 'box', 'settings', 'user'
 const showShareDialog = ref(false)
 
+const shareButtonTitle = computed(() =>
+  !userStore.isPro ? 'Sharing requires a Pro account' : undefined
+)
+
 const userInitial = computed(() => {
   const email = userStore.user?.email || '?'
   return email.charAt(0).toUpperCase()
@@ -175,19 +179,13 @@ const showShortcuts = () => {
   emit('show-shortcuts')
 }
 
-// Box types - chat requires Pro/VIP
-const boxTypes = computed(() => {
-  const types: Array<{ id: BoxType; name: string }> = [
-    { id: 'sql', name: 'SQL editor' },
-    { id: 'schema', name: 'Schema browser' },
-    { id: 'note', name: 'Sticky note' },
-    { id: 'history', name: 'Query history' },
-  ]
-  if (userStore.isPro) {
-    types.push({ id: 'chat', name: 'Ask a wizard' })
-  }
-  return types
-})
+const boxTypes: Array<{ id: BoxType; name: string; disabled?: boolean; title?: string }> = [
+  { id: 'sql', name: 'SQL editor' },
+  { id: 'schema', name: 'Schema browser' },
+  { id: 'note', name: 'Sticky note' },
+  { id: 'history', name: 'Query history' },
+  { id: 'chat', name: 'Ask a wizard', disabled: true, title: 'Coming soon' },
+]
 
 // Submenu state
 const addDatabaseMenuOpen = ref(false)
@@ -569,16 +567,13 @@ onUnmounted(() => {
         @close-dropdown="closeDropdown"
       />
 
-      <!-- Share button (Pro users only) -->
-      <div
-        v-if="userStore.isPro"
-        class="menu-item"
-      >
+      <!-- Share button -->
+      <div class="menu-item">
         <button
           class="menu-button share-button"
-          :disabled="!canvasStore.isHocuspocusConnected"
-          :title="canvasStore.isHocuspocusConnected ? undefined : 'Collaboration server not connected'"
-          @click.stop="canvasStore.isHocuspocusConnected && (showShareDialog = true)"
+          :disabled="!canvasStore.activeCanvasId || !userStore.isPro"
+          :title="shareButtonTitle"
+          @click.stop="showShareDialog = true"
         >
           Share
         </button>
@@ -928,7 +923,9 @@ onUnmounted(() => {
               v-for="boxType in boxTypes"
               :key="boxType.id"
               class="dropdown-item"
-              @click="addBox(boxType.id)"
+              :disabled="boxType.disabled"
+              :title="boxType.title"
+              @click="!boxType.disabled && addBox(boxType.id)"
             >
               <div class="item-main">
                 <span class="item-text">{{ boxType.name }}</span>

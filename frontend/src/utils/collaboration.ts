@@ -2,7 +2,15 @@ import * as Y from 'yjs'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import type { Box } from '../types/canvas'
 
-const HOCUSPOCUS_URL = import.meta.env.VITE_HOCUSPOCUS_URL || 'ws://localhost:1234'
+export const HOCUSPOCUS_URL = import.meta.env.VITE_HOCUSPOCUS_URL || 'ws://localhost:1234'
+
+export interface CursorState {
+  x: number
+  y: number
+  color: string
+  name: string
+  clientId: number
+}
 
 export interface CollaborationSession {
   doc: Y.Doc
@@ -11,6 +19,7 @@ export interface CollaborationSession {
   canvasMap: Y.Map<unknown>
   undoManager: Y.UndoManager
   canvasId: string
+  awareness: HocuspocusProvider['awareness']
 }
 
 export function createCollaborationSession(
@@ -29,7 +38,7 @@ export function createCollaborationSession(
     document: doc,
   })
 
-  return { doc, provider, boxesArray, canvasMap, undoManager, canvasId }
+  return { doc, provider, boxesArray, canvasMap, undoManager, canvasId, awareness: provider.awareness }
 }
 
 export function destroyCollaborationSession(session: CollaborationSession): void {

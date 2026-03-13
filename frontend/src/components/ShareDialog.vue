@@ -29,8 +29,12 @@ const canvasId = computed(() => canvasStore.activeCanvasId)
 const readShare = computed(() => shares.value.find(s => s.permission === 'read') ?? null)
 const writeShare = computed(() => shares.value.find(s => s.permission === 'write') ?? null)
 
-const shareUrl = (token: string) =>
-  `${window.location.origin}${window.location.pathname}?share=${token}`
+const shareUrl = (token: string) => {
+  const params = new URLSearchParams()
+  if (canvasId.value) params.set('canvas', canvasId.value)
+  params.set('share', token)
+  return `${window.location.origin}${window.location.pathname}?${params.toString()}`
+}
 
 const loadShares = async () => {
   if (!canvasId.value || !userStore.sessionToken) return
@@ -55,6 +59,18 @@ const createShare = async (permission: 'read' | 'write') => {
   creating.value = permission
   error.value = null
   try {
+    // Ensure canvas is registered on the server before creating a share
+    const canvasMeta = canvasStore.canvasIndex.find(c => c.id === canvasId.value)
+    const registerRes = await fetch(`${BACKEND_URL}/canvas`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${userStore.sessionToken}`,
+      },
+      body: JSON.stringify({ id: canvasId.value, name: canvasMeta?.name ?? 'Untitled' }),
+    })
+    if (!registerRes.ok) throw new Error('Failed to register canvas')
+
     const res = await fetch(`${BACKEND_URL}/canvas/${canvasId.value}/share`, {
       method: 'POST',
       headers: {
@@ -67,6 +83,11 @@ const createShare = async (permission: 'read' | 'write') => {
     const share = await res.json()
     shares.value.push(share)
     canvasStore.setCanvasShared(canvasId.value!, true)
+    // Start collaboration immediately so the current IDB state is pushed to Hocuspocus.
+    // Only needed on first share — if already collaborative, Yjs is already live.
+    if (!canvasStore.isCollaborative && userStore.sessionToken) {
+      canvasStore.enableCollaboration(canvasId.value!, userStore.sessionToken, true)
+    }
     copyToClipboard(share.share_token)
   } catch {
     error.value = 'Could not create share link.'
@@ -201,8 +222,8 @@ onMounted(loadShares)
 
 /* Same black bar as box window headers */
 .share-header {
-  background: var(--surface-inverse);
-  color: var(--text-inverse);
+  background: var(--box-header-bg);
+  color: var(--box-header-text);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -221,7 +242,7 @@ onMounted(loadShares)
 .share-close {
   background: none;
   border: none;
-  color: var(--text-inverse);
+  color: var(--box-header-text);
   cursor: pointer;
   font-size: 12px;
   padding: 2px 4px;
@@ -242,13 +263,13 @@ onMounted(loadShares)
   border: 1px solid var(--color-error);
   color: var(--color-error);
   padding: var(--space-2) var(--space-3);
-  font-family: var(--font-family-mono);
+  font-family: var(--font-family-ui);
   font-size: var(--font-size-body-sm);
   margin-bottom: var(--space-3);
 }
 
 .share-status {
-  font-family: var(--font-family-mono);
+  font-family: var(--font-family-ui);
   font-size: var(--font-size-body-sm);
   color: var(--text-secondary);
   padding: var(--space-2) 0;
@@ -270,7 +291,7 @@ onMounted(loadShares)
 .share-row-label {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
 .share-type-tag {
@@ -286,7 +307,8 @@ onMounted(loadShares)
 }
 
 .share-row-desc {
-  font-size: var(--font-size-caption);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-body-sm);
   color: var(--text-secondary);
 }
 
@@ -307,9 +329,9 @@ onMounted(loadShares)
   border: 1px solid var(--border-primary);
   background: var(--surface-primary);
   color: var(--text-primary);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-caption);
-  padding: 3px 10px;
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-body-sm);
+  padding: var(--space-1) var(--space-3);
   cursor: pointer;
   white-space: nowrap;
 }

@@ -14,6 +14,10 @@ const emit = defineEmits<{
 
 const canvasStore = useCanvasStore()
 
+const isActiveCanvasShared = computed(() =>
+  canvasStore.canvasIndex.find(c => c.id === canvasStore.activeCanvasId)?.isShared === true
+)
+
 // Editing state
 const editingCanvasId = ref<string | null>(null)
 const editInputValue = ref('')
@@ -111,7 +115,7 @@ const toggleDropdown = () => {
       class="menu-button"
       @click.stop="toggleDropdown"
     >
-      <span class="menu-text">{{ canvasStore.activeCanvasName }}</span>
+      <span class="menu-text" :class="{ 'canvas-name-rainbow': isActiveCanvasShared }">{{ canvasStore.activeCanvasName }}</span>
       <span class="menu-caret">
         <svg
           width="10"
@@ -306,6 +310,19 @@ const toggleDropdown = () => {
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@keyframes rainbow-text {
+  0%   { color: var(--palette-purple); }
+  20%  { color: var(--palette-blue); }
+  40%  { color: var(--palette-green); }
+  60%  { color: var(--palette-orange); }
+  80%  { color: var(--palette-red); }
+  100% { color: var(--palette-purple); }
+}
+
+.canvas-name-rainbow {
+  animation: rainbow-text 3s linear infinite;
 }
 
 .menu-caret {

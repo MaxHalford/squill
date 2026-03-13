@@ -238,7 +238,13 @@ async def list_shares(
 ):
     """List all active share links for a canvas. Requires Pro/VIP and ownership."""
     check_pro_or_vip(user)
-    await _get_owned_canvas(canvas_id, user, db)
+
+    # If the canvas doesn't exist server-side yet, return empty list instead of 404
+    canvas_result = await db.execute(
+        select(Canvas).where(Canvas.id == canvas_id, Canvas.user_id == user.id)
+    )
+    if canvas_result.scalar_one_or_none() is None:
+        return ShareListResponse(shares=[])
 
     result = await db.execute(
         select(CanvasShare)

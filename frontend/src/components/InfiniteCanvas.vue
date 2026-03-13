@@ -4,6 +4,7 @@ import type { Box } from '../types/canvas'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 import { calculateBoundingBox } from '../utils/geometry'
+import CursorOverlay from './CursorOverlay.vue'
 
 interface Point {
   x: number
@@ -13,6 +14,8 @@ interface Point {
 const emit = defineEmits<{
   'canvas-click': []
   'csv-drop': [payload: { csvFiles: File[]; nonCsvFiles: File[]; position: Point }]
+  'cursor-move': [x: number, y: number]
+  'cursor-leave': []
 }>()
 
 const canvasStore = useCanvasStore()
@@ -353,6 +356,10 @@ const handleMouseMove = (e: MouseEvent) => {
         y: latestMoveY - panStart.value.y
       }
     }
+
+    // Emit canvas-space cursor position for awareness
+    const pos = screenToCanvas(latestMoveX, latestMoveY)
+    emit('cursor-move', pos.x, pos.y)
   })
 }
 
@@ -522,6 +529,7 @@ onUnmounted(() => {
     class="infinite-canvas"
     :class="[canvasPatternClass, { 'dragging-file': isDraggingFile, 'low-zoom': isLowZoom }]"
     @mousedown="handleMouseDown"
+    @mouseleave="emit('cursor-leave')"
     @dragenter="handleDragEnter"
     @dragleave="handleDragLeave"
     @dragover="handleDragOver"
@@ -534,6 +542,9 @@ onUnmounted(() => {
       :style="viewportStyle"
     >
       <slot />
+
+      <!-- Remote user cursors (awareness) -->
+      <CursorOverlay v-if="canvasStore.isCollaborative" />
 
       <!-- Teleport target for box creation buttons -->
       <div id="box-creation-buttons-container" />

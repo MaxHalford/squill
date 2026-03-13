@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, provide, computed, watch, defineAsyncComponent } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
@@ -33,6 +34,9 @@ import { useSqlGlotStore } from '../stores/sqlglot'
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
 import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
+
+const route = useRoute()
+const router = useRouter()
 
 const canvasStore = useCanvasStore()
 const userStore = useUserStore()
@@ -911,12 +915,56 @@ const handleKeyDown = (e: KeyboardEvent) => {
  */
 const shareError = ref<string | null>(null)
 
-const initCollaboration = async () => {
-  const params = new URLSearchParams(window.location.search)
-  const shareToken = params.get('share')
+// Cursor awareness — must match --palette-* vars in style.css
+const CURSOR_COLORS = ['#9333ea', '#f87171', '#81d4fa', '#aed581', '#ffcc80']
+const guestColorIndex = Math.floor(Math.random() * CURSOR_COLORS.length)
+const cursorColor = computed(() => {
+  const seed = userStore.user?.id
+  if (seed) {
+    const hash = [...seed].reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+    return CURSOR_COLORS[hash % CURSOR_COLORS.length]
+  }
+  return CURSOR_COLORS[guestColorIndex]
+})
+const handleCursorMove = (x: number, y: number) => {
+  if (!canvasStore.isCollaborative) return
+  const name = userStore.user?.email?.split('@')[0] ?? 'Guest'
+  canvasStore.setLocalCursor(x, y, name, cursorColor.value)
+}
+const handleCursorLeave = () => {
+  canvasStore.clearLocalCursor()
+}
 
+/**
+ * Returns true if the current user should connect as the canvas owner
+ * (Pro user with session token who set up the share themselves).
+ * Recipients — even Pro users visiting someone else's share — have meta.isShared undefined
+ * because that flag is only set when the local user creates a share.
+ */
+const treatAsOwner = (meta: { isShared?: boolean } | undefined) =>
+  !!(userStore.isPro && userStore.sessionToken && meta?.isShared)
+
+/**
+ * Re-register the canvas on the server then enable collaboration as the owner.
+ */
+const enableAsOwner = async (canvasId: string, meta: { name: string }) => {
+  try {
+    await fetch(`${BACKEND_URL}/canvas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userStore.sessionToken}` },
+      body: JSON.stringify({ id: canvasId, name: meta.name }),
+    })
+  } catch (err) {
+    console.warn('[collab] Failed to register canvas on server:', err)
+  }
+  canvasStore.enableCollaboration(canvasId, userStore.sessionToken!, true)
+}
+
+const initCollaboration = async () => {
+  const shareToken = route.query.share as string | undefined
+
+  // ── Path A: share token in URL (first visit via share link) ──────────────────
   if (shareToken) {
-    // Shared canvas flow
     try {
       const res = await fetch(`${BACKEND_URL}/share/${shareToken}`)
       if (!res.ok) {
@@ -926,12 +974,10 @@ const initCollaboration = async () => {
       const { canvas_id, permission } = await res.json()
 
       if (permission === 'write' && !userStore.isLoggedIn) {
-        // Save share token and redirect to login, preserving the share param
         sessionStorage.setItem('pending-share-token', shareToken)
-        // Fall through — user will need to log in; we just load the canvas read-only for now
       }
 
-      // Load the shared canvas (create a local meta entry so the canvas renders)
+      // Load or create a local meta entry for this canvas
       const existingMeta = canvasStore.canvasIndex.find(c => c.id === canvas_id)
       if (!existingMeta) {
         canvasStore.canvasIndex.push({ id: canvas_id, name: 'Shared canvas', createdAt: Date.now(), updatedAt: Date.now() })
@@ -940,67 +986,83 @@ const initCollaboration = async () => {
         await canvasStore.switchCanvas(canvas_id)
       }
 
-      // Connect to Hocuspocus with the share token as auth
-      const token = permission === 'write' && userStore.sessionToken
-        ? userStore.sessionToken
-        : shareToken
-      canvasStore.isReadOnly = permission === 'read'
-      canvasStore.enableCollaboration(canvas_id, token)
+      const asOwner = treatAsOwner(existingMeta)
+      if (asOwner) {
+        // Owner visiting their own share link — use owner path, don't overwrite meta
+        await enableAsOwner(canvas_id, existingMeta ?? { name: 'Canvas' })
+      } else {
+        // Recipient: persist token so future navigations auto-reconnect
+        canvasStore.setShareToken(canvas_id, shareToken, permission)
+        const token = permission === 'write' && userStore.sessionToken
+          ? userStore.sessionToken
+          : shareToken
+        canvasStore.isReadOnly = permission === 'read'
+        canvasStore.enableCollaboration(canvas_id, token)
+        // Keep ?share= in URL so it's easy to re-copy; also triggers auto-reconnect logic
+        router.replace({ path: '/app', query: { share: shareToken } })
+      }
     } catch (err) {
-      console.error('Failed to load shared canvas:', err)
+      console.error('[collab] Failed to load shared canvas:', err)
       shareError.value = 'Failed to load the shared canvas.'
     }
     return
   }
 
-  // Normal Pro user: enable collaboration only if the canvas has been shared
-  if (userStore.isPro && userStore.sessionToken && canvasStore.activeCanvasId) {
-    const canvasId = canvasStore.activeCanvasId
-    const meta = canvasStore.canvasIndex.find(c => c.id === canvasId)
-    if (meta?.isShared) {
-      // Ensure the canvas exists on the server
-      try {
-        await fetch(`${BACKEND_URL}/canvas`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${userStore.sessionToken}`,
-          },
-          body: JSON.stringify({ id: canvasId, name: meta.name }),
-        })
-      } catch (err) {
-        console.warn('Failed to register canvas on server:', err)
-      }
-      canvasStore.enableCollaboration(canvasId, userStore.sessionToken)
+  // ── Path B: returning recipient (share token stored in IDB, no URL param) ────
+  const activeId = canvasStore.activeCanvasId
+  if (activeId) {
+    const meta = canvasStore.canvasIndex.find(c => c.id === activeId)
+    if (meta?.shareToken && !treatAsOwner(meta)) {
+      const token = meta.sharePermission === 'write' && userStore.sessionToken
+        ? userStore.sessionToken
+        : meta.shareToken
+      canvasStore.isReadOnly = meta.sharePermission === 'read'
+      canvasStore.enableCollaboration(activeId, token)
+      router.replace({ path: '/app', query: { share: meta.shareToken } })
+      return
+    }
+
+    // ── Path C: owner with shared canvas ───────────────────────────────────────
+    if (meta?.isShared && userStore.isPro && userStore.sessionToken) {
+      await enableAsOwner(activeId, meta)
     }
   }
 }
 
-// Re-enable collaboration when a Pro user switches to a different canvas
+// Re-enable collaboration and sync URL whenever the active canvas changes.
+// initCollaboration() handles the very first canvas on mount; this watcher
+// handles all subsequent canvas switches (menu bar, new canvas, etc.).
 watch(() => canvasStore.activeCanvasId, async (newId, oldId) => {
-  // oldId is null on initial page load (loadState sets activeCanvasId for first time).
-  // initCollaboration() already handles that case — skip here to avoid a second
-  // enableCollaboration call with empty localBoxes that would prevent migration.
-  if (!oldId) return
-  if (!newId || !userStore.isPro || !userStore.sessionToken) return
-  // Share link flow manages its own collaboration session — don't interfere
-  if (new URLSearchParams(window.location.search).get('share')) return
+  // Skip the initial load — initCollaboration() owns that case
+  if (!oldId || !newId) return
+
   const meta = canvasStore.canvasIndex.find(c => c.id === newId)
-  if (!meta?.isShared) return
-  // Ensure canvas exists on server, then connect
-  try {
-    await fetch(`${BACKEND_URL}/canvas`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${userStore.sessionToken}`,
-      },
-      body: JSON.stringify({ id: newId, name: meta.name }),
-    })
-  } catch (err) {
-    console.warn('Failed to register canvas on server:', err)
+  const asOwner = treatAsOwner(meta)
+
+  // ── URL sync ──────────────────────────────────────────────────────────────────
+  // Recipients: surface the share token so the URL is always shareable / copy-able.
+  // Owners and non-shared canvases: clean URL (no ?share=).
+  if (meta?.shareToken && !asOwner) {
+    router.replace({ path: '/app', query: { share: meta.shareToken } })
+  } else if (route.query.share) {
+    router.replace({ path: '/app', query: {} })
   }
-  canvasStore.enableCollaboration(newId, userStore.sessionToken)
+
+  // ── Collaboration re-init ──────────────────────────────────────────────────────
+  // Recipient: has a stored share token (and is not the owner of this canvas)
+  if (meta?.shareToken && !asOwner) {
+    const token = meta.sharePermission === 'write' && userStore.sessionToken
+      ? userStore.sessionToken
+      : meta.shareToken
+    canvasStore.isReadOnly = meta.sharePermission === 'read'
+    canvasStore.enableCollaboration(newId, token)
+    return
+  }
+
+  // Owner: their shared canvas
+  if (meta?.isShared && userStore.isPro && userStore.sessionToken) {
+    await enableAsOwner(newId, meta)
+  }
 })
 
 onMounted(async () => {
@@ -1117,6 +1179,8 @@ onUnmounted(() => {
       :boxes="canvasStore.boxes"
       @canvas-click="deselectBox"
       @csv-drop="handleCsvDrop"
+      @cursor-move="handleCursorMove"
+      @cursor-leave="handleCursorLeave"
     >
       <!-- Dependency arrows (rendered behind boxes) -->
       <DependencyArrows :boxes="canvasStore.boxes" />

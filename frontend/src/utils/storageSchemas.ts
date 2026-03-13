@@ -63,7 +63,9 @@ export const CanvasMetaSchema = z.object({
   name: z.string().min(1),
   createdAt: z.number(),
   updatedAt: z.number(),
-  isShared: z.boolean().optional()
+  isShared: z.boolean().optional(),
+  shareToken: z.string().optional(),
+  sharePermission: z.enum(['read', 'write']).optional(),
 })
 
 export const CanvasDataSchema = z.object({

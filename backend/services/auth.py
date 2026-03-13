@@ -90,6 +90,11 @@ async def get_current_user(
             detail="Invalid session.",
         )
 
+    # Apply VIP override: config is the source of truth, not the DB
+    if user.email.lower() in get_settings().vip_emails and not user.is_vip:
+        user.is_vip = True
+        await db.commit()
+
     # Check for expired Pro subscription (safety net if webhook missed)
     if user.plan == "pro" and user.plan_expires_at:
         expires_at = user.plan_expires_at

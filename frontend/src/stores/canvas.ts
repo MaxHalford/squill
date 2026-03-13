@@ -11,6 +11,7 @@ import {
   ymapToBox,
   boxToYmap,
   type CollaborationSession,
+  type CursorState,
 } from '../utils/collaboration'
 
 // Debounce utility for auto-save
@@ -174,6 +175,8 @@ export const useCanvasStore = defineStore('canvas', () => {
   const isHocuspocusConnected = ref(false)
   const isReadOnly = ref(false)
   let unobserveYjs: (() => void) | null = null
+  let unobserveAwareness: (() => void) | null = null
+  const remoteCursors = shallowRef<Map<number, CursorState>>(new Map())
 
   // Computed: active canvas name for display
   const activeCanvasName = computed(() => {
@@ -496,6 +499,22 @@ export const useCanvasStore = defineStore('canvas', () => {
     const meta = canvasIndex.value.find(c => c.id === canvasId)
     if (!meta) return
     meta.isShared = isShared
+    saveIndex()
+  }
+
+  const setShareToken = (canvasId: string, token: string, permission: 'read' | 'write') => {
+    const meta = canvasIndex.value.find(c => c.id === canvasId)
+    if (!meta) return
+    meta.shareToken = token
+    meta.sharePermission = permission
+    saveIndex()
+  }
+
+  const clearShareToken = (canvasId: string) => {
+    const meta = canvasIndex.value.find(c => c.id === canvasId)
+    if (!meta) return
+    delete meta.shareToken
+    delete meta.sharePermission
     saveIndex()
   }
 
@@ -911,13 +930,18 @@ export const useCanvasStore = defineStore('canvas', () => {
   /**
    * Enable real-time collaboration for a canvas.
    * Connects to Hocuspocus and syncs state via Yjs.
-   * If the server has no state yet, migrates local boxes on first sync.
+   *
+   * forceLocalMigration=true (owner paths): local IDB is always the source of
+   * truth on first sync — overwrites any stale server state. Safe because this
+   * only applies to the very first synced event; reconnects use server state.
+   *
+   * forceLocalMigration=false (share-link recipients): server is source of truth.
    */
-  const enableCollaboration = (canvasId: string, token: string) => {
+  const enableCollaboration = (canvasId: string, token: string, forceLocalMigration = false) => {
     // Snapshot local IDB boxes NOW — before disableCollaboration or clearing
     const localBoxes = [...boxes.value]
     const localNextBoxId = nextBoxId.value
-    console.log(`[collab] enableCollaboration canvas=${canvasId} localBoxes=${localBoxes.length}`)
+    console.log(`[collab] enableCollaboration canvas=${canvasId} localBoxes=${localBoxes.length} forceLocal=${forceLocalMigration}`)
 
     // Tear down any existing session first
     disableCollaboration()
@@ -951,16 +975,33 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     s.provider.on('authenticationFailed', ({ reason }: { reason: string }) => {
       console.error(`[collab] authenticationFailed: ${reason}`)
+      // Share token was revoked or expired — clear it so we don't keep retrying
+      clearShareToken(canvasId)
+      disableCollaboration()
     })
 
-    // After initial sync: migrate local IDB data into Yjs if server has none,
-    // or sync down server state as a safety net if observeDeep hasn't fired.
+    // After initial sync: migrate or sync.
+    // syncedOnce guards against re-migration on WebSocket reconnects —
+    // reconnects just re-apply current Yjs state without touching localBoxes.
+    let syncedOnce = false
     s.provider.on('synced', () => {
-      console.log(`[collab] synced yjsBoxes=${s.boxesArray.length} localBoxes=${localBoxes.length}`)
-      if (s.boxesArray.length === 0 && localBoxes.length > 0) {
-        console.log(`[collab] migrating ${localBoxes.length} local boxes to Yjs`)
-        // Server has no state — push local IDB data up
+      console.log(`[collab] synced yjsBoxes=${s.boxesArray.length} localBoxes=${localBoxes.length} syncedOnce=${syncedOnce}`)
+
+      if (syncedOnce) {
+        // Reconnect — Yjs already has the live state; just ensure boxes.value is current
+        syncFromYjs()
+        return
+      }
+      syncedOnce = true
+
+      // Only the owner (forceLocalMigration=true) ever pushes local IDB to Yjs.
+      // Share-link recipients always trust the server, even if it's empty.
+      const shouldMigrate = forceLocalMigration && localBoxes.length > 0
+      if (shouldMigrate) {
+        console.log(`[collab] migrating ${localBoxes.length} local boxes to Yjs (force=${forceLocalMigration})`)
         s.doc.transact(() => {
+          // Clear any stale server data before pushing local state
+          if (s.boxesArray.length > 0) s.boxesArray.delete(0, s.boxesArray.length)
           s.canvasMap.set('nextBoxId', localNextBoxId)
           for (const box of localBoxes) {
             s.boxesArray.push([boxToYmap(box)])
@@ -968,10 +1009,36 @@ export const useCanvasStore = defineStore('canvas', () => {
         })
       } else {
         console.log(`[collab] syncing ${s.boxesArray.length} boxes from server`)
-        // Server has data — ensure boxes.value reflects it (safety net for observeDeep)
         syncFromYjs()
       }
     })
+
+    // Awareness: track other users' cursors
+    if (s.awareness) {
+      const awareness = s.awareness
+      const handleAwarenessChange = () => {
+        const states = awareness.getStates()
+        const newMap = new Map<number, CursorState>()
+        states.forEach((state, clientId) => {
+          if (clientId === s.doc.clientID) return
+          const cursor = state.cursor as (Omit<CursorState, 'clientId'> | null | undefined)
+          if (cursor) newMap.set(clientId, { ...cursor, clientId })
+        })
+        remoteCursors.value = newMap
+      }
+      awareness.on('change', handleAwarenessChange)
+      unobserveAwareness = () => awareness.off('change', handleAwarenessChange)
+    }
+  }
+
+  const setLocalCursor = (x: number, y: number, name: string, color: string) => {
+    const awareness = session.value?.awareness
+    if (!awareness) return
+    awareness.setLocalStateField('cursor', { x, y, name, color })
+  }
+
+  const clearLocalCursor = () => {
+    session.value?.awareness?.setLocalStateField('cursor', null)
   }
 
   /**
@@ -979,16 +1046,15 @@ export const useCanvasStore = defineStore('canvas', () => {
    * Canvas data stays in PostgreSQL; local boxes.value is unchanged.
    */
   const disableCollaboration = () => {
-    if (unobserveYjs) {
-      unobserveYjs()
-      unobserveYjs = null
-    }
+    if (unobserveYjs) { unobserveYjs(); unobserveYjs = null }
+    if (unobserveAwareness) { unobserveAwareness(); unobserveAwareness = null }
     if (session.value) {
       destroyCollaborationSession(session.value)
       session.value = null
     }
     isHocuspocusConnected.value = false
     isReadOnly.value = false
+    remoteCursors.value = new Map()
   }
 
   // Clean up on store dispose
@@ -1009,6 +1075,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     duplicateCanvas,
     renameCanvas,
     setCanvasShared,
+    setShareToken,
+    clearShareToken,
     getCanvasList,
 
     // Current canvas state
@@ -1056,6 +1124,9 @@ export const useCanvasStore = defineStore('canvas', () => {
     isCollaborative,
     isHocuspocusConnected,
     isReadOnly,
+    remoteCursors,
+    setLocalCursor,
+    clearLocalCursor,
     enableCollaboration,
     disableCollaboration,
   }

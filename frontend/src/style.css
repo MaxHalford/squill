@@ -37,6 +37,13 @@
   --border-tertiary: #e5e5e5;     /* Very subtle borders, table row separators */
   --border-error: #c62828;        /* Error borders */
 
+  /* Accent palette — fixed preset colors used throughout the app (rainbow, cursors, etc.) */
+  --palette-purple: #9333ea;
+  --palette-blue: #81d4fa;
+  --palette-green: #aed581;
+  --palette-orange: #ffcc80;
+  --palette-red: #f87171;
+
   /* Semantic Colors */
   --color-accent: #9333ea;        /* Configurable accent color (default: purple) */
   --color-selection: color-mix(in srgb, var(--color-accent) 30%, transparent);

@@ -44,7 +44,9 @@ export interface CanvasMeta {
   name: string
   createdAt: number
   updatedAt: number
-  isShared?: boolean
+  isShared?: boolean        // Owner has shared this canvas (enables owner collab path)
+  shareToken?: string       // Stored share token for recipients (enables auto-reconnect)
+  sharePermission?: 'read' | 'write'
 }
 
 export interface CanvasData {
