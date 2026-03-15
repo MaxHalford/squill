@@ -57,19 +57,19 @@ const proFeatures: ProFeature[] = [
     title: 'Persistent storage',
     description: 'Save canvases to the cloud. Pick up where you left off.',
     longDescription: '',
-    released: false
+    released: true
   },
   {
     title: 'Collaborative canvas',
     description: 'Work together in real-time. See each other\'s cursors.',
     longDescription: '',
-    released: false
+    released: true
   },
   {
     title: 'Shareable dashboards',
     description: 'Publish your analysis. Share with stakeholders.',
     longDescription: '',
-    released: false
+    released: true
   }
 ]
 
