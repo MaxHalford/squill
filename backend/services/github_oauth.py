@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 class GitHubOAuthService:
     TOKEN_URL = "https://github.com/login/oauth/access_token"
+    USER_URL = "https://api.github.com/user"
     EMAILS_URL = "https://api.github.com/user/emails"
 
     def __init__(self, client_id: str, client_secret: str):
@@ -33,6 +34,21 @@ class GitHubOAuthService:
                 )
             response.raise_for_status()
             return response.json()
+
+    async def get_user_login(self, access_token: str) -> str | None:
+        """Fetch the user's GitHub username (login)."""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                self.USER_URL,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/json",
+                },
+            )
+            response.raise_for_status()
+
+        data = response.json()
+        return data.get("login")
 
     async def get_primary_email(self, access_token: str) -> str | None:
         """Fetch the user's primary verified email from GitHub.

@@ -57,6 +57,12 @@
               </div>
             </div>
             <div class="profile-info">
+              <div
+                v-if="displayName !== userStore.user?.email"
+                class="profile-name"
+              >
+                {{ displayName }}
+              </div>
               <div class="profile-email">
                 {{ userStore.user?.email }}
               </div>
@@ -307,12 +313,20 @@ const handleDeleteAccount = async () => {
 const providerLabel = computed(() => {
   const provider = userStore.user?.authProvider
   if (provider === 'github') return 'GitHub'
+  if (provider === 'microsoft') return 'Microsoft'
   return 'Google'
 })
 
+const displayName = computed(() => {
+  const u = userStore.user
+  if (!u) return '?'
+  if (u.firstName) return u.lastName ? `${u.firstName} ${u.lastName}` : u.firstName
+  return u.email
+})
+
 const emailInitial = computed(() => {
-  const email = userStore.user?.email || '?'
-  return email.charAt(0).toUpperCase()
+  const name = userStore.user?.firstName || userStore.user?.email || '?'
+  return name.charAt(0).toUpperCase()
 })
 
 const planLabel = computed(() => {
@@ -479,10 +493,15 @@ h1 {
   flex: 1;
 }
 
-.profile-email {
+.profile-name {
   font-weight: 600;
   font-size: var(--font-size-body, 0.875rem);
   color: var(--text-primary, black);
+}
+
+.profile-email {
+  font-size: var(--font-size-body, 0.875rem);
+  color: var(--text-secondary, #666);
 }
 
 .profile-provider {

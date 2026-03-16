@@ -135,9 +135,16 @@ const shareButtonTitle = computed(() =>
   !userStore.isPro ? 'Sharing requires a Pro account' : undefined
 )
 
+const userDisplayName = computed(() => {
+  const u = userStore.user
+  if (!u) return null
+  if (u.firstName) return u.lastName ? `${u.firstName} ${u.lastName}` : u.firstName
+  return u.email
+})
+
 const userInitial = computed(() => {
-  const email = userStore.user?.email || '?'
-  return email.charAt(0).toUpperCase()
+  const name = userStore.user?.firstName || userStore.user?.email || '?'
+  return name.charAt(0).toUpperCase()
 })
 
 
@@ -153,11 +160,6 @@ const handleSignInGoogle = async () => {
 const handleSignInGitHub = async () => {
   closeDropdown()
   await userStore.loginWithGitHub()
-}
-
-const handleSignInMicrosoft = async () => {
-  closeDropdown()
-  await userStore.loginWithMicrosoft()
 }
 
 const toggleSignInDropdown = () => {
@@ -184,7 +186,6 @@ const boxTypes: Array<{ id: BoxType; name: string; disabled?: boolean; title?: s
   { id: 'schema', name: 'Schema browser' },
   { id: 'note', name: 'Sticky note' },
   { id: 'history', name: 'Query history' },
-  { id: 'chat', name: 'Ask a wizard', disabled: true, title: 'Coming soon' },
 ]
 
 // Submenu state
@@ -1322,7 +1323,13 @@ onUnmounted(() => {
             class="dropdown user-dropdown"
           >
             <div class="user-info">
-              <div class="user-email">
+              <div class="user-name">
+                {{ userDisplayName }}
+              </div>
+              <div
+                v-if="userStore.user?.firstName"
+                class="user-email"
+              >
                 {{ userStore.user?.email }}
               </div>
             </div>
@@ -1374,13 +1381,7 @@ onUnmounted(() => {
               <img class="provider-icon provider-icon-invert" src="/logos/github.svg" alt="">
               <span class="item-text">Continue with GitHub</span>
             </button>
-            <button
-              class="dropdown-item"
-              @click="handleSignInMicrosoft"
-            >
-              <img class="provider-icon" src="/logos/microsoft.svg" alt="">
-              <span class="item-text">Continue with Microsoft</span>
-            </button>
+            <!-- Microsoft SSO disabled for now -->
           </div>
         </Transition>
       </div>
@@ -1623,9 +1624,16 @@ onUnmounted(() => {
   border-bottom: var(--border-width-thin) solid var(--border-secondary);
 }
 
+.user-name {
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .user-email {
   font-size: var(--font-size-caption);
   color: var(--text-secondary);
+  margin-top: 2px;
 }
 
 /* Sign In Button */

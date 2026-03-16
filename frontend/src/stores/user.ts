@@ -140,6 +140,8 @@ export const useUserStore = defineStore('user', () => {
       user.value = {
         id: data.id,
         email: data.email,
+        firstName: data.first_name ?? null,
+        lastName: data.last_name ?? null,
         plan: data.plan as 'free' | 'pro',
         isVip: data.is_vip ?? false,
         planExpiresAt: data.plan_expires_at ?? null,
@@ -209,7 +211,7 @@ export const useUserStore = defineStore('user', () => {
       client_id: GOOGLE_CLIENT_ID,
       redirect_uri: `${window.location.origin}/auth/callback`,
       response_type: 'code',
-      scope: 'https://www.googleapis.com/auth/userinfo.email',
+      scope: 'openid profile email',
       access_type: 'online',  // No refresh token needed for login-only
       state
     })

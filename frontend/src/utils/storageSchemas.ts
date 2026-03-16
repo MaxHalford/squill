@@ -121,6 +121,8 @@ const AuthProviderSchema = z.enum(['google', 'github', 'microsoft'])
 export const UserSchema = z.object({
   id: z.string(),
   email: z.string().email(),
+  firstName: z.string().nullable().optional().default(null),
+  lastName: z.string().nullable().optional().default(null),
   plan: PlanTypeSchema,
   isVip: z.boolean(),
   planExpiresAt: z.string().nullable().optional().default(null),

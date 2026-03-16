@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 class UserProfileResponse(BaseModel):
     id: str
     email: str
+    first_name: str | None
+    last_name: str | None
     plan: str
     is_vip: bool
     plan_expires_at: datetime | None
@@ -30,6 +32,8 @@ async def get_user_profile(user: User = Depends(get_current_user)):
     return UserProfileResponse(
         id=user.id,
         email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
         plan=user.plan,
         is_vip=user.is_vip,
         plan_expires_at=user.plan_expires_at,

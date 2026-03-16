@@ -60,6 +60,8 @@ const handleLoginFlow = async (code: string): Promise<void> => {
   await userStore.setUser({
     id: data.user.id,
     email: data.user.email,
+    firstName: data.user.first_name ?? null,
+    lastName: data.user.last_name ?? null,
     plan: data.user.plan,
     isVip: data.user.is_vip ?? false,
     planExpiresAt: data.user.plan_expires_at ?? null,
@@ -92,6 +94,8 @@ const handleGitHubLoginFlow = async (code: string): Promise<void> => {
   await userStore.setUser({
     id: data.user.id,
     email: data.user.email,
+    firstName: data.user.first_name ?? null,
+    lastName: data.user.last_name ?? null,
     plan: data.user.plan,
     isVip: data.user.is_vip ?? false,
     planExpiresAt: data.user.plan_expires_at ?? null,
@@ -124,6 +128,8 @@ const handleMicrosoftLoginFlow = async (code: string): Promise<void> => {
   await userStore.setUser({
     id: data.user.id,
     email: data.user.email,
+    firstName: data.user.first_name ?? null,
+    lastName: data.user.last_name ?? null,
     plan: data.user.plan,
     isVip: data.user.is_vip ?? false,
     planExpiresAt: data.user.plan_expires_at ?? null,
@@ -157,6 +163,8 @@ const handleBigQueryFlow = async (code: string): Promise<void> => {
   await userStore.setUser({
     id: data.user.id,
     email: data.user.email,
+    firstName: data.user.first_name ?? null,
+    lastName: data.user.last_name ?? null,
     plan: data.user.plan,
     isVip: data.user.is_vip ?? false,
     planExpiresAt: data.user.plan_expires_at ?? null,

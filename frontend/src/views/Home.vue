@@ -23,6 +23,7 @@ const ExplainBox = defineAsyncComponent(() => import('../components/ExplainBox.v
 const PostgresConnectionModal = defineAsyncComponent(() => import('../components/PostgresConnectionModal.vue'))
 const SnowflakeConnectionModal = defineAsyncComponent(() => import('../components/SnowflakeConnectionModal.vue'))
 const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/KeyboardShortcutsModal.vue'))
+const WhatsNewModal = defineAsyncComponent(() => import('../components/WhatsNewModal.vue'))
 import { useCanvasStore } from '../stores/canvas'
 import { useUserStore } from '../stores/user'
 import { useSettingsStore } from '../stores/settings'
@@ -34,6 +35,8 @@ import { useSqlGlotStore } from '../stores/sqlglot'
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
 import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
+import { changelog, type ChangelogEntry } from '../data/changelog'
+import { loadItem, saveItem } from '../utils/storage'
 
 const route = useRoute()
 const router = useRouter()
@@ -54,6 +57,8 @@ const onboardingDismissed = ref(false)
 const showPostgresModal = ref(false)
 const showSnowflakeModal = ref(false)
 const showShortcutsModal = ref(false)
+const showWhatsNewModal = ref(false)
+const whatsNewEntries = ref<ChangelogEntry[]>([])
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
 
 // CSV upload progress state
@@ -228,6 +233,14 @@ const handleConnectionAdded = () => {
 // Handle showing keyboard shortcuts modal
 const handleShowShortcuts = () => {
   showShortcutsModal.value = true
+}
+
+const handleShowWhatsNew = (sinceDate: string) => {
+  const entries = changelog.filter(e => e.date > sinceDate)
+  if (entries.length > 0) {
+    whatsNewEntries.value = entries
+    showWhatsNewModal.value = true
+  }
 }
 
 // Handle CSV file input from file picker
@@ -945,7 +958,7 @@ const cursorColor = computed(() => {
 })
 const handleCursorMove = (x: number, y: number) => {
   if (!canvasStore.isCollaborative) return
-  const name = userStore.user?.email?.split('@')[0] ?? 'Guest'
+  const name = userStore.user?.firstName ?? userStore.user?.email?.split('@')[0] ?? 'Guest'
   canvasStore.setLocalCursor(x, y, name, cursorColor.value)
 }
 const handleCursorLeave = () => {
@@ -1103,6 +1116,16 @@ onMounted(async () => {
   await nextTick()
   isStoresReady.value = true
 
+  // Check for new changelog entries since last visit
+  const lastVisit = await loadItem<string>('lastCanvasVisit')
+  const newEntries = changelog.filter(e => !lastVisit || e.date > lastVisit)
+  if (newEntries.length > 0) {
+    whatsNewEntries.value = newEntries
+    showWhatsNewModal.value = true
+  }
+  const today = new Date().toISOString().slice(0, 10)
+  await saveItem('lastCanvasVisit', today)
+
   // Enable collaboration for Pro users, or handle incoming share links
   await initCollaboration()
 
@@ -1154,6 +1177,13 @@ onUnmounted(() => {
     <KeyboardShortcutsModal
       :show="showShortcutsModal"
       @close="showShortcutsModal = false"
+    />
+
+    <!-- What's New Modal -->
+    <WhatsNewModal
+      :show="showWhatsNewModal"
+      :entries="whatsNewEntries"
+      @close="showWhatsNewModal = false"
     />
 
     <!-- Onboarding Modal -->
@@ -1404,6 +1434,7 @@ onUnmounted(() => {
     <DebugPanel
       v-if="isLocalhost && canvasRef"
       :zoom="canvasRef.zoom"
+      @show-whats-new="handleShowWhatsNew"
     />
 
     <!-- Bottom progress bar for DuckDB init and schema refresh -->

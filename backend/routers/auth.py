@@ -1,3 +1,4 @@
+import asyncio
 from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +16,18 @@ from services.google_oauth import GoogleOAuthService
 from services.microsoft_oauth import MicrosoftOAuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _user_dict(user: User) -> dict:
+    """Build a standard user response dict."""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "plan": user.plan,
+        "is_vip": user.is_vip,
+    }
 
 
 def is_vip_email(email: str) -> bool:
@@ -115,7 +128,7 @@ async def google_login(request: GoogleLoginRequest, db: AsyncSession = Depends(g
     if not access_token:
         raise HTTPException(status_code=400, detail="No access token received")
 
-    # Get user info (email) from Google
+    # Get user info (email + name) from Google
     try:
         user_info = await google_oauth.get_user_info(access_token)
     except Exception as e:
@@ -125,17 +138,29 @@ async def google_login(request: GoogleLoginRequest, db: AsyncSession = Depends(g
     if not email:
         raise HTTPException(status_code=400, detail="No email in user info")
 
+    first_name = user_info.get("given_name")
+    last_name = user_info.get("family_name")
+
     # Upsert user account (creates user if not exists)
     existing_user = await db.execute(select(User).where(User.email == email))
     user = existing_user.scalar_one_or_none()
 
     if not user:
         # Create new user
-        user = User(email=email, plan="free", is_vip=is_vip_email(email))
+        user = User(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            plan="free",
+            is_vip=is_vip_email(email),
+        )
         db.add(user)
-    elif is_vip_email(email) and not user.is_vip:
-        # Ensure VIP status for hardcoded emails
-        user.is_vip = True
+    else:
+        # Update name on each login (user may have changed their name)
+        user.first_name = first_name
+        user.last_name = last_name
+        if is_vip_email(email) and not user.is_vip:
+            user.is_vip = True
 
     await db.commit()
     await db.refresh(user)
@@ -145,12 +170,7 @@ async def google_login(request: GoogleLoginRequest, db: AsyncSession = Depends(g
 
     return GoogleLoginResponse(
         session_token=session_token,
-        user={
-            "id": user.id,
-            "email": user.email,
-            "plan": user.plan,
-            "is_vip": user.is_vip,
-        },
+        user=_user_dict(user),
     )
 
 
@@ -193,11 +213,14 @@ async def github_login(request: GitHubLoginRequest, db: AsyncSession = Depends(g
             status_code=400, detail="No access token received from GitHub"
         )
 
-    # Get the user's primary verified email from GitHub
+    # Get the user's primary verified email and username from GitHub
     try:
-        email = await github_oauth.get_primary_email(access_token)
+        email, login = await asyncio.gather(
+            github_oauth.get_primary_email(access_token),
+            github_oauth.get_user_login(access_token),
+        )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to get user emails: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to get user info: {e}")
 
     if not email:
         raise HTTPException(
@@ -210,10 +233,17 @@ async def github_login(request: GitHubLoginRequest, db: AsyncSession = Depends(g
     user = existing_user.scalar_one_or_none()
 
     if not user:
-        user = User(email=email, plan="free", is_vip=is_vip_email(email))
+        user = User(
+            email=email,
+            first_name=login,
+            plan="free",
+            is_vip=is_vip_email(email),
+        )
         db.add(user)
-    elif is_vip_email(email) and not user.is_vip:
-        user.is_vip = True
+    else:
+        user.first_name = login
+        if is_vip_email(email) and not user.is_vip:
+            user.is_vip = True
 
     await db.commit()
     await db.refresh(user)
@@ -222,12 +252,7 @@ async def github_login(request: GitHubLoginRequest, db: AsyncSession = Depends(g
 
     return GitHubLoginResponse(
         session_token=session_token,
-        user={
-            "id": user.id,
-            "email": user.email,
-            "plan": user.plan,
-            "is_vip": user.is_vip,
-        },
+        user=_user_dict(user),
     )
 
 
@@ -273,25 +298,38 @@ async def microsoft_login(
         )
 
     try:
-        email = await microsoft_oauth.get_user_email(access_token)
+        user_info = await microsoft_oauth.get_user_info(access_token)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to get user info: {e}")
 
+    email = user_info.get("email")
     if not email:
         raise HTTPException(
             status_code=400,
             detail="No email found on your Microsoft account.",
         )
 
+    first_name = user_info.get("first_name")
+    last_name = user_info.get("last_name")
+
     # Upsert user account (same logic as other providers — links by email)
     existing_user = await db.execute(select(User).where(User.email == email))
     user = existing_user.scalar_one_or_none()
 
     if not user:
-        user = User(email=email, plan="free", is_vip=is_vip_email(email))
+        user = User(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            plan="free",
+            is_vip=is_vip_email(email),
+        )
         db.add(user)
-    elif is_vip_email(email) and not user.is_vip:
-        user.is_vip = True
+    else:
+        user.first_name = first_name
+        user.last_name = last_name
+        if is_vip_email(email) and not user.is_vip:
+            user.is_vip = True
 
     await db.commit()
     await db.refresh(user)
@@ -300,12 +338,7 @@ async def microsoft_login(
 
     return MicrosoftLoginResponse(
         session_token=session_token,
-        user={
-            "id": user.id,
-            "email": user.email,
-            "plan": user.plan,
-            "is_vip": user.is_vip,
-        },
+        user=_user_dict(user),
     )
 
 
@@ -337,7 +370,7 @@ async def google_callback(
     if not access_token:
         raise HTTPException(status_code=400, detail="No access token received")
 
-    # Get user info (email) from Google
+    # Get user info (email + name) from Google
     try:
         user_info = await google_oauth.get_user_info(access_token)
     except Exception as e:
@@ -347,18 +380,29 @@ async def google_callback(
     if not email:
         raise HTTPException(status_code=400, detail="No email in user info")
 
+    first_name = user_info.get("given_name")
+    last_name = user_info.get("family_name")
+
     # Upsert user account (creates user if not exists)
     existing_user = await db.execute(select(User).where(User.email == email))
     user = existing_user.scalar_one_or_none()
 
     if not user:
         # Create new user
-        user = User(email=email, plan="free", is_vip=is_vip_email(email))
+        user = User(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            plan="free",
+            is_vip=is_vip_email(email),
+        )
         db.add(user)
         await db.flush()  # Get user.id before creating connection
-    elif is_vip_email(email) and not user.is_vip:
-        # Ensure VIP status for hardcoded emails
-        user.is_vip = True
+    else:
+        user.first_name = first_name
+        user.last_name = last_name
+        if is_vip_email(email) and not user.is_vip:
+            user.is_vip = True
 
     # Check for existing BigQuery connection
     existing_conn = await db.execute(
@@ -402,12 +446,7 @@ async def google_callback(
         access_token=access_token,
         expires_in=expires_in,
         session_token=session_token,
-        user={
-            "id": user.id,
-            "email": user.email,
-            "plan": user.plan,
-            "is_vip": user.is_vip,
-        },
+        user=_user_dict(user),
     )
 
 

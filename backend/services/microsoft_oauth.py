@@ -35,11 +35,10 @@ class MicrosoftOAuthService:
             response.raise_for_status()
             return response.json()
 
-    async def get_user_email(self, access_token: str) -> str | None:
-        """Fetch the user's email from Microsoft Graph.
+    async def get_user_info(self, access_token: str) -> dict:
+        """Fetch user info from Microsoft Graph.
 
-        Returns the mail field, falling back to userPrincipalName.
-        Returns None if no email found.
+        Returns a dict with email, first_name, and last_name.
         """
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -52,4 +51,8 @@ class MicrosoftOAuthService:
             response.raise_for_status()
 
         data = response.json()
-        return data.get("mail") or data.get("userPrincipalName")
+        return {
+            "email": data.get("mail") or data.get("userPrincipalName"),
+            "first_name": data.get("givenName"),
+            "last_name": data.get("surname"),
+        }

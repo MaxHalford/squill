@@ -75,6 +75,7 @@ python -m scripts.benchmarks.hex_remover
 ## Useful links
 
 - https://github.com/settings/developers
+- https://console.cloud.google.com/auth/overview?project=squill-482710
 
 ## Need help?
 

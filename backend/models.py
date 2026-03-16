@@ -18,6 +18,8 @@ class User(Base):
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

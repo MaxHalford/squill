@@ -14,6 +14,8 @@ export type AuthProvider = 'google' | 'github' | 'microsoft'
 export interface User {
   id: string
   email: string
+  firstName: string | null
+  lastName: string | null
   plan: PlanType
   isVip: boolean
   planExpiresAt: string | null
@@ -36,6 +38,8 @@ export interface AuthCallbackResponse {
 export interface UserProfileResponse {
   id: string
   email: string
+  first_name: string | null
+  last_name: string | null
   plan: string
   is_vip: boolean
   plan_expires_at: string | null

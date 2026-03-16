@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
 import { calculateBoundingBox } from '../utils/geometry'
 
@@ -8,6 +8,12 @@ const canvasStore = useCanvasStore()
 defineProps<{
   zoom: number
 }>()
+
+const emit = defineEmits<{
+  'show-whats-new': [sinceDate: string]
+}>()
+
+const whatsNewDate = ref('')
 
 const boxCount = computed(() => canvasStore.boxes.length)
 const sqlBoxCount = computed(() => canvasStore.boxes.filter(b => b.type === 'sql').length)
@@ -91,6 +97,15 @@ const boundingBox = computed(() => {
       >
         clear all
       </button>
+      <div class="debug-whats-new">
+        <input
+          v-model="whatsNewDate"
+          type="date"
+        >
+        <button @click="emit('show-whats-new', whatsNewDate)">
+          what's new
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -174,5 +189,22 @@ const boundingBox = computed(() => {
 .debug-actions button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.debug-whats-new {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.debug-whats-new input[type="date"] {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  background: var(--surface-primary);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: 10px;
 }
 </style>
