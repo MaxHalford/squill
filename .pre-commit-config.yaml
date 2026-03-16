@@ -34,3 +34,17 @@ repos:
         files: ^frontend/
         types_or: [ts, vue]
         pass_filenames: false
+      - id: backend-test
+        name: backend tests
+        entry: uv run --project backend pytest backend/tests
+        language: system
+        types: [python]
+        files: ^backend/
+        pass_filenames: false
+      - id: frontend-test
+        name: frontend tests
+        entry: bun run --cwd frontend vitest run
+        language: system
+        files: ^frontend/
+        types_or: [ts, vue]
+        pass_filenames: false
