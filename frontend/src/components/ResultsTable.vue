@@ -1067,7 +1067,7 @@ defineExpose({ resetPagination, triggerReveal })
           {{ DATABASE_INFO[stats.engine].shortName }}
         </span>
         <span
-          v-tooltip="`${columns.length} columns`"
+          v-tooltip="`${columns.length} ${columns.length === 1 ? 'column' : 'columns'}`"
           class="stat"
         >
           {{ formatRowCount(sourceTotalRows) }}
@@ -1225,7 +1225,7 @@ defineExpose({ resetPagination, triggerReveal })
 .error-banner {
   padding: var(--space-2) var(--space-3);
   background: var(--color-error-bg);
-  border-block-end: var(--border-width-thin) solid var(--border-error);
+  border-block-end: var(--border-width-thin) solid var(--border-secondary);
   font-size: var(--font-size-body-sm);
   flex-shrink: 0;
   display: flex;
