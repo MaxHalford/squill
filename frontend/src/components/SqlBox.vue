@@ -78,33 +78,28 @@ const missingConnectionType = computed((): string | undefined => {
 
 const updateDependenciesFromQuery = (query: string) => {
   try {
-    const availableTables = Object.keys(duckdbStore.tables)
-    const connectionType = boxConnection.value?.type
-    const engine = getEffectiveEngine(connectionType, query, availableTables)
+    // Track dependencies for ALL engines (not just DuckDB) so that
+    // same-connection CTE chains also show dependency arrows.
+    const tableRefs = extractTableReferences(query)
+    const dependencyBoxIds = tableRefs
+      .filter(ref => !ref.includes('.')) // skip qualified remote refs
+      .map(ref => {
+        const tableName = ref.replace(/`/g, '').toLowerCase()
+        let boxId = duckdbStore.getTableBoxId(tableName)
 
-    if (isLocalConnectionType(engine)) {
-      const tableRefs = extractTableReferences(query)
-      const dependencyBoxIds = tableRefs
-        .map(ref => {
-          const tableName = ref.split('.').pop()!.replace(/`/g, '').toLowerCase()
-          let boxId = duckdbStore.getTableBoxId(tableName)
+        if (boxId === null) {
+          const matchingBox = canvasStore.boxes.find(b =>
+            duckdbStore.sanitizeTableName(b.name) === tableName,
+          )
+          boxId = matchingBox?.id ?? null
+        }
 
-          if (boxId === null) {
-            const matchingBox = canvasStore.boxes.find(b =>
-              duckdbStore.sanitizeTableName(b.name) === tableName,
-            )
-            boxId = matchingBox?.id ?? null
-          }
+        return boxId
+      })
+      .filter((boxId): boxId is number => boxId !== null && boxId !== undefined && boxId !== props.boxId)
 
-          return boxId
-        })
-        .filter((boxId): boxId is number => boxId !== null && boxId !== undefined && boxId !== props.boxId)
-
-      const uniqueDeps = [...new Set(dependencyBoxIds)]
-      canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
-    } else {
-      canvasStore.updateBoxDependencies(props.boxId, [])
-    }
+    const uniqueDeps = [...new Set(dependencyBoxIds)]
+    canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
   } catch (err) {
     console.warn('Failed to update dependencies:', err)
   }
@@ -115,6 +110,8 @@ const runMissingDependencies = async (query: string) => {
   if (tableRefs.length === 0) return
 
   const availableTables = duckdbStore.getTableNames
+  const connectionType = boxConnection.value?.type
+  const isRemote = connectionType && !isLocalConnectionType(connectionType)
 
   const missingTables = tableRefs
     .filter(ref => {
@@ -136,9 +133,15 @@ const runMissingDependencies = async (query: string) => {
       boxIdToRun = box?.id ?? null
     }
 
-    if (boxIdToRun && boxIdToRun !== props.boxId && executeBoxQuery) {
-      await executeBoxQuery(boxIdToRun)
+    if (!boxIdToRun || boxIdToRun === props.boxId || !executeBoxQuery) continue
+
+    // Same remote connection → CTE inlining handles it, skip pre-execution
+    if (isRemote && props.connectionId) {
+      const sourceBox = canvasStore.boxes.find(b => b.id === boxIdToRun)
+      if (sourceBox?.connectionId === props.connectionId) continue
     }
+
+    await executeBoxQuery(boxIdToRun)
   }
 }
 
@@ -232,6 +235,8 @@ const handleQueryError = (errorMessage: string) => {
       boxConnection.value?.type,
       queryText.value,
       Object.keys(duckdbStore.tables),
+      props.connectionId,
+      canvasStore.boxes,
     )
     queryHistoryStore.recordQuery({
       query: queryPanelRef.value?.getQuery() || queryText.value,

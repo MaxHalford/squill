@@ -20,6 +20,8 @@ import { useBoxConnection } from '../composables/useBoxConnection'
 import { getEffectiveEngine, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
 import { useQueryExecution } from '../composables/useQueryExecution'
+import { useCanvasStore } from '../stores/canvas'
+import { buildCTEQuery } from '../utils/cteResolver'
 import type { SchemaNamespace } from '../utils/schemaBuilder'
 import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai'
 import { isFixableError } from '../utils/errorClassifier'
@@ -42,6 +44,7 @@ const snowflakeStore = useSnowflakeStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 const queryResultsStore = useQueryResultsStore()
+const canvasStore = useCanvasStore()
 const { executeQuery } = useQueryExecution()
 
 // Inject canvas zoom for splitter dragging (defaults to 1 when not on canvas)
@@ -201,7 +204,7 @@ const connectionDisplayName = computed(() => {
 const currentEngine = computed(() => {
   const tables = duckdbStore.tables
   const connectionType = boxConnection.value?.type
-  return getEffectiveEngine(connectionType, queryText.value, Object.keys(tables))
+  return getEffectiveEngine(connectionType, queryText.value, Object.keys(tables), boxConnection.value?.id, canvasStore.boxes)
 })
 
 const currentDialect = computed((): 'bigquery' | 'duckdb' | 'postgres' => {
@@ -383,12 +386,19 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
 
     const availableTables = duckdbStore.getTableNames
     const connectionType = boxConnection.value?.type
-    const engine = getEffectiveEngine(connectionType, query, availableTables)
+    const engine = getEffectiveEngine(connectionType, query, availableTables, boxConnection.value?.id, canvasStore.boxes)
     detectedEngine.value = engine
 
     const tableName = duckdbStore.sanitizeTableName(props.boxName || 'untitled')
     const usePagination = settingsStore.fetchPaginationEnabled && !isLocalConnectionType(engine)
     const connectionId = boxConnection.value?.id
+
+    // For remote engines, assemble CTE-wrapped query from same-connection upstream boxes
+    let finalQuery = query
+    if (!isLocalConnectionType(engine) && props.boxId !== null) {
+      const cteResult = buildCTEQuery(query, props.boxId, connectionId, canvasStore.boxes, availableTables)
+      finalQuery = cteResult.assembledQuery
+    }
 
     let execResult: { rowCount: number; executionTimeMs: number; engine: string; stats?: Record<string, unknown> }
 
@@ -399,7 +409,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
         if (!connectionId) throw new Error('Please connect to BigQuery first')
 
         const paginatedResult = await bigqueryStore.runQueryPaginated(
-          query, batchSize, undefined, abortController.signal, connectionId,
+          finalQuery, batchSize, undefined, abortController.signal, connectionId,
         )
 
         // Store job reference for post-execution explain (disabled on cache hit — no plan available)
@@ -415,7 +425,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
             fetchedRows: paginatedResult.rows.length,
             hasMoreRows: paginatedResult.hasMore,
             pageToken: paginatedResult.pageToken,
-            originalQuery: query,
+            originalQuery: finalQuery,
             connectionId,
             schema: paginatedResult.columns,
           })
@@ -426,7 +436,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
         if (!store || !connectionId) throw new Error(`No ${engine} connection selected`)
 
         const paginatedResult = await store.runQueryPaginated(
-          connectionId, query, batchSize, 0, true, abortController.signal,
+          connectionId, finalQuery, batchSize, 0, true, abortController.signal,
         )
         await duckdbStore.storeResults(props.boxName || 'untitled', paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns, engine as DatabaseEngine)
         if (props.boxId !== null) {
@@ -435,7 +445,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
             fetchedRows: paginatedResult.rows.length,
             hasMoreRows: paginatedResult.hasMore,
             nextOffset: paginatedResult.nextOffset,
-            originalQuery: query,
+            originalQuery: finalQuery,
             connectionId,
             schema: paginatedResult.columns,
           })

@@ -12,8 +12,10 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useSnowflakeStore } from '../stores/snowflake'
+import { useCanvasStore } from '../stores/canvas'
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
 import { getEffectiveEngine, isLocalConnectionType } from '../utils/queryAnalyzer'
+import { buildCTEQuery } from '../utils/cteResolver'
 
 export interface QueryExecutionResult {
   tableName: string
@@ -29,12 +31,13 @@ export function useQueryExecution() {
   const postgresStore = usePostgresStore()
   const bigqueryStore = useBigQueryStore()
   const snowflakeStore = useSnowflakeStore()
+  const canvasStore = useCanvasStore()
 
   /**
    * Execute a SQL query on the appropriate engine and store results in DuckDB.
    *
-   * Handles engine detection (DuckDB vs remote), query sanitization, timing,
-   * and result storage. Callers handle their own UI state, pagination, etc.
+   * For remote engines, same-connection box references are inlined as CTEs
+   * so the query runs entirely on the remote database.
    */
   async function executeQuery(
     query: string,
@@ -46,7 +49,20 @@ export function useQueryExecution() {
     const cleanedQuery = cleanQueryForExecution(query)
 
     const availableTables = await duckdbStore.getFreshTableNames()
-    const engine = getEffectiveEngine(connectionType as ConnectionType | undefined, cleanedQuery, availableTables) as DatabaseEngine
+    const engine = getEffectiveEngine(
+      connectionType as ConnectionType | undefined,
+      cleanedQuery,
+      availableTables,
+      connectionId,
+      canvasStore.boxes,
+    ) as DatabaseEngine
+
+    // For remote engines, assemble CTE-wrapped query from same-connection upstream boxes
+    let finalQuery = cleanedQuery
+    if (!isLocalConnectionType(engine) && options?.boxId) {
+      const cteResult = buildCTEQuery(cleanedQuery, options.boxId, connectionId, canvasStore.boxes, availableTables)
+      finalQuery = cteResult.assembledQuery
+    }
 
     const startTime = performance.now()
     let rowCount = 0
@@ -59,20 +75,20 @@ export function useQueryExecution() {
       columns = result.columns || []
     } else if (engine === 'bigquery') {
       if (!connectionId) throw new Error('No BigQuery connection')
-      const result = await bigqueryStore.runQuery(cleanedQuery, null, connectionId)
+      const result = await bigqueryStore.runQuery(finalQuery, null, connectionId)
       await duckdbStore.storeResults(tableName, result.rows as Record<string, unknown>[], options?.boxId, result.schema, 'bigquery')
       rowCount = result.rows.length
       columns = result.schema?.map((c: { name: string }) => c.name) || []
       engineStats = result.stats
     } else if (engine === 'postgres') {
       if (!connectionId) throw new Error('No PostgreSQL connection')
-      const result = await postgresStore.runQuery(connectionId, cleanedQuery)
+      const result = await postgresStore.runQuery(connectionId, finalQuery)
       await duckdbStore.storeResults(tableName, result.rows as Record<string, unknown>[], options?.boxId)
       rowCount = result.rows.length
       columns = result.rows.length > 0 ? Object.keys(result.rows[0]) : []
     } else if (engine === 'snowflake') {
       if (!connectionId) throw new Error('No Snowflake connection')
-      const result = await snowflakeStore.runQuery(connectionId, cleanedQuery)
+      const result = await snowflakeStore.runQuery(connectionId, finalQuery)
       await duckdbStore.storeResults(tableName, result.rows as Record<string, unknown>[], options?.boxId)
       rowCount = result.rows.length
       columns = result.rows.length > 0 ? Object.keys(result.rows[0]) : []

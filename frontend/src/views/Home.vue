@@ -704,9 +704,12 @@ const handleCreateQueryBox = async (
     : { x: sourceBox.x + sourceBox.width + GAP + 600 / 2, y: sourceBox.y + sourceBox.height / 2 }
 
   const connectionId = sourceBox.connectionId || 'duckdb-local'
-  const boxId = canvasStore.addBox('sql', position, 'duckdb', connectionId)
+  const sourceConnection = connectionsStore.connections.find(c => c.id === connectionId)
+  const engine = sourceConnection?.type || 'duckdb'
+  const boxId = canvasStore.addBox('sql', position, engine, connectionId)
   const tableName = duckdbStore.sanitizeTableName(sourceBox.name)
   canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${tableName}`)
+  canvasStore.updateBoxDependencies(boxId, [sourceBox.id])
   selectBox(boxId, { shouldPan: true })
   await nextTick()
   setTimeout(() => executeBoxQuery(boxId), 100)

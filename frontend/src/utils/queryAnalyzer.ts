@@ -9,7 +9,9 @@
  */
 
 import type { ConnectionType } from '../types/connection'
+import type { Box } from '../types/canvas'
 import { isLocalConnectionType } from './connectionHelpers'
+import { sanitizeTableName } from './sqlSanitize'
 import { sqlKeywordSet } from './sqlDialects'
 
 /**
@@ -126,26 +128,65 @@ function referencesLocalDuckDBTable(query: string, duckDBTables: string[]): bool
 }
 
 /**
- * Determine the effective engine for a query based on connection and table references
+ * Determine the effective engine for a query based on connection and table references.
+ *
+ * Same-connection chaining: if a query references another box on the same remote
+ * connection, those references will be inlined as CTEs (handled by cteResolver).
+ * Only cross-connection DuckDB table references force a switch to DuckDB.
  *
  * @param connectionType - The connection type from the box's assigned connection
  * @param query - The SQL query text
  * @param duckDBTables - List of available DuckDB table names
+ * @param currentConnectionId - The box's connection ID (for same-connection detection)
+ * @param canvasBoxes - All canvas boxes (for same-connection detection)
  * @returns The connection type to use for execution
  */
 export function getEffectiveEngine(
   connectionType: ConnectionType | undefined,
   query: string,
-  duckDBTables: string[]
+  duckDBTables: string[],
+  currentConnectionId?: string,
+  canvasBoxes?: Box[],
 ): ConnectionType {
-  // If query references a local DuckDB table, always use DuckDB
-  // This allows cross-connection analysis using stored query results
+  // No connection or DuckDB connection → always DuckDB
+  if (!connectionType || isLocalConnectionType(connectionType)) {
+    // Still need to check DuckDB table refs for the isLocal case
+    return 'duckdb'
+  }
+
+  // If we have canvas context, use same-connection awareness
+  if (currentConnectionId && canvasBoxes) {
+    const tableRefs = extractTableReferences(query)
+    const unqualifiedRefs = tableRefs.filter(r => !r.includes('.'))
+
+    for (const ref of unqualifiedRefs) {
+      const tableName = ref.replace(/`/g, '').toLowerCase()
+
+      // Check if this is a same-connection box reference
+      const matchingBox = canvasBoxes.find(
+        b => sanitizeTableName(b.name) === tableName && b.type === 'sql',
+      )
+
+      if (matchingBox && matchingBox.connectionId === currentConnectionId) {
+        continue // same-connection ref → will be inlined as CTE
+      }
+
+      // Not a same-connection box ref — if it's a DuckDB table, force DuckDB
+      if (duckDBTables.includes(tableName)) {
+        return 'duckdb'
+      }
+    }
+
+    // All refs are either same-connection or remote schema refs → stay on remote engine
+    return connectionType
+  }
+
+  // Legacy path: no canvas context, use original behavior
   if (referencesLocalDuckDBTable(query, duckDBTables)) {
     return 'duckdb'
   }
 
-  // Otherwise, use the connection type (default to 'duckdb' if no connection)
-  return connectionType || 'duckdb'
+  return connectionType
 }
 
 /**
