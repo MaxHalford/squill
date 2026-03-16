@@ -25,7 +25,8 @@ export const SettingsSchema = z.object({
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   canvasPattern: CanvasPatternSchema,
   voiceNotifyEnabled: z.boolean(),
-  sqlBoxLayout: SqlBoxLayoutSchema
+  sqlBoxLayout: SqlBoxLayoutSchema,
+  autoRunDownstream: z.boolean()
 }).partial() // All fields optional since we merge with defaults
 
 export type SettingsData = z.infer<typeof SettingsSchema>

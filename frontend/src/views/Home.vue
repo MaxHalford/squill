@@ -89,10 +89,24 @@ const executeBoxQuery = async (boxId: number) => {
   }
 }
 
+// Auto-run downstream dependents after a box completes execution
+const runDownstream = async (boxId: number, visited?: Set<number>) => {
+  if (!settingsStore.autoRunDownstream) return
+  const tracking = visited ?? new Set([boxId])
+  const downstreamIds = canvasStore.getDownstreamBoxIds(boxId)
+    .filter(id => !tracking.has(id) && boxExecutors.value.has(id))
+  for (const id of downstreamIds) tracking.add(id)
+  await Promise.all(downstreamIds.map(async (id) => {
+    await executeBoxQuery(id)
+    await runDownstream(id, tracking)
+  }))
+}
+
 // Provide the registry methods to all descendants
 provide('registerBoxExecutor', registerBoxExecutor)
 provide('unregisterBoxExecutor', unregisterBoxExecutor)
 provide('executeBoxQuery', executeBoxQuery)
+provide('runDownstream', runDownstream)
 
 // Stable DOM order: sort by ID so DOM nodes never move (z-index handles visual stacking)
 const sortedBoxes = computed(() => [...canvasStore.boxes].sort((a, b) => a.id - b.id))

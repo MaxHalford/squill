@@ -26,6 +26,8 @@ interface Settings {
   voiceNotifyEnabled: boolean  // Speak query results when tab is backgrounded
   // Layout
   sqlBoxLayout: SqlBoxLayout  // Split direction: vertical (top/bottom) or horizontal (left/right)
+  // Cascade
+  autoRunDownstream: boolean  // Auto-run downstream dependent boxes when upstream completes
 }
 
 // Default settings
@@ -42,7 +44,8 @@ const DEFAULT_SETTINGS: Settings = {
   accentColor: '#9333ea',  // Purple (default accent color)
   canvasPattern: 'dots',  // Default canvas pattern
   voiceNotifyEnabled: true,  // Speak query results when tab is backgrounded
-  sqlBoxLayout: 'vertical'  // Default: editor on top, results on bottom
+  sqlBoxLayout: 'vertical',  // Default: editor on top, results on bottom
+  autoRunDownstream: false  // Default: don't auto-run downstream boxes
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -60,6 +63,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const canvasPattern = ref<CanvasPattern>(DEFAULT_SETTINGS.canvasPattern)
   const voiceNotifyEnabled = ref(DEFAULT_SETTINGS.voiceNotifyEnabled)
   const sqlBoxLayout = ref<SqlBoxLayout>(DEFAULT_SETTINGS.sqlBoxLayout)
+  const autoRunDownstream = ref(DEFAULT_SETTINGS.autoRunDownstream)
 
   const applySettings = (s: Settings) => {
     fetchBatchSize.value = s.fetchBatchSize
@@ -75,6 +79,7 @@ export const useSettingsStore = defineStore('settings', () => {
     canvasPattern.value = s.canvasPattern
     voiceNotifyEnabled.value = s.voiceNotifyEnabled
     sqlBoxLayout.value = s.sqlBoxLayout
+    autoRunDownstream.value = s.autoRunDownstream
   }
 
   const collectSettings = (): Settings => ({
@@ -91,6 +96,7 @@ export const useSettingsStore = defineStore('settings', () => {
     canvasPattern: canvasPattern.value,
     voiceNotifyEnabled: voiceNotifyEnabled.value,
     sqlBoxLayout: sqlBoxLayout.value,
+    autoRunDownstream: autoRunDownstream.value,
   })
 
   const loadState = async () => {
@@ -116,7 +122,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const ready = loadState()
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled, sqlBoxLayout], saveState)
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled, sqlBoxLayout, autoRunDownstream], saveState)
 
   // Reactive system theme tracking
   const systemTheme = ref<'light' | 'dark'>(
@@ -206,6 +212,10 @@ export const useSettingsStore = defineStore('settings', () => {
     sqlBoxLayout.value = sqlBoxLayout.value === 'vertical' ? 'horizontal' : 'vertical'
   }
 
+  const toggleAutoRunDownstream = () => {
+    autoRunDownstream.value = !autoRunDownstream.value
+  }
+
   const resetToDefaults = () => {
     applySettings(DEFAULT_SETTINGS)
   }
@@ -248,6 +258,9 @@ export const useSettingsStore = defineStore('settings', () => {
     // Layout
     sqlBoxLayout,
     toggleSqlBoxLayout,
+    // Cascade
+    autoRunDownstream,
+    toggleAutoRunDownstream,
     resetToDefaults
   }
 })

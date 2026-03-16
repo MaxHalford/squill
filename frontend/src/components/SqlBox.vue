@@ -32,6 +32,7 @@ const settingsStore = useSettingsStore()
 const registerBoxExecutor = inject<((boxId: number, runFn: () => Promise<void>) => void) | null>('registerBoxExecutor', null)
 const unregisterBoxExecutor = inject<((boxId: number) => void) | null>('unregisterBoxExecutor', null)
 const executeBoxQuery = inject<((boxId: number) => Promise<void>) | null>('executeBoxQuery', null)
+const runDownstream = inject<((boxId: number) => Promise<void>) | null>('runDownstream', null)
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -220,6 +221,9 @@ const handleQueryComplete = (result: QueryCompleteEvent) => {
       rowCount: result.rowCount,
     })
   }
+
+  // Cascade to downstream dependents (fire-and-forget)
+  runDownstream?.(props.boxId)
 }
 
 const handleQueryError = (errorMessage: string) => {

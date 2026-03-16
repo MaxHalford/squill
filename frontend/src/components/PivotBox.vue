@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, inject, onMounted, onUnmounted } from 'vue'
 import BaseBox from './BaseBox.vue'
 import PivotConfig from './PivotConfig.vue'
 import ResultsTable from './ResultsTable.vue'
@@ -40,6 +40,11 @@ const snowflakeStore = useSnowflakeStore()
 const queryResultsStore = useQueryResultsStore()
 const settingsStore = useSettingsStore()
 const connectionsStore = useConnectionsStore()
+
+// Box executor registration for auto-run cascade
+const registerBoxExecutor = inject<((id: number, fn: () => Promise<void>) => void) | undefined>('registerBoxExecutor', undefined)
+const unregisterBoxExecutor = inject<((id: number) => void) | undefined>('unregisterBoxExecutor', undefined)
+const runDownstream = inject<((id: number) => Promise<void>) | undefined>('runDownstream', undefined)
 
 // State
 const isLoading = ref(false)
@@ -258,6 +263,9 @@ const run = async () => {
     queryStats.value = { ...sourceStats, executionTimeMs }
 
     saveConfig()
+
+    // Cascade to downstream dependents (fire-and-forget)
+    runDownstream?.(props.boxId)
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -416,6 +424,8 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 onMounted(async () => {
+  registerBoxExecutor?.(props.boxId, run)
+
   await fetchAvailableColumns()
   await enrichColumnTypes()
 
@@ -423,6 +433,10 @@ onMounted(async () => {
     shouldAutoRun.value = false
     await run()
   }
+})
+
+onUnmounted(() => {
+  unregisterBoxExecutor?.(props.boxId)
 })
 </script>
 

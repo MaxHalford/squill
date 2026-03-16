@@ -886,6 +886,12 @@ export const useCanvasStore = defineStore('canvas', () => {
     updateBoxFields(id, { dependencies })
   }
 
+  const getDownstreamBoxIds = (boxId: number): number[] => {
+    return boxes.value
+      .filter(b => b.dependencies?.includes(boxId))
+      .map(b => b.id)
+  }
+
   const updateBoxConnectionId = (id: number, connectionId: string | undefined) => {
     updateBoxFields(id, { connectionId })
   }
@@ -1185,6 +1191,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     updateBoxEditorHeight,
     updateBoxZIndex,
     updateBoxDependencies,
+    getDownstreamBoxIds,
     updateBoxConnectionId,
     getMaxZIndex,
     clearAll,

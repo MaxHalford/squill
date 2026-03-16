@@ -1235,6 +1235,27 @@ onUnmounted(() => {
 
             <div class="settings-section">
               <div class="setting-header">
+                Execution
+              </div>
+              <div class="setting-description">
+                Automatically re-run downstream dependent boxes when an upstream box executes
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
+                  <input
+                    type="checkbox"
+                    :checked="settingsStore.autoRunDownstream"
+                    class="setting-checkbox"
+                    @change="settingsStore.toggleAutoRunDownstream"
+                  >
+                  <span>Auto-run downstream boxes</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
                 Schema cache
               </div>
               <div class="setting-description">
