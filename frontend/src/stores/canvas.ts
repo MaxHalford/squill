@@ -134,6 +134,7 @@ interface CanvasExposed {
   panToBox: (id: number) => void
   screenToCanvas: (screenX: number, screenY: number) => Position
   fitToView: () => void
+  fitToBoxIds: (boxIds: number[]) => void
   zoom: number
 }
 
@@ -656,9 +657,9 @@ export const useCanvasStore = defineStore('canvas', () => {
    * Boxes are arranged in topological order (left → right by dependency depth).
    * The original box is removed; undo covers the whole operation.
    */
-  const explodeBox = (boxId: number, exploded: ExplodedQuery): void => {
+  const explodeBox = (boxId: number, exploded: ExplodedQuery): number[] => {
     const origBox = boxes.value.find(b => b.id === boxId)
-    if (!origBox || exploded.ctes.length === 0) return
+    if (!origBox || exploded.ctes.length === 0) return []
 
     saveToUndoStack()
 
@@ -721,6 +722,8 @@ export const useCanvasStore = defineStore('canvas', () => {
       if (origIndex !== -1) boxes.value.splice(origIndex, 1)
       boxes.value.push(...newBoxes)
     }
+
+    return newBoxes.map(b => b.id)
   }
 
   const setCanvasRef = (ref: CanvasExposed | null) => {

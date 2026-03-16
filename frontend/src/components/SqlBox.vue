@@ -8,7 +8,7 @@
  * - Query history recording
  * - DuckDB table rename on box name change
  */
-import { ref, watch, onMounted, onUnmounted, computed, inject, toRef } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed, inject, toRef, nextTick } from 'vue'
 import BaseBox from './BaseBox.vue'
 import QueryPanel, { type QueryCompleteEvent } from './QueryPanel.vue'
 import { useDuckDBStore } from '../stores/duckdb'
@@ -194,7 +194,11 @@ const handleExplode = async () => {
   const exploded = await sqlglotStore.parseCTEs(queryText.value, dialect)
   console.log('[explode] parseCTEs result:', exploded)
   if (!exploded || exploded.ctes.length === 0) return
-  canvasStore.explodeBox(props.boxId, exploded)
+  const newBoxIds = canvasStore.explodeBox(props.boxId, exploded)
+  if (newBoxIds.length) {
+    await nextTick()
+    canvasStore.canvasRef?.fitToBoxIds(newBoxIds)
+  }
 }
 
 // ---------------------------------------------------------------------------

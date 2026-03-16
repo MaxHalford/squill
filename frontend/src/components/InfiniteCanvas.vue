@@ -165,11 +165,11 @@ const animateTo = (
   animationFrameId = requestAnimationFrame(animate)
 }
 
-const fitToView = () => {
-  if (!canvasRef.value || !props.boxes?.length) return
+const fitToBounds = (targetBoxes: { x: number; y: number; width: number; height: number }[]) => {
+  if (!canvasRef.value || !targetBoxes.length) return
 
   const rect = canvasRef.value.getBoundingClientRect()
-  const bb = calculateBoundingBox(props.boxes)
+  const bb = calculateBoundingBox(targetBoxes)
   const { minX, minY, maxX, maxY } = bb ?? { minX: 0, minY: 0, maxX: 800, maxY: 600 }
 
   const contentWidth = maxX - minX
@@ -189,6 +189,15 @@ const fitToView = () => {
     },
     zoom: targetZoom,
   })
+}
+
+const fitToView = () => {
+  fitToBounds(props.boxes ?? [])
+}
+
+const fitToBoxIds = (boxIds: number[]) => {
+  const subset = props.boxes.filter(b => boxIds.includes(b.id))
+  fitToBounds(subset)
 }
 
 const getViewportCenter = (): Point => {
@@ -223,7 +232,7 @@ const screenToCanvas = (screenX: number, screenY: number): Point => {
   }
 }
 
-defineExpose({ fitToView, getViewportCenter, panToBox, screenToCanvas, zoom })
+defineExpose({ fitToView, fitToBoxIds, getViewportCenter, panToBox, screenToCanvas, zoom })
 
 const isOverBox = (element: HTMLElement | null): boolean => {
   let current = element

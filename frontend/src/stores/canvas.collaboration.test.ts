@@ -118,7 +118,7 @@ describe('canvas store — collaboration', () => {
     const box2 = makeBox(2)
     store.boxes = [box1, box2]
 
-    store.enableCollaboration('canvas-abc', 'owner-jwt')
+    store.enableCollaboration('canvas-abc', 'owner-jwt', true)
 
     // Server sends empty state → synced fires with nothing in Yjs
     session.provider.fire('synced')
