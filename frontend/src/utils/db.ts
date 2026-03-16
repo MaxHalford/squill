@@ -7,7 +7,6 @@ export interface KVEntry<T = unknown> {
 
 class SquillDB extends Dexie {
   appData!: Table<KVEntry, string>
-  schemas!: Table<KVEntry, string>
 
   constructor() {
     super('squill')
@@ -15,6 +14,12 @@ class SquillDB extends Dexie {
     this.version(1).stores({
       appData: 'key',
       schemas: 'key',
+    })
+
+    // v2: drop schemas table (DuckDB now persists schemas via OPFS)
+    this.version(2).stores({
+      appData: 'key',
+      schemas: null,
     })
   }
 }

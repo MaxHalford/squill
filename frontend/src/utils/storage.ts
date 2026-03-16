@@ -26,20 +26,3 @@ export async function deleteItem(key: string): Promise<void> {
   await db.appData.delete(key)
 }
 
-// ---- schemas table (BigQuery schemas, kept separate due to size) ----
-
-export async function loadSchema<T>(key: string): Promise<T | undefined> {
-  await dbReady
-  const row = await db.schemas.get(key)
-  return row?.value as T | undefined
-}
-
-export async function saveSchema(key: string, value: unknown): Promise<void> {
-  await dbReady
-  await db.schemas.put({ key, value: toPlain(value) })
-}
-
-export async function clearSchemas(): Promise<void> {
-  await dbReady
-  await db.schemas.clear()
-}

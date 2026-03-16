@@ -15,17 +15,25 @@ interface PyodideInterface {
 
 interface WorkerRequest {
   id: number
-  type: 'init' | 'validate' | 'format'
+  type: 'init' | 'validate' | 'format' | 'parse-ctes'
   query?: string
   dialect?: string
 }
 
+export interface ParsedCTEWorker {
+  name: string
+  body: string
+  referencedCTEs: string[]
+}
+
 interface WorkerResponse {
   id: number
-  type: 'ready' | 'validate-result' | 'format-result' | 'error'
+  type: 'ready' | 'validate-result' | 'format-result' | 'parse-ctes-result' | 'error'
   errors?: SqlGlotError[]
   formatted?: string
   message?: string
+  ctes?: ParsedCTEWorker[]
+  finalQuery?: string
 }
 
 export interface SqlGlotError {
@@ -87,6 +95,66 @@ def format_sql(query, dialect="duckdb"):
         return ";\\n\\n".join(statements) + ";" if statements else query
     except Exception:
         return query
+
+def parse_ctes(query, dialect="duckdb"):
+    """
+    Parse CTEs from a SQL query using SQLGlot's AST.
+    Returns JSON with:
+      { "ctes": [{ "name", "body", "referencedCTEs" }], "finalQuery": str }
+    or { "error": str } on failure.
+    """
+    try:
+        from sqlglot import expressions as exp
+
+        tree = sqlglot.parse_one(query, read=dialect)
+
+        # Walk the AST for CTE nodes — works regardless of tree structure
+        cte_nodes = list(tree.find_all(exp.CTE))
+        if not cte_nodes:
+            return json.dumps({"ctes": []})
+
+        # Build name map (lowercased → original case)
+        cte_name_map = {}
+        for cte in cte_nodes:
+            name = cte.alias_or_name
+            if name:
+                cte_name_map[name.lower()] = name
+
+        ctes = []
+        for cte in cte_nodes:
+            name = cte.alias_or_name
+            if not name:
+                continue
+            body_sql = cte.this.sql(dialect=dialect, pretty=True)
+
+            # Find references to sibling CTEs in the body
+            body_tables = set()
+            for t in cte.this.find_all(exp.Table):
+                tname = t.name
+                if tname:
+                    body_tables.add(tname.lower())
+            referenced = [
+                cte_name_map[t]
+                for t in body_tables
+                if t in cte_name_map and t != name.lower()
+            ]
+
+            ctes.append({
+                "name": name,
+                "body": body_sql,
+                "referencedCTEs": referenced,
+            })
+
+        # Regenerate the final query without the WITH clause
+        tree_no_with = tree.copy()
+        with_copy = tree_no_with.find(exp.With)
+        if with_copy:
+            with_copy.pop()
+        final_sql = tree_no_with.sql(dialect=dialect, pretty=True)
+
+        return json.dumps({"ctes": ctes, "finalQuery": final_sql})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 `
 
 async function initPyodide(): Promise<void> {
@@ -122,6 +190,15 @@ onmessage = async (e: MessageEvent<WorkerRequest>) => {
       const { query = '', dialect = 'duckdb' } = e.data
       const formatted = pyodide.globals.get('format_sql')(query, dialect)
       postMessage({ id, type: 'format-result', formatted } satisfies WorkerResponse)
+    } else if (type === 'parse-ctes') {
+      const { query = '', dialect = 'duckdb' } = e.data
+      const raw = pyodide.globals.get('parse_ctes')(query, dialect)
+      const parsed = JSON.parse(raw) as { ctes?: ParsedCTEWorker[]; finalQuery?: string; error?: string }
+      if (parsed.error) {
+        postMessage({ id, type: 'error', message: parsed.error } satisfies WorkerResponse)
+      } else {
+        postMessage({ id, type: 'parse-ctes-result', ctes: parsed.ctes ?? [], finalQuery: parsed.finalQuery ?? '' } satisfies WorkerResponse)
+      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

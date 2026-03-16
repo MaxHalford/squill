@@ -3,6 +3,8 @@ import { ref, shallowRef, watch, computed, onScopeDispose } from 'vue'
 import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex } from '../types/canvas'
 import type { DatabaseEngine } from '../types/database'
 import { getDefaultQuery } from '../constants/defaultQueries'
+import { computeExplodeLayout } from '../utils/cteParser'
+import type { ExplodedQuery } from '../utils/cteParser'
 import { CanvasDataSchema, MultiCanvasIndexSchema } from '../utils/storageSchemas'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
 import {
@@ -649,6 +651,78 @@ export const useCanvasStore = defineStore('canvas', () => {
     return newBox.id
   }
 
+  /**
+   * Replace a SQL box with one box per CTE plus a box for the final query.
+   * Boxes are arranged in topological order (left → right by dependency depth).
+   * The original box is removed; undo covers the whole operation.
+   */
+  const explodeBox = (boxId: number, exploded: ExplodedQuery): void => {
+    const origBox = boxes.value.find(b => b.id === boxId)
+    if (!origBox || exploded.ctes.length === 0) return
+
+    saveToUndoStack()
+
+    const BOX_W = 600
+    const BOX_H = 500
+    const layout = computeExplodeLayout(
+      exploded,
+      origBox.name,
+      origBox.x,
+      origBox.y,
+      origBox.height,
+      BOX_W,
+      BOX_H,
+    )
+
+    // Build new boxes
+    const nameToId = new Map<string, number>()
+    const newBoxes: Box[] = layout.items.map(item => {
+      const id = nextBoxId.value++
+      nameToId.set(item.name.toLowerCase(), id)
+      return {
+        id,
+        type: 'sql' as BoxType,
+        x: item.x,
+        y: item.y,
+        width: BOX_W,
+        height: BOX_H,
+        zIndex: getMaxZIndex() + 1,
+        query: item.query,
+        name: item.name,
+        connectionId: origBox.connectionId,
+        dependencies: [],
+      }
+    })
+
+    // Wire up dependencies between CTE boxes
+    for (const cte of exploded.ctes) {
+      const boxForCTE = newBoxes.find(b => b.name === cte.name)
+      if (!boxForCTE) continue
+      boxForCTE.dependencies = cte.referencedCTEs
+        .map(refName => nameToId.get(refName.toLowerCase()))
+        .filter((id): id is number => id !== undefined)
+    }
+    // Final query box depends on all CTE boxes
+    const finalBox = newBoxes.find(b => b.name === origBox.name)
+    if (finalBox) {
+      finalBox.dependencies = [...nameToId.values()].filter(id => id !== finalBox.id)
+    }
+
+    if (isCollaborative.value) {
+      const s = session.value!
+      s.doc.transact(() => {
+        const origIndex = boxes.value.findIndex(b => b.id === boxId)
+        if (origIndex !== -1) s.boxesArray.delete(origIndex, 1)
+        for (const box of newBoxes) s.boxesArray.push([boxToYmap(box)])
+        s.canvasMap.set('nextBoxId', nextBoxId.value)
+      })
+    } else {
+      const origIndex = boxes.value.findIndex(b => b.id === boxId)
+      if (origIndex !== -1) boxes.value.splice(origIndex, 1)
+      boxes.value.push(...newBoxes)
+    }
+  }
+
   const setCanvasRef = (ref: CanvasExposed | null) => {
     canvasRef.value = ref
   }
@@ -1093,6 +1167,7 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     // Box management
     addBox,
+    explodeBox,
     removeBox,
     selectBox,
     deselectBox,

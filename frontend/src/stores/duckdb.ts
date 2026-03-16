@@ -6,7 +6,6 @@ import { DataType as ArrowDataType } from 'apache-arrow'
 import { loadCsvWithDuckDB } from '../services/csvHandler'
 import { sanitizeTableName, escapeSqlString } from '../utils/sqlSanitize'
 import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
-import { loadSchema, saveSchema } from '../utils/storage'
 import { buildDuckDBSchema, type SchemaNamespace } from '../utils/schemaBuilder'
 import type { SchemaItem } from '../utils/textSimilarity'
 import type { DatabaseEngine } from '../types/database'
@@ -126,7 +125,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   const editorSchemaCache = new Map<string, SchemaNamespace>()
   let lastSchemaCacheVersion = -1
 
-  // Initialize DuckDB with IndexedDB persistence
+  // Initialize DuckDB with OPFS persistence
   const initialize = async (): Promise<void> => {
     // Already initialized
     if (isInitialized.value) return
@@ -163,10 +162,21 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         db.value = new duckdb.AsyncDuckDB(logger, worker)
         await db.value.instantiate(bundle.mainModule)
 
+        // Open with OPFS persistence; fall back to in-memory if unavailable
+        try {
+          await db.value.open({
+            path: 'opfs://squill.duckdb',
+            accessMode: duckdb.DuckDBAccessMode.READ_WRITE,
+          })
+          console.log('DuckDB opened with OPFS persistence')
+        } catch (err) {
+          console.warn('OPFS unavailable, using in-memory DuckDB:', err)
+        }
+
         // Create connection
         conn.value = await db.value.connect()
 
-        // Create internal _schemas table, loading persisted data if available
+        // Ensure _schemas table exists (OPFS may already have it from last session)
         await initSchemasTable()
 
         // Load existing tables metadata
@@ -825,27 +835,12 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   // ---------------------------------------------------------------------------
-  // _schemas table: unified schema catalog stored in DuckDB, persisted to IDB
+  // _schemas table: unified schema catalog stored in DuckDB, persisted via OPFS
   // ---------------------------------------------------------------------------
 
-  /** Create _schemas table, populating from IDB cache if available. */
+  /** Create _schemas table if it doesn't already exist (OPFS persists it across sessions). */
   const initSchemasTable = async () => {
-    if (!conn.value || !db.value) return
-
-    try {
-      const buffer = await loadSchema<Uint8Array>('_schemas_parquet')
-      if (buffer && buffer.byteLength > 0) {
-        await db.value.registerFileBuffer('_schemas_load.parquet', new Uint8Array(buffer))
-        await conn.value.query(`CREATE TABLE _schemas AS SELECT * FROM '_schemas_load.parquet'`)
-        await db.value.dropFile('_schemas_load.parquet')
-        console.log('Loaded schemas from IDB cache')
-        return
-      }
-    } catch (err) {
-      console.warn('Failed to load persisted schemas:', err)
-    }
-
-    // No persisted data (or load failed) — create empty table
+    if (!conn.value) return
     await conn.value.query(`
       CREATE TABLE IF NOT EXISTS _schemas (
         connection_type VARCHAR NOT NULL,
@@ -858,19 +853,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         is_nullable BOOLEAN DEFAULT TRUE
       )
     `)
-  }
-
-  const persistSchemas = async () => {
-    if (!conn.value || !db.value) return
-    try {
-      const tempFile = '_schemas_export.parquet'
-      await conn.value.query(`COPY _schemas TO '${tempFile}' (FORMAT PARQUET, COMPRESSION zstd)`)
-      const buffer = await db.value.copyFileToBuffer(tempFile)
-      await db.value.dropFile(tempFile)
-      await saveSchema('_schemas_parquet', new Uint8Array(buffer))
-    } catch (err) {
-      console.warn('Failed to persist schemas to IDB:', err)
-    }
   }
 
   const insertSchemaRows = async (rows: SchemaRow[]) => {
@@ -903,7 +885,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
 
     schemaVersion.value++
-    persistSchemas()
   }
 
   /**
@@ -1065,7 +1046,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
 
     schemaVersion.value++
-    persistSchemas()
   }
 
   /**
@@ -1087,7 +1067,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     )
 
     schemaVersion.value++
-    persistSchemas()
   }
 
   /**
@@ -1126,7 +1105,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
 
     schemaVersion.value++
-    persistSchemas()
   }
 
   return {

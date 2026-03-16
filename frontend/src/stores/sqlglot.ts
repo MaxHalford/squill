@@ -1,15 +1,18 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { SqlGlotError } from '../workers/sqlglot.worker'
+import type { SqlGlotError, ParsedCTEWorker } from '../workers/sqlglot.worker'
+import type { ExplodedQuery } from '../utils/cteParser'
 
 export type { SqlGlotError }
 
 interface WorkerResponse {
   id: number
-  type: 'ready' | 'validate-result' | 'format-result' | 'error'
+  type: 'ready' | 'validate-result' | 'format-result' | 'parse-ctes-result' | 'error'
   errors?: SqlGlotError[]
   formatted?: string
   message?: string
+  ctes?: ParsedCTEWorker[]
+  finalQuery?: string
 }
 
 export const useSqlGlotStore = defineStore('sqlglot', () => {
@@ -100,5 +103,24 @@ export const useSqlGlotStore = defineStore('sqlglot', () => {
     return result.formatted || query
   }
 
-  return { isReady, isLoading, loadError, initialize, validate, format }
+  /**
+   * Parse CTEs from a SQL query using SQLGlot's AST.
+   * Returns null if the query has no CTEs or SQLGlot is not ready.
+   */
+  const parseCTEs = async (query: string, dialect: string): Promise<ExplodedQuery | null> => {
+    if (!isReady.value) {
+      if (initPromise) await initPromise
+      else return null
+    }
+    try {
+      const result = await sendMessage({ type: 'parse-ctes', query, dialect }) as WorkerResponse
+      if (!result.ctes) return null
+      return { ctes: result.ctes, finalQuery: result.finalQuery ?? '' }
+    } catch (err) {
+      console.error('[sqlglot] parseCTEs failed:', err)
+      return null
+    }
+  }
+
+  return { isReady, isLoading, loadError, initialize, validate, format, parseCTEs }
 })

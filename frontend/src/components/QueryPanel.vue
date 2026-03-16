@@ -60,6 +60,7 @@ const props = withDefaults(defineProps<{
   showRowDetail?: boolean
   showAnalytics?: boolean
   initialEditorHeight?: number
+  canExplode?: boolean
 }>(), {
   modelValue: '',
   connectionId: undefined,
@@ -80,6 +81,7 @@ const emit = defineEmits<{
   'show-row-detail': [payload: { rowData: Record<string, unknown>; columnTypes: Record<string, string>; rowIndex: number; globalRowIndex: number; clickX: number; clickY: number }]
   'show-column-analytics': [payload: { columnName: string; columnType: string; typeCategory: string; tableName: string; clickX: number; clickY: number; sourceEngine?: string; originalQuery?: string; connectionId?: string; availableColumns?: string[] }]
   'show-explain': [payload: { planData: unknown; engine: string; query: string; clickX: number; clickY: number }]
+  'explode': []
 }>()
 
 // ---------------------------------------------------------------------------
@@ -703,9 +705,11 @@ defineExpose({
       :connection-type="boxConnection?.type"
       :connection-id="boxConnection?.id"
       :explain-disabled-reason="explainDisabledReason"
+      :can-explode="canExplode"
       @run="runQuery()"
       @stop="stopQuery"
       @explain="explainQuery"
+      @explode="emit('explode')"
       @accept-suggestion="handleAcceptSuggestion"
       @dismiss-suggestion="suggestion = null"
       @navigate-to-table="emit('navigate-to-table', $event)"

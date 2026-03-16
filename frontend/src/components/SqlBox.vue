@@ -19,9 +19,12 @@ import { useBoxConnection } from '../composables/useBoxConnection'
 import { announceQueryResult, notifyTab } from '../utils/voiceNotify'
 import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { DATABASE_INFO } from '../types/database'
+import { hasCTEs } from '../utils/cteParser'
+import { useSqlGlotStore } from '../stores/sqlglot'
 
 const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()
+const sqlglotStore = useSqlGlotStore()
 const queryHistoryStore = useQueryHistoryStore()
 const settingsStore = useSettingsStore()
 
@@ -174,6 +177,21 @@ watch(queryText, (newQuery) => {
     updateDependenciesFromQuery(newQuery)
   }, 500)
 })
+
+// ---------------------------------------------------------------------------
+// CTE Explode
+// ---------------------------------------------------------------------------
+
+const canExplode = computed(() => hasCTEs(queryText.value) && sqlglotStore.isReady)
+
+const handleExplode = async () => {
+  const dialect = boxConnection.value?.type ?? 'duckdb'
+  console.log('[explode] dialect:', dialect, 'query:', queryText.value.slice(0, 80))
+  const exploded = await sqlglotStore.parseCTEs(queryText.value, dialect)
+  console.log('[explode] parseCTEs result:', exploded)
+  if (!exploded || exploded.ctes.length === 0) return
+  canvasStore.explodeBox(props.boxId, exploded)
+}
 
 // ---------------------------------------------------------------------------
 // Event handlers
@@ -340,6 +358,7 @@ defineExpose({
       :box-id="boxId"
       :box-name="baseBoxRef?.boxName || initialName"
       :initial-editor-height="initialEditorHeight"
+      :can-explode="canExplode"
       @query-complete="handleQueryComplete"
       @query-error="handleQueryError"
       @navigate-to-table="handleNavigateToTable"
@@ -347,6 +366,7 @@ defineExpose({
       @show-column-analytics="emit('show-column-analytics', $event)"
       @show-explain="emit('show-explain', $event)"
       @update:editor-height="emit('update:editorHeight', $event)"
+      @explode="handleExplode"
     />
   </BaseBox>
 </template>

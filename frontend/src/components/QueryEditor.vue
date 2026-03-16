@@ -44,6 +44,7 @@ const props = defineProps<{
   connectionType?: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
   connectionId?: string
   explainDisabledReason?: string
+  canExplode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -51,6 +52,7 @@ const emit = defineEmits<{
   'run': []
   'stop': []
   'explain': [event: { clientX: number; clientY: number }]
+  'explode': []
   'accept-suggestion': []
   'dismiss-suggestion': []
   'navigate-to-table': [ref: TableReferenceWithPosition]
@@ -919,6 +921,28 @@ defineExpose({
       {{ hoveredError.message }}
     </div>
 
+    <!-- Explode button — splits CTE query into separate boxes -->
+    <button
+      v-tooltip="canExplode ? 'Explode CTEs into separate boxes' : 'No CTEs to explode'"
+      class="explode-btn"
+      :disabled="!canExplode"
+      @click.stop="emit('explode')"
+    >
+      <!-- Starburst / explosion icon -->
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 2 L13.5 8.5 L20 5 L15.5 10.5 L22 12 L15.5 13.5 L20 19 L13.5 15.5 L12 22 L10.5 15.5 L4 19 L8.5 13.5 L2 12 L8.5 10.5 L4 5 L10.5 8.5 Z" />
+      </svg>
+    </button>
+
     <!-- Wand button — hidden for free users, disabled for pro/vip (reserved for future use) -->
     <button
       v-if="userStore.isPro"
@@ -1059,10 +1083,37 @@ defineExpose({
   display: none;
 }
 
-/* Wand Button — stacked above Format */
-.wand-btn {
+/* Explode Button — stacked above Format */
+.explode-btn {
   position: absolute;
   bottom: calc(var(--space-2) + 84px);
+  right: var(--space-2);
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.explode-btn:not(:disabled):hover {
+  color: var(--text-primary);
+}
+
+.explode-btn:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Wand Button — stacked above Explode */
+.wand-btn {
+  position: absolute;
+  bottom: calc(var(--space-2) + 112px);
   right: var(--space-2);
   display: flex;
   align-items: center;
