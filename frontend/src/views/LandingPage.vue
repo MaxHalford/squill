@@ -441,7 +441,7 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
             <span class="bracket">]</span>
           </div>
           <h3>Smart SQL editor</h3>
-          <p>Auto-completion that knows your schema. Syntax highlighting. Cmd+click to jump to table definitions.</p>
+          <p>Auto-completion that knows your schema. Syntax highlighting. Click to format and split a query into CTEs. Cmd+click to jump to table definitions.</p>
         </div>
 
         <div class="feature-card">
