@@ -90,7 +90,19 @@ export const convertBigQueryValue = (value: unknown, field: BigQueryField): unkn
     }
   }
 
-  // DATE, TIME, STRING, BYTES, GEOGRAPHY, JSON - pass through as-is
+  // JSON - parse string into object so it survives JSON serialization for DuckDB import
+  if (type === 'JSON') {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value)
+      } catch {
+        return value
+      }
+    }
+    return value
+  }
+
+  // DATE, TIME, STRING, BYTES, GEOGRAPHY - pass through as-is
   return value
 }
 

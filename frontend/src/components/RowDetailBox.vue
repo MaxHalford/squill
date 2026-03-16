@@ -76,6 +76,14 @@ const getDisplayValue = (value: unknown): unknown => {
   return tryParseJson(value)
 }
 
+// Open JSON in JSON Hero via base64-encoded URL
+const openInJsonHero = (value: unknown) => {
+  const json = JSON.stringify(getDisplayValue(value))
+  const bytes = new TextEncoder().encode(json)
+  const binary = Array.from(bytes, b => String.fromCharCode(b)).join('')
+  window.open(`https://jsonhero.io/new?j=${btoa(binary)}`, '_blank')
+}
+
 // Format value for display (handle null, undefined, dates, etc.)
 const formatValue = (value: unknown, columnType?: string): string => {
   if (value === null) return 'null'
@@ -123,11 +131,21 @@ const formatValue = (value: unknown, columnType?: string): string => {
           class="field-value"
           :class="{ 'null-value': value === null }"
         >
-          <JsonTree
-            v-if="isComplexValue(value)"
-            :data="getDisplayValue(value)"
-            :default-expand-depth="2"
-          />
+          <template v-if="isComplexValue(value)">
+            <div class="json-actions">
+              <button
+                class="jsonhero-btn"
+                title="Open in JSON Hero"
+                @click="openInJsonHero(value)"
+              >
+                JSON Hero
+              </button>
+            </div>
+            <JsonTree
+              :data="getDisplayValue(value)"
+              :default-expand-depth="2"
+            />
+          </template>
           <template v-else>
             {{ formatValue(value, columnTypes[field]) }}
           </template>
@@ -221,5 +239,27 @@ const formatValue = (value: unknown, columnType?: string): string => {
 
 .null-value {
   color: var(--text-tertiary);
+}
+
+.json-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-1);
+}
+
+.jsonhero-btn {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-caption);
+  padding: 1px var(--space-2);
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  border: var(--border-width-thin) solid var(--border-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.jsonhero-btn:hover {
+  background: var(--surface-primary);
+  color: var(--text-primary);
 }
 </style>
