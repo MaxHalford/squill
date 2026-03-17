@@ -10,7 +10,7 @@ from config import get_settings
 from database import get_db
 from models import BigQueryConnection, User
 from services.auth import create_session_token
-from services.encryption import TokenEncryption
+from services.encryption import get_encryption
 from services.github_oauth import GitHubOAuthService
 from services.google_oauth import GoogleOAuthService
 from services.microsoft_oauth import MicrosoftOAuthService
@@ -33,12 +33,6 @@ def _user_dict(user: User) -> dict:
 def is_vip_email(email: str) -> bool:
     """Check if an email should always be treated as VIP."""
     return email.lower() in get_settings().vip_emails
-
-
-@lru_cache
-def get_encryption() -> TokenEncryption:
-    """Get cached encryption service."""
-    return TokenEncryption(get_settings().token_encryption_key)
 
 
 @lru_cache

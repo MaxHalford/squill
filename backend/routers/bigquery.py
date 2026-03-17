@@ -1,5 +1,6 @@
 import io
 import logging
+from functools import lru_cache
 from typing import AsyncGenerator
 
 import pyarrow as pa
@@ -12,13 +13,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from functools import lru_cache
-
 from config import get_settings
 from database import get_db
 from models import BigQueryConnection, User
 from services.auth import get_current_user
-from services.encryption import TokenEncryption
+from services.encryption import get_encryption
 from services.google_oauth import GoogleOAuthService
 
 router = APIRouter(prefix="/bigquery", tags=["bigquery"])
@@ -30,12 +29,6 @@ BIGQUERY_SCOPES = [
     "https://www.googleapis.com/auth/bigquery",
     "https://www.googleapis.com/auth/cloud-platform.read-only",
 ]
-
-
-@lru_cache
-def get_encryption() -> TokenEncryption:
-    """Get cached encryption service."""
-    return TokenEncryption(get_settings().token_encryption_key)
 
 
 @lru_cache

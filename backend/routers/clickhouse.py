@@ -9,23 +9,14 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from functools import lru_cache
-
-from config import get_settings
 from database import get_db
 from models import ClickHouseConnection, User
 from services.auth import get_current_user
-from services.encryption import TokenEncryption
 from services.clickhouse_pool import ClickHouseConnectionManager
+from services.encryption import get_encryption
 
 router = APIRouter(prefix="/clickhouse", tags=["clickhouse"])
 logger = logging.getLogger(__name__)
-
-
-@lru_cache
-def get_encryption() -> TokenEncryption:
-    """Get cached encryption service."""
-    return TokenEncryption(get_settings().token_encryption_key)
 
 
 # Security helpers

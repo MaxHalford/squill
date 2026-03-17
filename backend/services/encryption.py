@@ -1,5 +1,6 @@
 import base64
 import os
+from functools import lru_cache
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -21,3 +22,11 @@ class TokenEncryption:
         """Decrypt ciphertext and return plaintext."""
         plaintext = self.aesgcm.decrypt(iv, ciphertext, None)
         return plaintext.decode("utf-8")
+
+
+@lru_cache
+def get_encryption() -> TokenEncryption:
+    """Get cached encryption service singleton."""
+    from config import get_settings
+
+    return TokenEncryption(get_settings().token_encryption_key)

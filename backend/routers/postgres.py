@@ -9,23 +9,14 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from functools import lru_cache
-
-from config import get_settings
 from database import get_db
 from models import PostgresConnection, User
 from services.auth import get_current_user
-from services.encryption import TokenEncryption
+from services.encryption import get_encryption
 from services.postgres_pool import PostgresPoolManager
 
 router = APIRouter(prefix="/postgres", tags=["postgres"])
 logger = logging.getLogger(__name__)
-
-
-@lru_cache
-def get_encryption() -> TokenEncryption:
-    """Get cached encryption service."""
-    return TokenEncryption(get_settings().token_encryption_key)
 
 
 # Request/Response Models

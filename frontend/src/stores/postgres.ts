@@ -540,7 +540,6 @@ export const usePostgresStore = defineStore('postgres', () => {
 
   return {
     // State
-    credentialsCache,
     tablesCache,
     columnsCache,
     isConnecting,

@@ -73,6 +73,6 @@ class TestQuoteIdentifier:
         assert result == '"таблица"'
 
     def test_identifier_with_newlines(self):
-        """Should handle identifiers with newlines."""
-        result = quote_identifier("table\nname")
-        assert result == '"table\nname"'
+        """Should reject identifiers with control characters."""
+        with pytest.raises(ValueError, match="control characters"):
+            quote_identifier("table\nname")

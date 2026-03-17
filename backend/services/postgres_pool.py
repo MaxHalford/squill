@@ -9,7 +9,8 @@ class PostgresPoolManager:
     """Manages asyncpg connection pools per connection configuration."""
 
     _pools: dict[str, asyncpg.Pool] = {}
-    _lock = asyncio.Lock()
+    _locks: dict[str, asyncio.Lock] = {}
+    _global_lock = asyncio.Lock()
 
     @classmethod
     async def get_pool(
@@ -23,7 +24,12 @@ class PostgresPoolManager:
         ssl_mode: str = "prefer",
     ) -> asyncpg.Pool:
         """Get or create a connection pool for the given connection."""
-        async with cls._lock:
+        async with cls._global_lock:
+            if connection_id not in cls._locks:
+                cls._locks[connection_id] = asyncio.Lock()
+            lock = cls._locks[connection_id]
+
+        async with lock:
             if connection_id not in cls._pools:
                 # Build SSL context based on ssl_mode
                 ssl: bool | str | None = None
@@ -49,7 +55,7 @@ class PostgresPoolManager:
     @classmethod
     async def close_pool(cls, connection_id: str) -> None:
         """Close and remove a connection pool."""
-        async with cls._lock:
+        async with cls._global_lock:
             if connection_id in cls._pools:
                 await cls._pools[connection_id].close()
                 del cls._pools[connection_id]
@@ -57,10 +63,11 @@ class PostgresPoolManager:
     @classmethod
     async def close_all(cls) -> None:
         """Close all connection pools."""
-        async with cls._lock:
+        async with cls._global_lock:
             for pool in cls._pools.values():
                 await pool.close()
             cls._pools.clear()
+            cls._locks.clear()
 
     @classmethod
     async def test_connection(

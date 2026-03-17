@@ -196,7 +196,7 @@ onUnmounted(() => {
           </div>
 
           <a
-            class="btn-demo"
+            class="btn-demo btn-demo-muted"
             href="https://signup.snowflake.com/"
             target="_blank"
             rel="noopener noreferrer"
@@ -405,27 +405,6 @@ onUnmounted(() => {
 }
 
 .close-btn:hover {
-  color: var(--text-primary);
-}
-
-.btn-demo {
-  display: block;
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-4);
-  background: color-mix(in srgb, var(--text-tertiary) 8%, transparent);
-  border: var(--border-width-thin) dashed var(--border-primary);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  font-size: var(--font-size-body-sm);
-  font-weight: 500;
-  text-align: center;
-  text-decoration: none;
-  transition: all 0.2s;
-}
-
-.btn-demo:hover {
-  background: color-mix(in srgb, var(--text-tertiary) 15%, transparent);
   color: var(--text-primary);
 }
 

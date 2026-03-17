@@ -616,8 +616,14 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
    */
   const clearConnectionCache = (connectionId: string): void => {
     credentialsCache.value.delete(connectionId)
-    tablesCache.value.delete(connectionId)
 
+    // Clean both top-level and per-schema table cache entries
+    tablesCache.value.delete(connectionId)
+    for (const key of tablesCache.value.keys()) {
+      if (key.startsWith(`${connectionId}:`)) {
+        tablesCache.value.delete(key)
+      }
+    }
     // Clear all column and metadata caches for this connection
     for (const key of columnsCache.value.keys()) {
       if (key.startsWith(`${connectionId}:`)) {
@@ -655,7 +661,6 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
 
   return {
     // State
-    credentialsCache,
     databasesCache,
     schemasCache,
     tablesCache,

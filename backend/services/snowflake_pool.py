@@ -15,7 +15,8 @@ class SnowflakeConnectionManager:
     """
 
     _connections: dict[str, snowflake.connector.SnowflakeConnection] = {}
-    _lock = asyncio.Lock()
+    _locks: dict[str, asyncio.Lock] = {}
+    _global_lock = asyncio.Lock()
     _executor = ThreadPoolExecutor(max_workers=10)
 
     @classmethod
@@ -60,7 +61,12 @@ class SnowflakeConnectionManager:
         role: str | None = None,
     ) -> snowflake.connector.SnowflakeConnection:
         """Get or create a connection for the given configuration."""
-        async with cls._lock:
+        async with cls._global_lock:
+            if connection_id not in cls._locks:
+                cls._locks[connection_id] = asyncio.Lock()
+            lock = cls._locks[connection_id]
+
+        async with lock:
             if connection_id in cls._connections:
                 conn = cls._connections[connection_id]
                 # Check if connection is still valid
@@ -98,7 +104,7 @@ class SnowflakeConnectionManager:
     @classmethod
     async def close_connection(cls, connection_id: str) -> None:
         """Close and remove a connection."""
-        async with cls._lock:
+        async with cls._global_lock:
             if connection_id in cls._connections:
                 conn = cls._connections[connection_id]
                 try:
@@ -111,7 +117,7 @@ class SnowflakeConnectionManager:
     @classmethod
     async def close_all(cls) -> None:
         """Close all connections."""
-        async with cls._lock:
+        async with cls._global_lock:
             for conn in cls._connections.values():
                 try:
                     loop = asyncio.get_running_loop()
@@ -119,6 +125,7 @@ class SnowflakeConnectionManager:
                 except Exception:
                     pass
             cls._connections.clear()
+            cls._locks.clear()
 
     @classmethod
     async def test_connection(
@@ -155,31 +162,29 @@ class SnowflakeConnectionManager:
         return await loop.run_in_executor(cls._executor, _test)
 
     @classmethod
+    def _process_cursor(
+        cls, cursor: Any
+    ) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
+        """Convert a Snowflake cursor result into (rows, schema)."""
+        columns = cursor.description or []
+        schema = [(col[0], cls._map_snowflake_type(col[1])) for col in columns]
+        column_names = [col[0] for col in columns]
+        rows = [dict(zip(column_names, row)) for row in cursor]
+        return rows, schema
+
+    @classmethod
     async def execute_query(
         cls,
         conn: snowflake.connector.SnowflakeConnection,
         query: str,
     ) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
-        """Execute a query and return (rows, schema).
-
-        Returns:
-            Tuple of (rows as list of dicts, schema as list of (name, type) tuples)
-        """
+        """Execute a query and return (rows, schema)."""
 
         def _execute() -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
             cursor = conn.cursor()
             try:
                 cursor.execute(query)
-
-                # Get column descriptions
-                columns = cursor.description or []
-                schema = [(col[0], cls._map_snowflake_type(col[1])) for col in columns]
-                column_names = [col[0] for col in columns]
-
-                # Fetch all rows as dicts
-                rows = [dict(zip(column_names, row)) for row in cursor]
-
-                return rows, schema
+                return cls._process_cursor(cursor)
             finally:
                 cursor.close()
 
@@ -193,31 +198,13 @@ class SnowflakeConnectionManager:
         query: str,
         params: tuple[Any, ...],
     ) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
-        """Execute a parameterized query and return (rows, schema).
-
-        Args:
-            conn: Snowflake connection
-            query: SQL query with %s placeholders
-            params: Tuple of parameter values
-
-        Returns:
-            Tuple of (rows as list of dicts, schema as list of (name, type) tuples)
-        """
+        """Execute a parameterized query and return (rows, schema)."""
 
         def _execute() -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
             cursor = conn.cursor()
             try:
                 cursor.execute(query, params)
-
-                # Get column descriptions
-                columns = cursor.description or []
-                schema = [(col[0], cls._map_snowflake_type(col[1])) for col in columns]
-                column_names = [col[0] for col in columns]
-
-                # Fetch all rows as dicts
-                rows = [dict(zip(column_names, row)) for row in cursor]
-
-                return rows, schema
+                return cls._process_cursor(cursor)
             finally:
                 cursor.close()
 
@@ -259,14 +246,7 @@ class SnowflakeConnectionManager:
                     LIMIT {batch_size} OFFSET {offset}
                 """
                 cursor.execute(paginated_query)
-
-                # Get column descriptions
-                columns = cursor.description or []
-                schema = [(col[0], cls._map_snowflake_type(col[1])) for col in columns]
-                column_names = [col[0] for col in columns]
-
-                # Fetch all rows as dicts
-                rows = [dict(zip(column_names, row)) for row in cursor]
+                rows, schema = cls._process_cursor(cursor)
 
                 rows_fetched = len(rows)
                 next_offset = offset + rows_fetched

@@ -1,9 +1,10 @@
 """Connection listing endpoint for Pro/VIP users.
 
-Connections are derived from existing BigQueryConnection and PostgresConnection tables.
+Connections are derived from existing credential tables.
 No separate connections table needed - we just query the credential tables.
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -57,19 +58,30 @@ async def list_connections(
 ):
     """List all connections for the current user. Requires Pro/VIP.
 
-    Derives connections from BigQueryConnection and PostgresConnection tables.
+    Derives connections from credential tables.
     DuckDB connections are local-only and not stored in the backend.
     """
     check_pro_or_vip(user)
 
+    # Run all queries concurrently
+    bq_result, pg_result, sf_result, ch_result = await asyncio.gather(
+        db.execute(
+            select(BigQueryConnection).where(BigQueryConnection.user_id == user.id)
+        ),
+        db.execute(
+            select(PostgresConnection).where(PostgresConnection.user_id == user.id)
+        ),
+        db.execute(
+            select(SnowflakeConnection).where(SnowflakeConnection.user_id == user.id)
+        ),
+        db.execute(
+            select(ClickHouseConnection).where(ClickHouseConnection.user_id == user.id)
+        ),
+    )
+
     connections: list[ConnectionResponse] = []
 
-    # Fetch BigQuery connections
-    bq_result = await db.execute(
-        select(BigQueryConnection).where(BigQueryConnection.user_id == user.id)
-    )
     for bq_conn in bq_result.scalars().all():
-        # Generate the same ID format as frontend
         conn_id = (
             f"bigquery-{bq_conn.email}-{int(bq_conn.created_at.timestamp() * 1000)}"
         )
@@ -77,16 +89,11 @@ async def list_connections(
             ConnectionResponse(
                 id=conn_id,
                 flavor="bigquery",
-                name=bq_conn.email,  # Use email as name
+                name=bq_conn.email,
                 email=bq_conn.email,
-                project_id=None,  # BigQuery connections don't store project_id in this table
             )
         )
 
-    # Fetch PostgreSQL connections
-    pg_result = await db.execute(
-        select(PostgresConnection).where(PostgresConnection.user_id == user.id)
-    )
     for pg_conn in pg_result.scalars().all():
         connections.append(
             ConnectionResponse(
@@ -97,10 +104,6 @@ async def list_connections(
             )
         )
 
-    # Fetch Snowflake connections
-    sf_result = await db.execute(
-        select(SnowflakeConnection).where(SnowflakeConnection.user_id == user.id)
-    )
     for sf_conn in sf_result.scalars().all():
         connections.append(
             ConnectionResponse(
@@ -111,10 +114,6 @@ async def list_connections(
             )
         )
 
-    # Fetch ClickHouse connections
-    ch_result = await db.execute(
-        select(ClickHouseConnection).where(ClickHouseConnection.user_id == user.id)
-    )
     for ch_conn in ch_result.scalars().all():
         connections.append(
             ConnectionResponse(
