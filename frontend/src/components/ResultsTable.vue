@@ -63,6 +63,7 @@ let timerInterval: ReturnType<typeof setInterval> | null = null
 watch(() => props.isRunning, (running) => {
   if (running) {
     elapsedTime.value = 0
+    seedStars()
     timerInterval = setInterval(() => {
       elapsedTime.value += 0.1
     }, 100)
@@ -71,6 +72,80 @@ watch(() => props.isRunning, (running) => {
     timerInterval = null
   }
 })
+
+// Twinkling stars scattered across the running state
+const starFrames = ['.', '·', '+', '*', '✦', '*', '+', '·']
+interface ScatteredItem {
+  x: number   // % from left
+  y: number   // % from top
+  offset: number
+  speed: number // seconds per frame
+  kind: 'star' | 'orbit' | 'diamond'
+}
+const scatteredItems = ref<ScatteredItem[]>([])
+
+// Generate a random position that avoids the center dead zone (where timer/cancel sit)
+function randPos(margin: number, range: number): { x: number; y: number } {
+  let x: number, y: number
+  do {
+    x = margin + Math.random() * range
+    y = margin + Math.random() * range
+  } while (x > 35 && x < 65 && y > 30 && y < 70)
+  return { x, y }
+}
+
+function seedStars() {
+  const stars: ScatteredItem[] = Array.from({ length: 10 + Math.floor(Math.random() * 6) }, () => ({
+    ...randPos(8, 84),
+    offset: Math.floor(Math.random() * 8),
+    speed: 0.3 + Math.random() * 0.4,
+    kind: 'star',
+  }))
+  const orbits: ScatteredItem[] = Array.from({ length: 2 + Math.floor(Math.random() * 2) }, () => ({
+    ...randPos(15, 70),
+    offset: Math.floor(Math.random() * 8),
+    speed: 0.25 + Math.random() * 0.15,
+    kind: 'orbit',
+  }))
+  const diamonds: ScatteredItem[] = Array.from({ length: 2 + Math.floor(Math.random() * 2) }, () => ({
+    ...randPos(15, 70),
+    offset: Math.floor(Math.random() * 6),
+    speed: 0.5 + Math.random() * 0.3,
+    kind: 'diamond',
+  }))
+  scatteredItems.value = [...stars, ...orbits, ...diamonds]
+}
+
+function itemDisplay(item: ScatteredItem): string {
+  const tick = item.offset + Math.floor(elapsedTime.value / item.speed)
+  if (item.kind === 'star') {
+    return starFrames[tick % starFrames.length]
+  }
+  if (item.kind === 'orbit') {
+    // Two dots orbiting a center — 8 positions around a tiny ring
+    const orbitFrames = [
+      '·   ·\n  ◦  \n     ',
+      '  ·  \n  ◦ ·\n     ',
+      '     \n  ◦ ·\n  ·  ',
+      '     \n  ◦  \n· · ·',
+      '     \n· ◦  \n  ·  ',
+      '  ·  \n· ◦  \n     ',
+      '·    \n  ◦  \n    ·',
+      '    ·\n  ◦  \n·    ',
+    ]
+    return orbitFrames[tick % orbitFrames.length]
+  }
+  // diamond — pulsing expand/contract
+  const diamondFrames = [
+    '  ·  \n ·.· \n  ·  ',
+    '  ·  \n ·+· \n  ·  ',
+    '  ◇  \n ◇✦◇ \n  ◇  ',
+    '  ·  \n ·✦· \n  ·  ',
+    '  ·  \n ·+· \n  ·  ',
+    '  ·  \n ·.· \n  ·  ',
+  ]
+  return diamondFrames[tick % diamondFrames.length]
+}
 
 // UI state
 const hoveredRowIndex = ref<number | null>(null)
@@ -838,8 +913,20 @@ defineExpose({ resetPagination, triggerReveal, refresh })
     >
       <div
         v-if="isRunning"
-        class="idle-state"
+        class="idle-state running-starfield"
       >
+        <template v-for="(item, i) in scatteredItems" :key="i">
+          <span
+            v-if="item.kind === 'star'"
+            class="scattered-star"
+            :style="{ left: item.x + '%', top: item.y + '%' }"
+          >{{ itemDisplay(item) }}</span>
+          <pre
+            v-else
+            class="scattered-art"
+            :style="{ left: item.x + '%', top: item.y + '%' }"
+          >{{ itemDisplay(item) }}</pre>
+        </template>
         <span class="running-text">
           <span class="elapsed">{{ elapsedTime.toFixed(1) }}s</span>
           <button class="stop-link" @click="emit('stop-query')">Cancel</button>
@@ -1774,8 +1861,35 @@ defineExpose({ resetPagination, triggerReveal, refresh })
   gap: var(--space-2);
 }
 
+.running-starfield {
+  position: relative;
+}
+
+.scattered-star {
+  position: absolute;
+  font-family: var(--font-family-mono);
+  font-size: 14px;
+  color: var(--text-tertiary);
+  user-select: none;
+  pointer-events: none;
+}
+
+.scattered-art {
+  position: absolute;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--text-tertiary);
+  user-select: none;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
 .running-text .elapsed {
   font-family: var(--font-family-mono);
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1786,6 +1900,7 @@ defineExpose({ resetPagination, triggerReveal, refresh })
   color: var(--text-tertiary);
   font-family: inherit;
   font-size: inherit;
+  font-size: 13px;
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;

@@ -37,7 +37,9 @@ export interface ExplodeLayout {
 
 /** Fast heuristic: does this SQL start with a WITH clause? */
 export function hasCTEs(sql: string): boolean {
-  return /^\s*with\s+/i.test(sql)
+  // Strip leading whitespace, line comments (--), and block comments (/* */)
+  const stripped = sql.replace(/^\s*(--[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*/g, '')
+  return /^\s*with\s+/i.test(stripped)
 }
 
 // ---------------------------------------------------------------------------

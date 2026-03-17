@@ -36,6 +36,18 @@ describe('hasCTEs', () => {
     expect(hasCTEs('WITH RECURSIVE tree AS (SELECT 1 UNION ALL SELECT n+1 FROM tree) SELECT * FROM tree')).toBe(true)
   })
 
+  it('returns true when preceded by line comments', () => {
+    expect(hasCTEs('-- some comment\nWITH cte AS (SELECT 1) SELECT * FROM cte')).toBe(true)
+  })
+
+  it('returns true when preceded by multiple line comments', () => {
+    expect(hasCTEs('-- comment 1\n-- comment 2\n\nWITH cte AS (SELECT 1) SELECT * FROM cte')).toBe(true)
+  })
+
+  it('returns true when preceded by block comment', () => {
+    expect(hasCTEs('/* block comment */\nWITH cte AS (SELECT 1) SELECT * FROM cte')).toBe(true)
+  })
+
   it('returns true for multiline CTE with VALUES clause', () => {
     const query = `WITH characters AS (
     SELECT * FROM (
