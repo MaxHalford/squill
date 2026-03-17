@@ -796,7 +796,16 @@ const handleTableMouseLeave = () => {
   }
 }
 
-defineExpose({ resetPagination, triggerReveal })
+const refresh = async () => {
+  currentPage.value = 1
+  columnWidths.value = {}
+  pinnedSet.value = new Set()
+  await fetchRowCount()
+  await fetchPage()
+  calculateInitialColumnWidths()
+}
+
+defineExpose({ resetPagination, triggerReveal, refresh })
 </script>
 
 <template>

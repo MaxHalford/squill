@@ -233,20 +233,41 @@ class SnowflakeConnectionManager:
             try:
                 total_rows: int | None = None
 
-                # Get total count on first request
                 if include_count and offset == 0:
-                    count_query = f"SELECT COUNT(*) FROM ({query}) AS subq"
-                    cursor.execute(count_query)
-                    result = cursor.fetchone()
-                    total_rows = result[0] if result else 0
+                    # Single query: window function returns count alongside data
+                    paginated_query = f"""
+                        SELECT *, COUNT(*) OVER() AS _total_count
+                        FROM ({query}) AS subq
+                        LIMIT {batch_size} OFFSET {offset}
+                    """
+                    cursor.execute(paginated_query)
+                    rows, schema = cls._process_cursor(cursor)
 
-                # Execute paginated query
-                paginated_query = f"""
-                    SELECT * FROM ({query}) AS subq
-                    LIMIT {batch_size} OFFSET {offset}
-                """
-                cursor.execute(paginated_query)
-                rows, schema = cls._process_cursor(cursor)
+                    # Extract and strip _total_count from results
+                    if rows:
+                        total_rows = (
+                            rows[0].get("_total_count")
+                            or rows[0].get("_TOTAL_COUNT")
+                            or 0
+                        )
+                        for row in rows:
+                            row.pop("_total_count", None)
+                            row.pop("_TOTAL_COUNT", None)
+                    else:
+                        total_rows = 0
+                    schema = [
+                        (n, t)
+                        for n, t in schema
+                        if n not in ("_total_count", "_TOTAL_COUNT")
+                    ]
+                else:
+                    # Subsequent pages: no count needed
+                    paginated_query = f"""
+                        SELECT * FROM ({query}) AS subq
+                        LIMIT {batch_size} OFFSET {offset}
+                    """
+                    cursor.execute(paginated_query)
+                    rows, schema = cls._process_cursor(cursor)
 
                 rows_fetched = len(rows)
                 next_offset = offset + rows_fetched

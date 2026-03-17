@@ -91,7 +91,7 @@ export type MultiCanvasIndexData = z.infer<typeof MultiCanvasIndexSchema>
 // ============================================
 // Connection Schema
 // ============================================
-const ConnectionTypeSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'postgres', 'snowflake'])
+const ConnectionTypeSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'mysql', 'postgres', 'snowflake'])
 
 const ConnectionSchema = z.object({
   id: z.string(),
@@ -135,7 +135,7 @@ export type UserData = z.infer<typeof UserSchema>
 // ============================================
 // Query history schema
 // ============================================
-const DatabaseEngineSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'postgres', 'snowflake'])
+const DatabaseEngineSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'mysql', 'postgres', 'snowflake'])
 
 export const QueryHistoryEntrySchema = z.object({
   id: z.string(),

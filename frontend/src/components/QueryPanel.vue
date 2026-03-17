@@ -14,6 +14,7 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useClickHouseStore } from '../stores/clickhouse'
+import { useMysqlStore } from '../stores/mysql'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import { useQueryResultsStore } from '../stores/queryResults'
@@ -43,6 +44,7 @@ const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
 const clickhouseStore = useClickHouseStore()
+const mysqlStore = useMysqlStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 const queryResultsStore = useQueryResultsStore()
@@ -211,7 +213,7 @@ const currentEngine = computed(() => {
 
 const currentDialect = computed((): 'bigquery' | 'duckdb' | 'postgres' => {
   const engine = currentEngine.value
-  if (engine === 'snowflake' || engine === 'clickhouse') return 'postgres'
+  if (engine === 'snowflake' || engine === 'clickhouse' || engine === 'mysql') return 'postgres'
   return engine
 })
 
@@ -281,6 +283,7 @@ const getOffsetStore = (engine: string) => {
   if (engine === 'postgres') return postgresStore
   if (engine === 'snowflake') return snowflakeStore
   if (engine === 'clickhouse') return clickhouseStore
+  if (engine === 'mysql') return mysqlStore
   return null
 }
 
@@ -472,11 +475,12 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
     // Clear any previous suggestion on successful run
     suggestion.value = null
 
-    // Clear first to trigger watch even if table name is unchanged
-    resultTableName.value = null
-    await nextTick()
-
-    resultTableName.value = tableName
+    if (resultTableName.value === tableName) {
+      // Same table name — watch won't fire, so refresh manually
+      await resultsRef.value?.refresh()
+    } else {
+      resultTableName.value = tableName
+    }
 
     queryStats.value = {
       ...(execResult.stats || {}),
@@ -510,7 +514,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
       if (props.showAutofix) {
         suggestion.value = null
         const engine = currentEngine.value
-        const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = (engine === 'snowflake' || engine === 'clickhouse') ? 'postgres' : engine
+        const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = (engine === 'snowflake' || engine === 'clickhouse' || engine === 'mysql') ? 'postgres' : engine
         if (settingsStore.autofixEnabled && userStore.isPro && userStore.sessionToken && isFixableError(errorMessage, databaseDialect)) {
           isFetchingFix.value = true
           try {
@@ -572,6 +576,10 @@ const explainQuery = async (event: { clientX: number; clientY: number }) => {
     } else if (engine === 'clickhouse') {
       if (!connectionId) throw new Error('No ClickHouse connection')
       const result = await clickhouseStore.runQuery(connectionId, `EXPLAIN JSON ${query}`)
+      planData = result.rows
+    } else if (engine === 'mysql') {
+      if (!connectionId) throw new Error('No MySQL connection')
+      const result = await mysqlStore.runQuery(connectionId, `EXPLAIN FORMAT=JSON ${query}`)
       planData = result.rows
     } else if (engine === 'bigquery') {
       if (!lastBigQueryJobRef.value) throw new Error('Run the query first to get its execution plan')

@@ -26,6 +26,7 @@ const emit = defineEmits<{
   selectPostgres: []
   selectSnowflake: []
   selectClickhouse: []
+  selectMysql: []
 }>()
 
 // Prevent body scroll when modal is open
@@ -64,6 +65,14 @@ const handlePostgresClick = () => {
 const handleClickHouseClick = () => {
   if (userStore.isLoggedIn) {
     emit('selectClickhouse')
+  } else {
+    userStore.loginWithGoogle()
+  }
+}
+
+const handleMysqlClick = () => {
+  if (userStore.isLoggedIn) {
+    emit('selectMysql')
   } else {
     userStore.loginWithGoogle()
   }
@@ -184,6 +193,24 @@ onUnmounted(() => {
               <p>Queries proxied through our server, credentials encrypted</p>
               <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
                 {{ userStore.isLoggedIn ? DATABASE_INFO.clickhouse.badge : 'Sign in required' }}
+              </span>
+            </button>
+
+            <!-- MySQL Card -->
+            <button
+              :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
+              aria-label="Connect to MySQL"
+              @click="handleMysqlClick"
+            >
+              <img
+                :src="DATABASE_INFO.mysql.logo"
+                :alt="DATABASE_INFO.mysql.name"
+                :class="['option-icon', { 'option-icon-disabled': !userStore.isLoggedIn }]"
+              >
+              <h2>{{ DATABASE_INFO.mysql.name }}</h2>
+              <p>Queries proxied through our server, credentials encrypted</p>
+              <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
+                {{ userStore.isLoggedIn ? DATABASE_INFO.mysql.badge : 'Sign in required' }}
               </span>
             </button>
 

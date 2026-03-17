@@ -16,6 +16,7 @@ from database import get_db
 from models import (
     BigQueryConnection,
     ClickHouseConnection,
+    MysqlConnection,
     PostgresConnection,
     SnowflakeConnection,
     User,
@@ -64,7 +65,7 @@ async def list_connections(
     check_pro_or_vip(user)
 
     # Run all queries concurrently
-    bq_result, pg_result, sf_result, ch_result = await asyncio.gather(
+    bq_result, pg_result, sf_result, ch_result, my_result = await asyncio.gather(
         db.execute(
             select(BigQueryConnection).where(BigQueryConnection.user_id == user.id)
         ),
@@ -77,6 +78,7 @@ async def list_connections(
         db.execute(
             select(ClickHouseConnection).where(ClickHouseConnection.user_id == user.id)
         ),
+        db.execute(select(MysqlConnection).where(MysqlConnection.user_id == user.id)),
     )
 
     connections: list[ConnectionResponse] = []
@@ -121,6 +123,16 @@ async def list_connections(
                 flavor="clickhouse",
                 name=ch_conn.name,
                 database=ch_conn.database,
+            )
+        )
+
+    for my_conn in my_result.scalars().all():
+        connections.append(
+            ConnectionResponse(
+                id=my_conn.id,
+                flavor="mysql",
+                name=my_conn.name,
+                database=my_conn.database,
             )
         )
 

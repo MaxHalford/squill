@@ -1519,6 +1519,7 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
 }
 
 .database-badge {
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-caption);
   padding: 2px 8px;
   font-weight: 500;

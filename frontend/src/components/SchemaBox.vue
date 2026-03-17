@@ -7,6 +7,7 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useClickHouseStore } from '../stores/clickhouse'
+import { useMysqlStore } from '../stores/mysql'
 import { getTypeCategory } from '../utils/typeUtils'
 import { formatRowCountCompact, formatBytes } from '../utils/formatUtils'
 import { DATABASE_INFO, type DatabaseEngine, type TableMetadataInfo } from '../types/database'
@@ -14,6 +15,7 @@ import type { BigQueryDataset, BigQueryTable } from '../types/bigquery'
 import type { PostgresTableInfo } from '../stores/postgres'
 import type { SnowflakeDatabaseInfo, SnowflakeSchemaInfo, SnowflakeTableInfo } from '../stores/snowflake'
 import type { ClickHouseDatabaseInfo, ClickHouseTableInfo } from '../stores/clickhouse'
+import type { MysqlDatabaseInfo, MysqlTableInfo } from '../stores/mysql'
 
 
 // Schema browser item types for the column navigation
@@ -37,6 +39,7 @@ const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
 const clickhouseStore = useClickHouseStore()
+const mysqlStore = useMysqlStore()
 
 // ResizeObserver for virtual scroll container
 let columnsResizeObserver: ResizeObserver | null = null
@@ -83,6 +86,8 @@ const selectedSnowflakeDatabase = ref<string | null>(null)
 const selectedSnowflakeSchema = ref<string | null>(null)
 // ClickHouse-specific: database selection
 const selectedClickHouseDatabase = ref<string | null>(null)
+// MySQL-specific: database selection
+const selectedMysqlDatabase = ref<string | null>(null)
 
 // Data cache
 const datasets = ref<Record<string, BrowserItem[]>>({}) // { projectId: [datasets] }
@@ -98,6 +103,9 @@ const snowflakeTables = ref<Record<string, SnowflakeTableInfo[]>>({}) // { conne
 // ClickHouse-specific caches
 const clickhouseDatabases = ref<Record<string, ClickHouseDatabaseInfo[]>>({}) // { connectionId: [databases] }
 const clickhouseTables = ref<Record<string, ClickHouseTableInfo[]>>({}) // { connectionId:database: [tables] }
+// MySQL-specific caches
+const mysqlDatabases = ref<Record<string, MysqlDatabaseInfo[]>>({}) // { connectionId: [databases] }
+const mysqlTables = ref<Record<string, MysqlTableInfo[]>>({}) // { connectionId:database: [tables] }
 
 // Per-column filter state
 const col1Filter = ref('')
@@ -203,6 +211,17 @@ const projects = computed(() => {
     })
   })
 
+  // Show all MySQL connections
+  const mysqlConnections = connectionsStore.getConnectionsByType('mysql')
+  mysqlConnections.forEach(conn => {
+    items.push({
+      id: conn.id,
+      name: conn.name || conn.database || DATABASE_INFO.mysql.name,
+      type: 'mysql',
+      connectionId: conn.id
+    })
+  })
+
   return items
 })
 
@@ -253,6 +272,14 @@ const column2Items = computed((): BrowserItem[] => {
       name: db.name,
       type: 'database'
     }))
+  } else if (selectedProjectType.value === 'mysql') {
+    // Show MySQL databases
+    const databases = mysqlDatabases.value[selectedProject.value] || []
+    return databases.map((db) => ({
+      id: db.name,
+      name: db.name,
+      type: 'database'
+    }))
   } else if (selectedProjectType.value === 'bigquery') {
     // Show BigQuery projects for this connection
     const cachedProjects = bigqueryProjectsByConnection.value[selectedProject.value!] || []
@@ -293,6 +320,18 @@ const column3Items = computed(() => {
     }))
   }
 
+  if (selectedProjectType.value === 'mysql') {
+    // Show MySQL tables when database is selected
+    if (!selectedMysqlDatabase.value) return []
+    const cacheKey = `${selectedProject.value}:${selectedMysqlDatabase.value}`
+    const tableList = mysqlTables.value[cacheKey] || []
+    return tableList.map((t) => ({
+      id: t.name,
+      name: t.name,
+      type: t.type || 'table'
+    }))
+  }
+
   if (selectedProjectType.value === 'bigquery') {
     // BigQuery: show datasets when project is selected
     if (!selectedBigQueryProject.value) return []
@@ -310,6 +349,17 @@ const column4Items = computed((): BrowserItem[] => {
     // ClickHouse: show columns when table is selected (database > table > columns)
     if (!selectedTable.value || !selectedClickHouseDatabase.value) return []
     const key = `${selectedProject.value}:${selectedClickHouseDatabase.value}.${selectedTable.value}`
+    return (schemas.value[key] || []).map((f) => ({
+      id: f.name,
+      name: f.name,
+      type: f.type
+    }))
+  }
+
+  if (selectedProjectType.value === 'mysql') {
+    // MySQL: show columns when table is selected (database > table > columns)
+    if (!selectedTable.value || !selectedMysqlDatabase.value) return []
+    const key = `${selectedProject.value}:${selectedMysqlDatabase.value}.${selectedTable.value}`
     return (schemas.value[key] || []).map((f) => ({
       id: f.name,
       name: f.name,
@@ -380,7 +430,7 @@ const columnsContainerRef = ref<HTMLElement | null>(null)
 
 // Get the raw column items (either column4Items for non-Snowflake or column5Items for Snowflake)
 const rawColumnItems = computed(() => {
-  if (selectedProjectType.value === 'clickhouse') return column4Items.value
+  if (selectedProjectType.value === 'clickhouse' || selectedProjectType.value === 'mysql') return column4Items.value
   return (selectedProjectType.value === 'snowflake' || selectedProjectType.value === 'bigquery')
     ? column5Items.value
     : column4Items.value
@@ -396,6 +446,8 @@ const currentTableMetadata = computed((): TableMetadataInfo | null => {
     key = `${selectedProject.value}:${selectedTable.value}`
   } else if (selectedProjectType.value === 'clickhouse') {
     key = `${selectedProject.value}:${selectedClickHouseDatabase.value}.${selectedTable.value}`
+  } else if (selectedProjectType.value === 'mysql') {
+    key = `${selectedProject.value}:${selectedMysqlDatabase.value}.${selectedTable.value}`
   } else if (selectedProjectType.value === 'snowflake') {
     key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
   } else {
@@ -519,6 +571,7 @@ const selectProject = async (projectId: string) => {
   selectedSnowflakeDatabase.value = null
   selectedSnowflakeSchema.value = null
   selectedClickHouseDatabase.value = null
+  selectedMysqlDatabase.value = null
   col2Filter.value = ''; col2FilterOpen.value = false
   col3Filter.value = ''; col3FilterOpen.value = false
   col4Filter.value = ''; col4FilterOpen.value = false
@@ -540,6 +593,10 @@ const selectProject = async (projectId: string) => {
   } else if (project?.type === 'clickhouse') {
     if (!clickhouseDatabases.value[projectId]) {
       await loadClickHouseDatabases(projectId)
+    }
+  } else if (project?.type === 'mysql') {
+    if (!mysqlDatabases.value[projectId]) {
+      await loadMysqlDatabases(projectId)
     }
   } else if (project?.type === 'snowflake') {
     if (!snowflakeDatabases.value[projectId]) {
@@ -638,6 +695,27 @@ const selectClickHouseDatabase = async (databaseName: string) => {
   }
 }
 
+// Select MySQL database
+const selectMysqlDatabase = async (databaseName: string) => {
+  if (selectedMysqlDatabase.value === databaseName) return
+  captureScrollState()
+
+  selectedMysqlDatabase.value = databaseName
+  selectedTable.value = null
+  col3Filter.value = ''; col3FilterOpen.value = false
+  col4Filter.value = ''; col4FilterOpen.value = false
+  col5Filter.value = ''; col5FilterOpen.value = false
+
+  // Animate column collapse immediately (before any await)
+  smoothScrollUpdate()
+
+  // Load tables for this database
+  const cacheKey = `${selectedProject.value}:${databaseName}`
+  if (!mysqlTables.value[cacheKey]) {
+    await loadMysqlTablesForDatabase(selectedProject.value!, databaseName)
+  }
+}
+
 // Select Snowflake database
 const selectSnowflakeDatabase = async (databaseName: string) => {
   if (selectedSnowflakeDatabase.value === databaseName) return
@@ -702,6 +780,9 @@ const selectTable = async (tableId: string) => {
   } else if (selectedProjectType.value === 'clickhouse') {
     // For clickhouse, use selected database from hierarchical navigation
     key = `${selectedProject.value}:${selectedClickHouseDatabase.value}.${tableId}`
+  } else if (selectedProjectType.value === 'mysql') {
+    // For mysql, use selected database from hierarchical navigation
+    key = `${selectedProject.value}:${selectedMysqlDatabase.value}.${tableId}`
   } else if (selectedProjectType.value === 'snowflake') {
     // For snowflake, use selected database and schema from hierarchical navigation
     key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${tableId}`
@@ -798,6 +879,37 @@ const loadClickHouseTablesForDatabase = async (connectionId: string, databaseNam
     }))
   } catch (err) {
     console.error('Failed to load ClickHouse tables:', err)
+  } finally {
+    loadingTables.value[cacheKey] = false
+  }
+}
+
+// Load MySQL databases
+const loadMysqlDatabases = async (connectionId: string) => {
+  loadingDatasets.value[connectionId] = true
+  try {
+    const fetchedDatabases = await mysqlStore.fetchDatabases(connectionId)
+    mysqlDatabases.value[connectionId] = fetchedDatabases
+  } catch (err) {
+    console.error('Failed to load MySQL databases:', err)
+  } finally {
+    loadingDatasets.value[connectionId] = false
+  }
+}
+
+// Load MySQL tables for a database
+const loadMysqlTablesForDatabase = async (connectionId: string, databaseName: string) => {
+  const cacheKey = `${connectionId}:${databaseName}`
+  loadingTables.value[cacheKey] = true
+  try {
+    const fetchedTables = await mysqlStore.fetchTablesForDatabase(connectionId, databaseName)
+    mysqlTables.value[cacheKey] = fetchedTables.map((t: MysqlTableInfo) => ({
+      name: t.name,
+      databaseName: t.databaseName,
+      type: t.type
+    }))
+  } catch (err) {
+    console.error('Failed to load MySQL tables:', err)
   } finally {
     loadingTables.value[cacheKey] = false
   }
@@ -911,6 +1023,33 @@ const loadSchema = async (tableId: string, key: string) => {
     } finally {
       loadingSchema.value[tableId] = false
     }
+  } else if (selectedProjectType.value === 'mysql') {
+    // MySQL schema + metadata (fetched in parallel)
+    if (!selectedMysqlDatabase.value) return
+    loadingSchema.value[tableId] = true
+    try {
+      const [columns, metadata] = await Promise.all([
+        mysqlStore.fetchColumns(
+          selectedProject.value!,
+          selectedMysqlDatabase.value,
+          tableId
+        ),
+        mysqlStore.fetchTableMetadata(
+          selectedProject.value!,
+          selectedMysqlDatabase.value,
+          tableId
+        ).catch(() => null),
+      ])
+      schemas.value[key] = columns.map(col => ({
+        name: col.name,
+        type: col.type
+      }))
+      if (metadata) tableMetadata.value[key] = metadata
+    } catch (err) {
+      console.error('Failed to load MySQL schema:', err)
+    } finally {
+      loadingSchema.value[tableId] = false
+    }
   } else if (selectedProjectType.value === 'snowflake') {
     // Snowflake schema + metadata (fetched in parallel)
     if (!selectedSnowflakeDatabase.value || !selectedSnowflakeSchema.value) return
@@ -982,6 +1121,10 @@ const insertTableName = (item: BrowserItem) => {
     // ClickHouse: construct database.table path with backtick quoting
     const dbName = selectedClickHouseDatabase.value || item.databaseName
     tableName = `\`${dbName}\`.\`${item.name}\``
+  } else if (selectedProjectType.value === 'mysql') {
+    // MySQL: construct database.table path with backtick quoting
+    const dbName = selectedMysqlDatabase.value || item.databaseName
+    tableName = `\`${dbName}\`.\`${item.name}\``
   } else if (selectedProjectType.value === 'snowflake') {
     // Snowflake: construct full path from hierarchical navigation and wrap each part in double quotes
     const dbName = selectedSnowflakeDatabase.value || item.databaseName
@@ -1015,6 +1158,19 @@ const queryTable = (item: BrowserItem) => {
   } else if (selectedProjectType.value === 'clickhouse') {
     engine = 'clickhouse'
     const dbName = selectedClickHouseDatabase.value || item.databaseName
+    const rawName = `${dbName}.${item.name}`
+    fullTableName = `\`${dbName}\`.\`${item.name}\``
+    connectionId = selectedProject.value!
+    emit('query-table', {
+      tableName: fullTableName,
+      boxName: rawName,
+      engine: engine,
+      connectionId: connectionId
+    })
+    return
+  } else if (selectedProjectType.value === 'mysql') {
+    engine = 'mysql'
+    const dbName = selectedMysqlDatabase.value || item.databaseName
     const rawName = `${dbName}.${item.name}`
     fullTableName = `\`${dbName}\`.\`${item.name}\``
     connectionId = selectedProject.value!
@@ -1159,6 +1315,8 @@ const getCurrentTableColumns = (): string[] => {
     key = `${selectedProject.value}:${selectedTable.value}`
   } else if (selectedProjectType.value === 'clickhouse') {
     key = `${selectedProject.value}:${selectedClickHouseDatabase.value}.${selectedTable.value}`
+  } else if (selectedProjectType.value === 'mysql') {
+    key = `${selectedProject.value}:${selectedMysqlDatabase.value}.${selectedTable.value}`
   } else if (selectedProjectType.value === 'snowflake') {
     key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
   } else {
@@ -1191,6 +1349,12 @@ const buildTableConnectionInfo = () => {
   } else if (selectedProjectType.value === 'clickhouse') {
     engine = 'clickhouse'
     const dbName = selectedClickHouseDatabase.value
+    tableName = `${dbName}.${selectedTable.value}`
+    quotedTableName = `\`${dbName}\`.\`${selectedTable.value}\``
+    connectionId = selectedProject.value!
+  } else if (selectedProjectType.value === 'mysql') {
+    engine = 'mysql'
+    const dbName = selectedMysqlDatabase.value
     tableName = `${dbName}.${selectedTable.value}`
     quotedTableName = `\`${dbName}\`.\`${selectedTable.value}\``
     connectionId = selectedProject.value!
@@ -1288,6 +1452,14 @@ const navigateToTable = async (info: TableNavigationInfo) => {
     }
     if (info.databaseName) {
       await selectClickHouseDatabase(info.databaseName)
+    }
+    await selectTable(info.tableName)
+  } else if (info.connectionType === 'mysql') {
+    if (info.connectionId) {
+      await selectProject(info.connectionId)
+    }
+    if (info.databaseName) {
+      await selectMysqlDatabase(info.databaseName)
     }
     await selectTable(info.tableName)
   } else if (info.connectionType === 'snowflake') {
@@ -1402,7 +1574,7 @@ defineExpose({
       >
         <div class="column-header-area">
           <div class="column-header">
-            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Projects' : (selectedProjectType === 'snowflake' || selectedProjectType === 'clickhouse') ? 'Databases' : 'Tables' }}</span>
+            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Projects' : (selectedProjectType === 'snowflake' || selectedProjectType === 'clickhouse' || selectedProjectType === 'mysql') ? 'Databases' : 'Tables' }}</span>
             <button
               class="column-filter-toggle"
               :class="{ active: col2FilterOpen || col2Filter }"
@@ -1438,19 +1610,21 @@ defineExpose({
               selected: selectedProjectType === 'bigquery' ? selectedBigQueryProject === item.id :
                 selectedProjectType === 'snowflake' ? selectedSnowflakeDatabase === item.id :
                 selectedProjectType === 'clickhouse' ? selectedClickHouseDatabase === item.id :
+                selectedProjectType === 'mysql' ? selectedMysqlDatabase === item.id :
                 selectedTable === item.id
             }]"
             @click="selectedProjectType === 'bigquery' ? selectBigQueryProject(item.id) :
               selectedProjectType === 'snowflake' ? selectSnowflakeDatabase(item.id) :
               selectedProjectType === 'clickhouse' ? selectClickHouseDatabase(item.id) :
+              selectedProjectType === 'mysql' ? selectMysqlDatabase(item.id) :
               selectTable(item.id)"
-            @dblclick="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' && selectedProjectType !== 'clickhouse' ? insertTableName(item) : null"
+            @dblclick="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' && selectedProjectType !== 'clickhouse' && selectedProjectType !== 'mysql' ? insertTableName(item) : null"
             @mouseenter="hoveredTableItem = item.id"
             @mouseleave="hoveredTableItem = null"
           >
             <span v-tooltip-overflow class="item-name">{{ item.name }}</span>
             <button
-              v-if="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' && selectedProjectType !== 'clickhouse'"
+              v-if="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' && selectedProjectType !== 'clickhouse' && selectedProjectType !== 'mysql'"
               v-tooltip="'Query this table'"
               class="query-button"
               :class="{ visible: hoveredTableItem === item.id }"
@@ -1475,13 +1649,13 @@ defineExpose({
 
       <!-- Column 3: BigQuery Datasets, Snowflake Schemas, or ClickHouse Tables -->
       <div
-        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake') || (selectedClickHouseDatabase && selectedProjectType === 'clickhouse')"
+        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake') || (selectedClickHouseDatabase && selectedProjectType === 'clickhouse') || (selectedMysqlDatabase && selectedProjectType === 'mysql')"
         class="column"
         :style="{ width: `${col3Width}px` }"
       >
         <div class="column-header-area">
           <div class="column-header">
-            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Datasets' : selectedProjectType === 'clickhouse' ? 'Tables' : 'Schemas' }}</span>
+            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Datasets' : (selectedProjectType === 'clickhouse' || selectedProjectType === 'mysql') ? 'Tables' : 'Schemas' }}</span>
             <button
               class="column-filter-toggle"
               :class="{ active: col3FilterOpen || col3Filter }"
@@ -1523,25 +1697,31 @@ defineExpose({
             Retrieving...
           </div>
           <div
+            v-if="selectedProjectType === 'mysql' && loadingTables[`${selectedProject}:${selectedMysqlDatabase}`]"
+            class="loading"
+          >
+            Retrieving...
+          </div>
+          <div
             v-for="item in filteredColumn3Items"
             :key="item.id"
             :class="['item', {
               selected: selectedProjectType === 'bigquery' ? selectedDataset === item.id :
                 selectedProjectType === 'snowflake' ? selectedSnowflakeSchema === item.id :
-                selectedProjectType === 'clickhouse' ? selectedTable === item.id :
+                (selectedProjectType === 'clickhouse' || selectedProjectType === 'mysql') ? selectedTable === item.id :
                 selectedTable === item.id
             }]"
             @click="selectedProjectType === 'bigquery' ? selectDataset(item.id) :
               selectedProjectType === 'snowflake' ? selectSnowflakeSchema(item.id) :
-              selectedProjectType === 'clickhouse' ? selectTable(item.id) :
+              (selectedProjectType === 'clickhouse' || selectedProjectType === 'mysql') ? selectTable(item.id) :
               selectTable(item.id)"
-            @dblclick="selectedProjectType === 'clickhouse' ? insertTableName(item) : (selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery' ? insertTableName(item) : null)"
+            @dblclick="(selectedProjectType === 'clickhouse' || selectedProjectType === 'mysql') ? insertTableName(item) : (selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery' ? insertTableName(item) : null)"
             @mouseenter="hoveredTableItem = item.id"
             @mouseleave="hoveredTableItem = null"
           >
             <span v-tooltip-overflow class="item-name">{{ item.name }}</span>
             <button
-              v-if="selectedProjectType === 'clickhouse' || (selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery')"
+              v-if="selectedProjectType === 'clickhouse' || selectedProjectType === 'mysql' || (selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery')"
               v-tooltip="'Query this table'"
               class="query-button"
               :class="{ visible: hoveredTableItem === item.id }"
@@ -1555,7 +1735,7 @@ defineExpose({
 
       <!-- Resize handle 3 -->
       <div
-        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake') || (selectedClickHouseDatabase && selectedProjectType === 'clickhouse')"
+        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake') || (selectedClickHouseDatabase && selectedProjectType === 'clickhouse') || (selectedMysqlDatabase && selectedProjectType === 'mysql')"
         class="resize-handle"
         @mousedown="handleResizeStart($event, 3)"
       />

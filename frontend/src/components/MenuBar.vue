@@ -9,6 +9,7 @@ import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useClickHouseStore } from '../stores/clickhouse'
+import { useMysqlStore } from '../stores/mysql'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
@@ -22,6 +23,7 @@ import {
 import { refreshSchemaCache } from '../utils/schemaAdapter'
 import PostgresConnectionModal from './PostgresConnectionModal.vue'
 import ClickHouseConnectionModal from './ClickHouseConnectionModal.vue'
+import MysqlConnectionModal from './MysqlConnectionModal.vue'
 import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
 import CanvasDropdown from './CanvasDropdown.vue'
 
@@ -48,6 +50,7 @@ const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
 const clickhouseStore = useClickHouseStore()
+const mysqlStore = useMysqlStore()
 const snowflakeStore = useSnowflakeStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
@@ -64,7 +67,7 @@ const accentColors = [
 // Emits for parent component to handle
 const emit = defineEmits<{
   'box-created': [boxId: number]
-  'connection-added': [type: 'bigquery' | 'clickhouse' | 'postgres' | 'snowflake', connectionId: string]
+  'connection-added': [type: 'bigquery' | 'clickhouse' | 'mysql' | 'postgres' | 'snowflake', connectionId: string]
   'show-shortcuts': []
 }>()
 
@@ -73,6 +76,9 @@ const showPostgresModal = ref(false)
 
 // ClickHouse modal state
 const showClickHouseModal = ref(false)
+
+// MySQL modal state
+const showMysqlModal = ref(false)
 
 // Snowflake modal state
 const showSnowflakeModal = ref(false)
@@ -251,6 +257,10 @@ const handleConnectionSelect = async (connectionId: string) => {
     // Prefetch ClickHouse schema for autocompletion
     bigqueryStore.setProjectId(null)
     await clickhouseStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load ClickHouse schema:', err))
+  } else if (connection.type === 'mysql') {
+    // Prefetch MySQL schema for autocompletion
+    bigqueryStore.setProjectId(null)
+    await mysqlStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load MySQL schema:', err))
   } else if (connection.type === 'snowflake') {
     // Prefetch Snowflake schema for autocompletion
     bigqueryStore.setProjectId(null)
@@ -369,6 +379,8 @@ const handleAddDatabase = async (databaseType: string) => {
     }
   } else if (databaseType === 'clickhouse') {
     showClickHouseModal.value = true
+  } else if (databaseType === 'mysql') {
+    showMysqlModal.value = true
   } else if (databaseType === 'postgres') {
     showPostgresModal.value = true
   } else if (databaseType === 'snowflake') {
@@ -388,6 +400,14 @@ const handlePostgresConnected = (connectionId: string) => {
 const handleClickHouseConnected = (connectionId: string) => {
   console.log('ClickHouse connected:', connectionId)
   emit('connection-added', 'clickhouse', connectionId)
+  // Re-open dropdown to show the new connection
+  activeDropdown.value = 'connection'
+}
+
+// Handle successful MySQL connection
+const handleMysqlConnected = (connectionId: string) => {
+  console.log('MySQL connected:', connectionId)
+  emit('connection-added', 'mysql', connectionId)
   // Re-open dropdown to show the new connection
   activeDropdown.value = 'connection'
 }
@@ -456,6 +476,7 @@ const handleRefreshSchemas = async () => {
     // Offset-based engines (identical pattern)
     const offsetEngines = [
       { type: 'clickhouse' as const, label: 'ClickHouse', store: clickhouseStore },
+      { type: 'mysql' as const, label: 'MySQL', store: mysqlStore },
       { type: 'postgres' as const, label: 'PostgreSQL', store: postgresStore },
       { type: 'snowflake' as const, label: 'Snowflake', store: snowflakeStore },
     ]
@@ -902,6 +923,17 @@ onUnmounted(() => {
                       class="db-icon"
                     >
                     {{ DATABASE_INFO.clickhouse.name }}
+                  </button>
+                  <button
+                    class="dropdown-item flyout-item"
+                    @click="handleAddDatabase('mysql')"
+                  >
+                    <img
+                      :src="DATABASE_INFO.mysql.logo"
+                      :alt="DATABASE_INFO.mysql.name"
+                      class="db-icon"
+                    >
+                    {{ DATABASE_INFO.mysql.name }}
                   </button>
                   <button
                     class="dropdown-item flyout-item"
@@ -1432,6 +1464,13 @@ onUnmounted(() => {
     :show="showClickHouseModal"
     @close="showClickHouseModal = false"
     @connected="handleClickHouseConnected"
+  />
+
+  <!-- MySQL Connection Modal -->
+  <MysqlConnectionModal
+    :show="showMysqlModal"
+    @close="showMysqlModal = false"
+    @connected="handleMysqlConnected"
   />
 
   <!-- Snowflake Connection Modal -->

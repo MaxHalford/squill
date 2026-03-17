@@ -57,6 +57,11 @@ ORDER BY p.year_published`,
     currentUser() AS user,
     version() AS version`,
 
+  mysql: `SELECT
+    DATABASE() AS current_database,
+    USER() AS current_user,
+    VERSION() AS version`,
+
   snowflake: `SELECT
     CURRENT_WAREHOUSE() AS warehouse,
     CURRENT_DATABASE() AS database,

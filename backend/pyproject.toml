@@ -30,11 +30,14 @@ dependencies = [
     "snowflake-connector-python>=3.0.0",
     # ClickHouse
     "clickhouse-connect>=0.7.0",
+    # MySQL
+    "pymysql>=1.1.0",
     "polar-sdk>=0.28.4",
     # CLI tools
     "pyyaml>=6.0",
     "sqlglot>=26.0",
     "dotenv>=0.9.9",
+    "orjson>=3.11.7",
 ]
 
 [dependency-groups]

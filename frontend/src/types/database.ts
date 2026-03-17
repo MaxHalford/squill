@@ -9,12 +9,12 @@
  * Supported database engines.
  * Used for query execution, SQL dialect selection, and connection types.
  */
-export type DatabaseEngine = 'duckdb' | 'bigquery' | 'clickhouse' | 'postgres' | 'snowflake'
+export type DatabaseEngine = 'duckdb' | 'bigquery' | 'clickhouse' | 'mysql' | 'postgres' | 'snowflake'
 
 /**
  * Array of all supported engines (useful for iteration/validation)
  */
-export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['duckdb', 'bigquery', 'clickhouse', 'postgres', 'snowflake'] as const
+export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['duckdb', 'bigquery', 'clickhouse', 'mysql', 'postgres', 'snowflake'] as const
 
 /**
  * Connection type - how queries are executed
@@ -71,6 +71,20 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     authMethod: 'OAuth with Google account',
     dataPrivacy: 'Queries run directly against BigQuery from your browser. Only OAuth tokens are stored (encrypted). Query results stay in your browser.'
   },
+  mysql: {
+    id: 'mysql',
+    name: 'MySQL',
+    shortName: 'MY',
+    logo: '/logos/mysql.svg',
+    color: '#00758F',
+    textColor: '#FFFFFF',
+    connectionType: 'server',
+    badge: 'Requires credentials',
+    shortDescription: 'Popular open-source relational database for web applications',
+    longDescription: 'MySQL connections require a backend server to proxy queries. The Squill backend executes your query and streams results to your browser without storing them.',
+    authMethod: 'Database credentials (host, port, user, password)',
+    dataPrivacy: 'Queries are proxied through the Squill backend but results are not stored. Connection credentials are encrypted at rest.'
+  },
   postgres: {
     id: 'postgres',
     name: 'PostgreSQL',
@@ -90,8 +104,8 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     name: 'ClickHouse',
     shortName: 'CH',
     logo: '/logos/clickhouse.svg',
-    color: '#FFCC00',
-    textColor: '#000000',
+    color: '#161616',
+    textColor: '#FFFFFF',
     connectionType: 'server',
     badge: 'Requires credentials',
     shortDescription: 'Fast open-source columnar database for real-time analytics',

@@ -2,7 +2,7 @@
  * Supported database connection types
  * Add new database types here as they are implemented
  */
-export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'postgres' | 'snowflake'
+export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'mysql' | 'postgres' | 'snowflake'
 
 /**
  * Database connection configuration

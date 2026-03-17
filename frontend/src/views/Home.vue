@@ -23,6 +23,7 @@ const ExplainBox = defineAsyncComponent(() => import('../components/ExplainBox.v
 const PostgresConnectionModal = defineAsyncComponent(() => import('../components/PostgresConnectionModal.vue'))
 const SnowflakeConnectionModal = defineAsyncComponent(() => import('../components/SnowflakeConnectionModal.vue'))
 const ClickHouseConnectionModal = defineAsyncComponent(() => import('../components/ClickHouseConnectionModal.vue'))
+const MysqlConnectionModal = defineAsyncComponent(() => import('../components/MysqlConnectionModal.vue'))
 const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/KeyboardShortcutsModal.vue'))
 const WhatsNewModal = defineAsyncComponent(() => import('../components/WhatsNewModal.vue'))
 import { useCanvasStore } from '../stores/canvas'
@@ -58,6 +59,7 @@ const onboardingDismissed = ref(false)
 const showPostgresModal = ref(false)
 const showSnowflakeModal = ref(false)
 const showClickHouseModal = ref(false)
+const showMysqlModal = ref(false)
 const showShortcutsModal = ref(false)
 const showWhatsNewModal = ref(false)
 const whatsNewEntries = ref<ChangelogEntry[]>([])
@@ -182,9 +184,24 @@ const handleSelectClickHouse = () => {
   showClickHouseModal.value = true
 }
 
+// Handle MySQL selection from onboarding - show credentials modal
+const handleSelectMysql = () => {
+  showMysqlModal.value = true
+}
+
 // Handle successful ClickHouse connection
 const handleClickHouseConnected = (connectionId: string) => {
   console.log('ClickHouse connected:', connectionId)
+
+  // Create default boxes if canvas is empty
+  if (canvasStore.boxes.length === 0) {
+    createDefaultBoxes()
+  }
+}
+
+// Handle successful MySQL connection
+const handleMysqlConnected = (connectionId: string) => {
+  console.log('MySQL connected:', connectionId)
 
   // Create default boxes if canvas is empty
   if (canvasStore.boxes.length === 0) {
@@ -1213,6 +1230,7 @@ onUnmounted(() => {
       @select-postgres="handleSelectPostgres"
       @select-snowflake="handleSelectSnowflake"
       @select-clickhouse="handleSelectClickHouse"
+      @select-mysql="handleSelectMysql"
     />
 
     <!-- PostgreSQL Connection Modal -->
@@ -1234,6 +1252,13 @@ onUnmounted(() => {
       :show="showClickHouseModal"
       @close="showClickHouseModal = false"
       @connected="handleClickHouseConnected"
+    />
+
+    <!-- MySQL Connection Modal -->
+    <MysqlConnectionModal
+      :show="showMysqlModal"
+      @close="showMysqlModal = false"
+      @connected="handleMysqlConnected"
     />
 
     <!-- Hidden file input for CSV picker -->

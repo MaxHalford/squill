@@ -176,6 +176,33 @@ class SnowflakeConnection(Base):
     )
 
 
+class MysqlConnection(Base):
+    """MySQL connection with encrypted credentials."""
+
+    __tablename__ = "mysql_connections"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(Integer, nullable=False, default=3306)
+    database: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    username: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encryption_iv: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    ssl: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ClickHouseConnection(Base):
     """ClickHouse connection with encrypted credentials."""
 

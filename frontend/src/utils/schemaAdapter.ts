@@ -10,7 +10,7 @@
 import { useDuckDBStore } from '../stores/duckdb'
 import type { SchemaItem, ScoredSchemaItem } from './textSimilarity'
 
-export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'postgres' | 'snowflake'
+export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'mysql' | 'postgres' | 'snowflake'
 
 interface SchemaCacheEntry {
   items: SchemaItem[]
@@ -144,6 +144,8 @@ export function formatSchemaForLLM(
     case 'bigquery':
       return formatBigQuerySchema(schema, projectId)
     case 'clickhouse':
+      return formatClickHouseSchema(schema)
+    case 'mysql':
       return formatClickHouseSchema(schema)
     case 'postgres':
       return formatPostgresSchema(schema)
