@@ -16,10 +16,12 @@ from routers.connections import router as connections_router
 from routers.hex_remover import router as hex_remover_router
 from routers.postgres import router as postgres_router
 from routers.snowflake import router as snowflake_router
+from routers.clickhouse import router as clickhouse_router
 from routers.user import router as user_router
 from routers.wizard import router as wizard_router
 from services.postgres_pool import PostgresPoolManager
 from services.snowflake_pool import SnowflakeConnectionManager
+from services.clickhouse_pool import ClickHouseConnectionManager
 
 # Configure logging
 logging.basicConfig(
@@ -52,6 +54,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
     await PostgresPoolManager.close_all()
     await SnowflakeConnectionManager.close_all()
+    await ClickHouseConnectionManager.close_all()
     logger.info("All database connections closed")
 
 
@@ -75,6 +78,7 @@ app.include_router(hex_remover_router)
 app.include_router(connections_router)
 app.include_router(postgres_router)
 app.include_router(snowflake_router)
+app.include_router(clickhouse_router)
 app.include_router(user_router)
 app.include_router(wizard_router)
 

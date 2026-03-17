@@ -25,6 +25,11 @@ export const CONNECTION_METADATA: Record<ConnectionType, {
     requiresAuth: false,
     hasProjects: false
   },
+  clickhouse: {
+    displayName: DATABASE_INFO.clickhouse.name,
+    requiresAuth: true,
+    hasProjects: false
+  },
   postgres: {
     displayName: DATABASE_INFO.postgres.name,
     requiresAuth: true,
@@ -61,6 +66,7 @@ export function getDialectForConnection(type: ConnectionType | undefined): 'bigq
   switch (type) {
     case 'bigquery':
       return 'bigquery'
+    case 'clickhouse':
     case 'postgres':
     case 'snowflake':
       return 'postgres'
@@ -106,11 +112,7 @@ export function getConnectionDisplayName(connection: Connection | null | undefin
     return `${typeName} (local)`
   }
 
-  if (connection.type === 'postgres') {
-    return `${typeName} · ${connection.name || connection.database || 'unknown'}`
-  }
-
-  if (connection.type === 'snowflake') {
+  if (connection.type === 'clickhouse' || connection.type === 'postgres' || connection.type === 'snowflake') {
     return `${typeName} · ${connection.name || connection.database || 'unknown'}`
   }
 

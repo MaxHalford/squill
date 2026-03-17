@@ -24,6 +24,19 @@ const form = ref({
   sslMode: 'prefer'
 })
 
+// Public read-only credentials — https://rnacentral.org/help/public-database
+const fillDemo = () => {
+  form.value = {
+    name: 'RNAcentral Public DB',
+    host: 'hh-pgsql-public.ebi.ac.uk',
+    port: 5432,
+    database: 'pfmegrnargs',
+    username: 'reader',
+    password: 'NWDMCE5xdipIjRrp',
+    sslMode: 'prefer'
+  }
+}
+
 const isConnecting = ref(false)
 const isTesting = ref(false)
 const error = ref<string | null>(null)
@@ -137,6 +150,8 @@ watch(() => props.show, (showing) => {
       sslMode: 'prefer'
     }
     error.value = null
+    isConnecting.value = false
+    isTesting.value = false
     testSuccess.value = false
     testMessage.value = null
   }
@@ -190,6 +205,14 @@ onUnmounted(() => {
               &times;
             </button>
           </div>
+
+          <button
+            class="btn-demo"
+            type="button"
+            @click="fillDemo"
+          >
+            Try demo — RNAcentral public database (read-only)
+          </button>
 
           <form
             class="connection-form"
@@ -388,6 +411,24 @@ onUnmounted(() => {
 
 .close-btn:hover {
   color: var(--text-primary);
+}
+
+.btn-demo {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border: var(--border-width-thin) dashed var(--color-accent);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-accent);
+  font-size: var(--font-size-body-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-demo:hover {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .connection-form {

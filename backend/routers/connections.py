@@ -12,7 +12,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import BigQueryConnection, PostgresConnection, SnowflakeConnection, User
+from models import (
+    BigQueryConnection,
+    ClickHouseConnection,
+    PostgresConnection,
+    SnowflakeConnection,
+    User,
+)
 from services.auth import get_current_user
 
 router = APIRouter(prefix="/connections", tags=["connections"])
@@ -102,6 +108,20 @@ async def list_connections(
                 flavor="snowflake",
                 name=sf_conn.name,
                 database=sf_conn.database,
+            )
+        )
+
+    # Fetch ClickHouse connections
+    ch_result = await db.execute(
+        select(ClickHouseConnection).where(ClickHouseConnection.user_id == user.id)
+    )
+    for ch_conn in ch_result.scalars().all():
+        connections.append(
+            ConnectionResponse(
+                id=ch_conn.id,
+                flavor="clickhouse",
+                name=ch_conn.name,
+                database=ch_conn.database,
             )
         )
 

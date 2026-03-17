@@ -12,6 +12,7 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useSnowflakeStore } from '../stores/snowflake'
+import { useClickHouseStore } from '../stores/clickhouse'
 import { useCanvasStore } from '../stores/canvas'
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
 import { getEffectiveEngine, isLocalConnectionType } from '../utils/queryAnalyzer'
@@ -31,6 +32,7 @@ export function useQueryExecution() {
   const postgresStore = usePostgresStore()
   const bigqueryStore = useBigQueryStore()
   const snowflakeStore = useSnowflakeStore()
+  const clickhouseStore = useClickHouseStore()
   const canvasStore = useCanvasStore()
 
   /**
@@ -89,6 +91,12 @@ export function useQueryExecution() {
     } else if (engine === 'snowflake') {
       if (!connectionId) throw new Error('No Snowflake connection')
       const result = await snowflakeStore.runQuery(connectionId, finalQuery)
+      await duckdbStore.storeResults(tableName, result.rows as Record<string, unknown>[], options?.boxId)
+      rowCount = result.rows.length
+      columns = result.rows.length > 0 ? Object.keys(result.rows[0]) : []
+    } else if (engine === 'clickhouse') {
+      if (!connectionId) throw new Error('No ClickHouse connection')
+      const result = await clickhouseStore.runQuery(connectionId, finalQuery)
       await duckdbStore.storeResults(tableName, result.rows as Record<string, unknown>[], options?.boxId)
       rowCount = result.rows.length
       columns = result.rows.length > 0 ? Object.keys(result.rows[0]) : []

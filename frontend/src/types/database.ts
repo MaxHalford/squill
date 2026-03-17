@@ -9,12 +9,12 @@
  * Supported database engines.
  * Used for query execution, SQL dialect selection, and connection types.
  */
-export type DatabaseEngine = 'duckdb' | 'bigquery' | 'postgres' | 'snowflake'
+export type DatabaseEngine = 'duckdb' | 'bigquery' | 'clickhouse' | 'postgres' | 'snowflake'
 
 /**
  * Array of all supported engines (useful for iteration/validation)
  */
-export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['duckdb', 'bigquery', 'postgres', 'snowflake'] as const
+export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['duckdb', 'bigquery', 'clickhouse', 'postgres', 'snowflake'] as const
 
 /**
  * Connection type - how queries are executed
@@ -82,6 +82,20 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     badge: 'Requires credentials',
     shortDescription: 'Connect to PostgreSQL databases for powerful relational queries',
     longDescription: 'PostgreSQL connections require a backend server to proxy queries. The Squill backend executes your query and streams results to your browser without storing them.',
+    authMethod: 'Database credentials (host, port, user, password)',
+    dataPrivacy: 'Queries are proxied through the Squill backend but results are not stored. Connection credentials are encrypted at rest.'
+  },
+  clickhouse: {
+    id: 'clickhouse',
+    name: 'ClickHouse',
+    shortName: 'CH',
+    logo: '/logos/clickhouse.svg',
+    color: '#FFCC00',
+    textColor: '#000000',
+    connectionType: 'server',
+    badge: 'Requires credentials',
+    shortDescription: 'Fast open-source columnar database for real-time analytics',
+    longDescription: 'ClickHouse connections require a backend server to proxy queries. The Squill backend executes your query and streams results to your browser without storing them.',
     authMethod: 'Database credentials (host, port, user, password)',
     dataPrivacy: 'Queries are proxied through the Squill backend but results are not stored. Connection credentials are encrypted at rest.'
   },

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
-import { useSnowflakeStore } from '../stores/snowflake'
+import { useClickHouseStore } from '../stores/clickhouse'
 import { DATABASE_INFO } from '../types/database'
 
 const props = defineProps<{
@@ -12,18 +12,30 @@ const emit = defineEmits<{
   connected: [connectionId: string]
 }>()
 
-const snowflakeStore = useSnowflakeStore()
+const clickhouseStore = useClickHouseStore()
 
 const form = ref({
   name: '',
-  account: '',
+  host: '',
+  port: '8443',
   username: '',
   password: '',
-  warehouse: '',
   database: '',
-  schemaName: '',
-  role: ''
+  secure: true
 })
+
+// Public read-only credentials — https://clickhouse.com/docs/getting-started/playground
+const fillDemo = () => {
+  form.value = {
+    name: 'ClickHouse Playground',
+    host: 'play.clickhouse.com',
+    port: '443',
+    username: 'explorer',
+    password: '',
+    database: 'default',
+    secure: true
+  }
+}
 
 const isConnecting = ref(false)
 const isTesting = ref(false)
@@ -33,7 +45,7 @@ const testMessage = ref<string | null>(null)
 
 // Form is valid if required fields are filled
 const isFormValid = computed(() => {
-  return form.value.account.trim() !== '' &&
+  return form.value.host.trim() !== '' &&
          form.value.username.trim() !== ''
 })
 
@@ -54,13 +66,12 @@ const resetTestState = () => {
 
 // Watch for changes to connection params and reset test state
 watch(() => [
-  form.value.account,
+  form.value.host,
+  form.value.port,
   form.value.username,
   form.value.password,
-  form.value.warehouse,
   form.value.database,
-  form.value.schemaName,
-  form.value.role
+  form.value.secure
 ], resetTestState, { deep: true })
 
 const handleTestConnection = async () => {
@@ -71,14 +82,13 @@ const handleTestConnection = async () => {
   testMessage.value = null
 
   try {
-    const result = await snowflakeStore.testConnection(
-      form.value.account,
+    const result = await clickhouseStore.testConnection(
+      form.value.host,
+      parseInt(form.value.port) || 8443,
       form.value.username,
       form.value.password,
-      form.value.warehouse || null,
       form.value.database || null,
-      form.value.schemaName || null,
-      form.value.role || null
+      form.value.secure
     )
 
     testSuccess.value = result.success
@@ -102,15 +112,14 @@ const handleSubmit = async () => {
   error.value = null
 
   try {
-    const connectionId = await snowflakeStore.createConnection(
+    const connectionId = await clickhouseStore.createConnection(
       form.value.name,
-      form.value.account,
+      form.value.host,
+      parseInt(form.value.port) || 8443,
       form.value.username,
       form.value.password,
-      form.value.warehouse || null,
       form.value.database || null,
-      form.value.schemaName || null,
-      form.value.role || null
+      form.value.secure
     )
     emit('connected', connectionId)
     emit('close')
@@ -127,16 +136,14 @@ watch(() => props.show, (showing) => {
     document.body.style.overflow = 'hidden'
   } else {
     document.body.style.overflow = ''
-    // Reset form
     form.value = {
       name: '',
-      account: '',
+      host: '',
+      port: '8443',
       username: '',
       password: '',
-      warehouse: '',
       database: '',
-      schemaName: '',
-      role: ''
+      secure: true
     }
     error.value = null
     isConnecting.value = false
@@ -171,19 +178,19 @@ onUnmounted(() => {
         class="modal-overlay"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="snowflake-modal-title"
+        aria-labelledby="clickhouse-modal-title"
         @click.self="emit('close')"
       >
         <div class="modal-content">
           <div class="modal-header">
             <div class="header-content">
               <img
-                :src="DATABASE_INFO.snowflake.logo"
-                :alt="DATABASE_INFO.snowflake.name"
-                class="snowflake-icon"
+                :src="DATABASE_INFO.clickhouse.logo"
+                :alt="DATABASE_INFO.clickhouse.name"
+                class="clickhouse-icon"
               >
-              <h2 id="snowflake-modal-title">
-                Connect to {{ DATABASE_INFO.snowflake.name }}
+              <h2 id="clickhouse-modal-title">
+                Connect to {{ DATABASE_INFO.clickhouse.name }}
               </h2>
             </div>
             <button
@@ -195,14 +202,13 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <a
+          <button
             class="btn-demo"
-            href="https://signup.snowflake.com/"
-            target="_blank"
-            rel="noopener noreferrer"
+            type="button"
+            @click="fillDemo"
           >
-            No public demo — get a free trial at signup.snowflake.com
-          </a>
+            Try demo — ClickHouse Playground (read-only)
+          </button>
 
           <form
             class="connection-form"
@@ -214,23 +220,34 @@ onUnmounted(() => {
                 id="conn-name"
                 v-model="form.name"
                 type="text"
-                placeholder="My Snowflake Warehouse"
+                placeholder="My ClickHouse Cluster"
                 autocomplete="off"
                 required
               >
             </div>
 
-            <div class="form-group">
-              <label for="account">Account <span class="required">*</span></label>
-              <input
-                id="account"
-                v-model="form.account"
-                type="text"
-                placeholder="xy12345.us-east-1"
-                autocomplete="off"
-                required
-              >
-              <span class="help-text">Account identifier (e.g., xy12345.us-east-1)</span>
+            <div class="form-row">
+              <div class="form-group flex-grow">
+                <label for="host">Host <span class="required">*</span></label>
+                <input
+                  id="host"
+                  v-model="form.host"
+                  type="text"
+                  placeholder="my-cluster.clickhouse.cloud"
+                  autocomplete="off"
+                  required
+                >
+              </div>
+              <div class="form-group port-group">
+                <label for="port">Port</label>
+                <input
+                  id="port"
+                  v-model="form.port"
+                  type="text"
+                  placeholder="8443"
+                  autocomplete="off"
+                >
+              </div>
             </div>
 
             <div class="form-group">
@@ -239,7 +256,7 @@ onUnmounted(() => {
                 id="username"
                 v-model="form.username"
                 type="text"
-                placeholder="myuser"
+                placeholder="default"
                 autocomplete="off"
                 required
               >
@@ -257,48 +274,25 @@ onUnmounted(() => {
             </div>
 
             <div class="form-group">
-              <label for="warehouse">Warehouse</label>
+              <label for="database">Database</label>
               <input
-                id="warehouse"
-                v-model="form.warehouse"
+                id="database"
+                v-model="form.database"
                 type="text"
-                placeholder="COMPUTE_WH"
+                placeholder="default"
                 autocomplete="off"
               >
             </div>
 
-            <div class="form-row">
-              <div class="form-group flex-grow">
-                <label for="database">Database</label>
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
                 <input
-                  id="database"
-                  v-model="form.database"
-                  type="text"
-                  placeholder="MY_DATABASE"
-                  autocomplete="off"
+                  v-model="form.secure"
+                  type="checkbox"
                 >
-              </div>
-              <div class="form-group flex-grow">
-                <label for="schema">Schema</label>
-                <input
-                  id="schema"
-                  v-model="form.schemaName"
-                  type="text"
-                  placeholder="PUBLIC"
-                  autocomplete="off"
-                >
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="role">Role</label>
-              <input
-                id="role"
-                v-model="form.role"
-                type="text"
-                placeholder="ACCOUNTADMIN"
-                autocomplete="off"
-              >
+                <span>Use HTTPS (secure connection)</span>
+              </label>
+              <span class="help-text">Disable for local/development instances on port 8123</span>
             </div>
 
             <div
@@ -380,10 +374,9 @@ onUnmounted(() => {
   gap: var(--space-3);
 }
 
-.snowflake-icon {
+.clickhouse-icon {
   width: 32px;
   height: 32px;
-  color: #29B5E8;
 }
 
 .modal-header h2 {
@@ -409,24 +402,21 @@ onUnmounted(() => {
 }
 
 .btn-demo {
-  display: block;
   width: 100%;
   padding: var(--space-2) var(--space-3);
   margin-bottom: var(--space-4);
-  background: color-mix(in srgb, var(--text-tertiary) 8%, transparent);
-  border: var(--border-width-thin) dashed var(--border-primary);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border: var(--border-width-thin) dashed var(--color-accent);
   border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
+  color: var(--color-accent);
   font-size: var(--font-size-body-sm);
   font-weight: 500;
-  text-align: center;
-  text-decoration: none;
+  cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-demo:hover {
-  background: color-mix(in srgb, var(--text-tertiary) 15%, transparent);
-  color: var(--text-primary);
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .connection-form {
@@ -456,8 +446,8 @@ onUnmounted(() => {
   color: var(--text-tertiary);
 }
 
-.form-group input,
-.form-group select {
+.form-group input[type="text"],
+.form-group input[type="password"] {
   padding: var(--space-2) var(--space-3);
   border: var(--border-width-thick) solid var(--border-primary);
   border-radius: var(--border-radius-sm);
@@ -468,8 +458,8 @@ onUnmounted(() => {
   transition: border-color 0.2s;
 }
 
-.form-group input:focus,
-.form-group select:focus {
+.form-group input[type="text"]:focus,
+.form-group input[type="password"]:focus {
   outline: none;
   border-color: var(--color-accent);
 }
@@ -485,6 +475,30 @@ onUnmounted(() => {
 
 .flex-grow {
   flex: 1;
+}
+
+.port-group {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.checkbox-group {
+  gap: var(--space-2);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
 }
 
 .success-message {

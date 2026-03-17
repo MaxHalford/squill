@@ -60,6 +60,9 @@ export const useConnectionsStore = defineStore('connections', () => {
     // PostgreSQL uses backend proxy - no frontend tokens needed
     if (activeConnection.value.type === 'postgres') return false
 
+    // ClickHouse uses backend proxy - no frontend tokens needed
+    if (activeConnection.value.type === 'clickhouse') return false
+
     const tokenEntry = accessTokens.value.get(activeConnection.value.id)
     if (!tokenEntry) return true // No token = expired
 
@@ -239,7 +242,7 @@ export const useConnectionsStore = defineStore('connections', () => {
     const connType = connection.type
     if (connType === 'bigquery') {
       clearSchemaCache('bigquery')
-    } else if (connType === 'postgres' || connType === 'snowflake') {
+    } else if (connType === 'postgres' || connType === 'snowflake' || connType === 'clickhouse') {
       clearSchemaCache(connType, connectionId)
     }
 
@@ -325,6 +328,9 @@ export const useConnectionsStore = defineStore('connections', () => {
     // Snowflake uses backend proxy - always "valid" from token perspective
     if (connection.type === 'snowflake') return true
 
+    // ClickHouse uses backend proxy - always "valid" from token perspective
+    if (connection.type === 'clickhouse') return true
+
     const tokenEntry = accessTokens.value.get(connectionId)
     if (!tokenEntry) return false
 
@@ -344,6 +350,9 @@ export const useConnectionsStore = defineStore('connections', () => {
 
     // Snowflake uses backend proxy - never "expired" from token perspective
     if (connection.type === 'snowflake') return false
+
+    // ClickHouse uses backend proxy - never "expired" from token perspective
+    if (connection.type === 'clickhouse') return false
 
     return !hasValidToken(connectionId)
   }

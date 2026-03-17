@@ -25,6 +25,7 @@ const emit = defineEmits<{
   selectCsv: []
   selectPostgres: []
   selectSnowflake: []
+  selectClickhouse: []
 }>()
 
 // Prevent body scroll when modal is open
@@ -55,6 +56,14 @@ const handleSnowflakeClick = () => {
 const handlePostgresClick = () => {
   if (userStore.isLoggedIn) {
     emit('selectPostgres')
+  } else {
+    userStore.loginWithGoogle()
+  }
+}
+
+const handleClickHouseClick = () => {
+  if (userStore.isLoggedIn) {
+    emit('selectClickhouse')
   } else {
     userStore.loginWithGoogle()
   }
@@ -157,6 +166,24 @@ onUnmounted(() => {
               <p>Queries proxied through our server, credentials encrypted</p>
               <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
                 {{ userStore.isLoggedIn ? DATABASE_INFO.snowflake.badge : 'Sign in required' }}
+              </span>
+            </button>
+
+            <!-- ClickHouse Card -->
+            <button
+              :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
+              aria-label="Connect to ClickHouse"
+              @click="handleClickHouseClick"
+            >
+              <img
+                :src="DATABASE_INFO.clickhouse.logo"
+                :alt="DATABASE_INFO.clickhouse.name"
+                :class="['option-icon', { 'option-icon-disabled': !userStore.isLoggedIn }]"
+              >
+              <h2>{{ DATABASE_INFO.clickhouse.name }}</h2>
+              <p>Queries proxied through our server, credentials encrypted</p>
+              <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
+                {{ userStore.isLoggedIn ? DATABASE_INFO.clickhouse.badge : 'Sign in required' }}
               </span>
             </button>
 

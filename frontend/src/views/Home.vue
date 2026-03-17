@@ -22,6 +22,7 @@ const ExplainBox = defineAsyncComponent(() => import('../components/ExplainBox.v
 // Lazy-load modals - only loaded when opened
 const PostgresConnectionModal = defineAsyncComponent(() => import('../components/PostgresConnectionModal.vue'))
 const SnowflakeConnectionModal = defineAsyncComponent(() => import('../components/SnowflakeConnectionModal.vue'))
+const ClickHouseConnectionModal = defineAsyncComponent(() => import('../components/ClickHouseConnectionModal.vue'))
 const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/KeyboardShortcutsModal.vue'))
 const WhatsNewModal = defineAsyncComponent(() => import('../components/WhatsNewModal.vue'))
 import { useCanvasStore } from '../stores/canvas'
@@ -56,6 +57,7 @@ const isStoresReady = ref(false)
 const onboardingDismissed = ref(false)
 const showPostgresModal = ref(false)
 const showSnowflakeModal = ref(false)
+const showClickHouseModal = ref(false)
 const showShortcutsModal = ref(false)
 const showWhatsNewModal = ref(false)
 const whatsNewEntries = ref<ChangelogEntry[]>([])
@@ -173,6 +175,21 @@ const handleSelectPostgres = () => {
 // Handle Snowflake selection from onboarding - show credentials modal
 const handleSelectSnowflake = () => {
   showSnowflakeModal.value = true
+}
+
+// Handle ClickHouse selection from onboarding - show credentials modal
+const handleSelectClickHouse = () => {
+  showClickHouseModal.value = true
+}
+
+// Handle successful ClickHouse connection
+const handleClickHouseConnected = (connectionId: string) => {
+  console.log('ClickHouse connected:', connectionId)
+
+  // Create default boxes if canvas is empty
+  if (canvasStore.boxes.length === 0) {
+    createDefaultBoxes()
+  }
 }
 
 // Handle successful Snowflake connection from onboarding
@@ -1195,6 +1212,7 @@ onUnmounted(() => {
       @select-csv="handleSelectCsv"
       @select-postgres="handleSelectPostgres"
       @select-snowflake="handleSelectSnowflake"
+      @select-clickhouse="handleSelectClickHouse"
     />
 
     <!-- PostgreSQL Connection Modal -->
@@ -1209,6 +1227,13 @@ onUnmounted(() => {
       :show="showSnowflakeModal"
       @close="showSnowflakeModal = false"
       @connected="handleSnowflakeConnected"
+    />
+
+    <!-- ClickHouse Connection Modal -->
+    <ClickHouseConnectionModal
+      :show="showClickHouseModal"
+      @close="showClickHouseModal = false"
+      @connected="handleClickHouseConnected"
     />
 
     <!-- Hidden file input for CSV picker -->

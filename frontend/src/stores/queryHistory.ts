@@ -8,6 +8,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { QueryHistoryStateSchema, type QueryHistoryEntry } from '../utils/storageSchemas'
 import { loadItem, saveItem } from '../utils/storage'
+import type { DatabaseEngine } from '../types/database'
 
 // Simple debounce utility
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
@@ -21,8 +22,6 @@ const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => 
 
 const MAX_HISTORY_ENTRIES = 100
 const MAX_SAMPLE_QUERIES = 5 // For AI fixer compatibility
-
-type DatabaseEngine = 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
 
 export interface RecordQueryParams {
   query: string

@@ -6,12 +6,14 @@ import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
+import { useClickHouseStore } from '../stores/clickhouse'
 import { getTypeCategory } from '../utils/typeUtils'
 import { formatRowCountCompact, formatBytes } from '../utils/formatUtils'
 import { DATABASE_INFO, type DatabaseEngine, type TableMetadataInfo } from '../types/database'
 import type { BigQueryDataset, BigQueryTable } from '../types/bigquery'
 import type { PostgresTableInfo } from '../stores/postgres'
 import type { SnowflakeDatabaseInfo, SnowflakeSchemaInfo, SnowflakeTableInfo } from '../stores/snowflake'
+import type { ClickHouseDatabaseInfo, ClickHouseTableInfo } from '../stores/clickhouse'
 
 
 // Schema browser item types for the column navigation
@@ -34,6 +36,7 @@ const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
+const clickhouseStore = useClickHouseStore()
 
 // ResizeObserver for virtual scroll container
 let columnsResizeObserver: ResizeObserver | null = null
@@ -78,6 +81,8 @@ const selectedBigQueryProject = ref<string | null>(null)
 // Snowflake-specific: database and schema selection
 const selectedSnowflakeDatabase = ref<string | null>(null)
 const selectedSnowflakeSchema = ref<string | null>(null)
+// ClickHouse-specific: database selection
+const selectedClickHouseDatabase = ref<string | null>(null)
 
 // Data cache
 const datasets = ref<Record<string, BrowserItem[]>>({}) // { projectId: [datasets] }
@@ -90,6 +95,9 @@ const bigqueryProjectsByConnection = ref<Record<string, { projectId: string; nam
 const snowflakeDatabases = ref<Record<string, SnowflakeDatabaseInfo[]>>({}) // { connectionId: [databases] }
 const snowflakeSchemas = ref<Record<string, SnowflakeSchemaInfo[]>>({}) // { connectionId:database: [schemas] }
 const snowflakeTables = ref<Record<string, SnowflakeTableInfo[]>>({}) // { connectionId:database.schema: [tables] }
+// ClickHouse-specific caches
+const clickhouseDatabases = ref<Record<string, ClickHouseDatabaseInfo[]>>({}) // { connectionId: [databases] }
+const clickhouseTables = ref<Record<string, ClickHouseTableInfo[]>>({}) // { connectionId:database: [tables] }
 
 // Per-column filter state
 const col1Filter = ref('')
@@ -184,6 +192,17 @@ const projects = computed(() => {
     })
   })
 
+  // Show all ClickHouse connections
+  const clickhouseConnections = connectionsStore.getConnectionsByType('clickhouse')
+  clickhouseConnections.forEach(conn => {
+    items.push({
+      id: conn.id,
+      name: conn.name || conn.database || DATABASE_INFO.clickhouse.name,
+      type: 'clickhouse',
+      connectionId: conn.id
+    })
+  })
+
   return items
 })
 
@@ -226,6 +245,14 @@ const column2Items = computed((): BrowserItem[] => {
       name: db.name,
       type: 'database'
     }))
+  } else if (selectedProjectType.value === 'clickhouse') {
+    // Show ClickHouse databases
+    const databases = clickhouseDatabases.value[selectedProject.value] || []
+    return databases.map((db) => ({
+      id: db.name,
+      name: db.name,
+      type: 'database'
+    }))
   } else if (selectedProjectType.value === 'bigquery') {
     // Show BigQuery projects for this connection
     const cachedProjects = bigqueryProjectsByConnection.value[selectedProject.value!] || []
@@ -254,6 +281,18 @@ const column3Items = computed(() => {
     }))
   }
 
+  if (selectedProjectType.value === 'clickhouse') {
+    // Show ClickHouse tables when database is selected
+    if (!selectedClickHouseDatabase.value) return []
+    const cacheKey = `${selectedProject.value}:${selectedClickHouseDatabase.value}`
+    const tableList = clickhouseTables.value[cacheKey] || []
+    return tableList.map((t) => ({
+      id: t.name,
+      name: t.name,
+      type: t.type || 'table'
+    }))
+  }
+
   if (selectedProjectType.value === 'bigquery') {
     // BigQuery: show datasets when project is selected
     if (!selectedBigQueryProject.value) return []
@@ -265,8 +304,19 @@ const column3Items = computed(() => {
   return tables.value[selectedDataset.value] || []
 })
 
-// Column 4: Tables (for Snowflake when schema is selected) or Columns
+// Column 4: Tables (for Snowflake when schema is selected), Columns (for ClickHouse), or Columns
 const column4Items = computed((): BrowserItem[] => {
+  if (selectedProjectType.value === 'clickhouse') {
+    // ClickHouse: show columns when table is selected (database > table > columns)
+    if (!selectedTable.value || !selectedClickHouseDatabase.value) return []
+    const key = `${selectedProject.value}:${selectedClickHouseDatabase.value}.${selectedTable.value}`
+    return (schemas.value[key] || []).map((f) => ({
+      id: f.name,
+      name: f.name,
+      type: f.type
+    }))
+  }
+
   if (selectedProjectType.value === 'snowflake') {
     // Show Snowflake tables when schema is selected
     if (!selectedSnowflakeSchema.value || !selectedSnowflakeDatabase.value) return []
@@ -330,6 +380,7 @@ const columnsContainerRef = ref<HTMLElement | null>(null)
 
 // Get the raw column items (either column4Items for non-Snowflake or column5Items for Snowflake)
 const rawColumnItems = computed(() => {
+  if (selectedProjectType.value === 'clickhouse') return column4Items.value
   return (selectedProjectType.value === 'snowflake' || selectedProjectType.value === 'bigquery')
     ? column5Items.value
     : column4Items.value
@@ -343,6 +394,8 @@ const currentTableMetadata = computed((): TableMetadataInfo | null => {
     key = selectedTable.value
   } else if (selectedProjectType.value === 'postgres') {
     key = `${selectedProject.value}:${selectedTable.value}`
+  } else if (selectedProjectType.value === 'clickhouse') {
+    key = `${selectedProject.value}:${selectedClickHouseDatabase.value}.${selectedTable.value}`
   } else if (selectedProjectType.value === 'snowflake') {
     key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
   } else {
@@ -465,6 +518,7 @@ const selectProject = async (projectId: string) => {
   selectedTable.value = null
   selectedSnowflakeDatabase.value = null
   selectedSnowflakeSchema.value = null
+  selectedClickHouseDatabase.value = null
   col2Filter.value = ''; col2FilterOpen.value = false
   col3Filter.value = ''; col3FilterOpen.value = false
   col4Filter.value = ''; col4FilterOpen.value = false
@@ -482,6 +536,10 @@ const selectProject = async (projectId: string) => {
   if (project?.type === 'postgres') {
     if (!tables.value[projectId]) {
       await loadPostgresTables(projectId)
+    }
+  } else if (project?.type === 'clickhouse') {
+    if (!clickhouseDatabases.value[projectId]) {
+      await loadClickHouseDatabases(projectId)
     }
   } else if (project?.type === 'snowflake') {
     if (!snowflakeDatabases.value[projectId]) {
@@ -559,6 +617,27 @@ const selectDataset = async (datasetId: string) => {
   }
 }
 
+// Select ClickHouse database
+const selectClickHouseDatabase = async (databaseName: string) => {
+  if (selectedClickHouseDatabase.value === databaseName) return
+  captureScrollState()
+
+  selectedClickHouseDatabase.value = databaseName
+  selectedTable.value = null
+  col3Filter.value = ''; col3FilterOpen.value = false
+  col4Filter.value = ''; col4FilterOpen.value = false
+  col5Filter.value = ''; col5FilterOpen.value = false
+
+  // Animate column collapse immediately (before any await)
+  smoothScrollUpdate()
+
+  // Load tables for this database
+  const cacheKey = `${selectedProject.value}:${databaseName}`
+  if (!clickhouseTables.value[cacheKey]) {
+    await loadClickHouseTablesForDatabase(selectedProject.value!, databaseName)
+  }
+}
+
 // Select Snowflake database
 const selectSnowflakeDatabase = async (databaseName: string) => {
   if (selectedSnowflakeDatabase.value === databaseName) return
@@ -620,6 +699,9 @@ const selectTable = async (tableId: string) => {
   } else if (selectedProjectType.value === 'postgres') {
     // For postgres, tableId is already schema.table format
     key = `${selectedProject.value}:${tableId}`
+  } else if (selectedProjectType.value === 'clickhouse') {
+    // For clickhouse, use selected database from hierarchical navigation
+    key = `${selectedProject.value}:${selectedClickHouseDatabase.value}.${tableId}`
   } else if (selectedProjectType.value === 'snowflake') {
     // For snowflake, use selected database and schema from hierarchical navigation
     key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${tableId}`
@@ -687,6 +769,37 @@ const loadPostgresTables = async (connectionId: string) => {
     console.error('Failed to load PostgreSQL tables:', err)
   } finally {
     loadingTables.value[connectionId] = false
+  }
+}
+
+// Load ClickHouse databases
+const loadClickHouseDatabases = async (connectionId: string) => {
+  loadingDatasets.value[connectionId] = true
+  try {
+    const fetchedDatabases = await clickhouseStore.fetchDatabases(connectionId)
+    clickhouseDatabases.value[connectionId] = fetchedDatabases
+  } catch (err) {
+    console.error('Failed to load ClickHouse databases:', err)
+  } finally {
+    loadingDatasets.value[connectionId] = false
+  }
+}
+
+// Load ClickHouse tables for a database
+const loadClickHouseTablesForDatabase = async (connectionId: string, databaseName: string) => {
+  const cacheKey = `${connectionId}:${databaseName}`
+  loadingTables.value[cacheKey] = true
+  try {
+    const fetchedTables = await clickhouseStore.fetchTablesForDatabase(connectionId, databaseName)
+    clickhouseTables.value[cacheKey] = fetchedTables.map((t: ClickHouseTableInfo) => ({
+      name: t.name,
+      databaseName: t.databaseName,
+      type: t.type
+    }))
+  } catch (err) {
+    console.error('Failed to load ClickHouse tables:', err)
+  } finally {
+    loadingTables.value[cacheKey] = false
   }
 }
 
@@ -771,6 +884,33 @@ const loadSchema = async (tableId: string, key: string) => {
     } finally {
       loadingSchema.value[tableId] = false
     }
+  } else if (selectedProjectType.value === 'clickhouse') {
+    // ClickHouse schema + metadata (fetched in parallel)
+    if (!selectedClickHouseDatabase.value) return
+    loadingSchema.value[tableId] = true
+    try {
+      const [columns, metadata] = await Promise.all([
+        clickhouseStore.fetchColumns(
+          selectedProject.value!,
+          selectedClickHouseDatabase.value,
+          tableId
+        ),
+        clickhouseStore.fetchTableMetadata(
+          selectedProject.value!,
+          selectedClickHouseDatabase.value,
+          tableId
+        ).catch(() => null),
+      ])
+      schemas.value[key] = columns.map(col => ({
+        name: col.name,
+        type: col.type
+      }))
+      if (metadata) tableMetadata.value[key] = metadata
+    } catch (err) {
+      console.error('Failed to load ClickHouse schema:', err)
+    } finally {
+      loadingSchema.value[tableId] = false
+    }
   } else if (selectedProjectType.value === 'snowflake') {
     // Snowflake schema + metadata (fetched in parallel)
     if (!selectedSnowflakeDatabase.value || !selectedSnowflakeSchema.value) return
@@ -838,6 +978,10 @@ const insertTableName = (item: BrowserItem) => {
   } else if (selectedProjectType.value === 'postgres') {
     // PostgreSQL: use schema.table or just table if public schema
     tableName = item.schemaName === 'public' ? item.name : `${item.schemaName}.${item.name}`
+  } else if (selectedProjectType.value === 'clickhouse') {
+    // ClickHouse: construct database.table path with backtick quoting
+    const dbName = selectedClickHouseDatabase.value || item.databaseName
+    tableName = `\`${dbName}\`.\`${item.name}\``
   } else if (selectedProjectType.value === 'snowflake') {
     // Snowflake: construct full path from hierarchical navigation and wrap each part in double quotes
     const dbName = selectedSnowflakeDatabase.value || item.databaseName
@@ -868,6 +1012,19 @@ const queryTable = (item: BrowserItem) => {
     // For postgres, use schema.table format (item.id is already schema.table)
     fullTableName = item.id || `${item.schemaName}.${item.name}`
     connectionId = selectedProject.value!
+  } else if (selectedProjectType.value === 'clickhouse') {
+    engine = 'clickhouse'
+    const dbName = selectedClickHouseDatabase.value || item.databaseName
+    const rawName = `${dbName}.${item.name}`
+    fullTableName = `\`${dbName}\`.\`${item.name}\``
+    connectionId = selectedProject.value!
+    emit('query-table', {
+      tableName: fullTableName,
+      boxName: rawName,
+      engine: engine,
+      connectionId: connectionId
+    })
+    return
   } else if (selectedProjectType.value === 'snowflake') {
     engine = 'snowflake'
     // For snowflake, construct full path from hierarchical navigation and wrap each part in double quotes
@@ -1000,6 +1157,8 @@ const getCurrentTableColumns = (): string[] => {
     key = selectedTable.value
   } else if (selectedProjectType.value === 'postgres') {
     key = `${selectedProject.value}:${selectedTable.value}`
+  } else if (selectedProjectType.value === 'clickhouse') {
+    key = `${selectedProject.value}:${selectedClickHouseDatabase.value}.${selectedTable.value}`
   } else if (selectedProjectType.value === 'snowflake') {
     key = `${selectedProject.value}:${selectedSnowflakeDatabase.value}.${selectedSnowflakeSchema.value}.${selectedTable.value}`
   } else {
@@ -1028,6 +1187,12 @@ const buildTableConnectionInfo = () => {
     const [schemaName, tblName] = selectedTable.value.split('.')
     tableName = selectedTable.value
     quotedTableName = `${schemaName}."${tblName}"`
+    connectionId = selectedProject.value!
+  } else if (selectedProjectType.value === 'clickhouse') {
+    engine = 'clickhouse'
+    const dbName = selectedClickHouseDatabase.value
+    tableName = `${dbName}.${selectedTable.value}`
+    quotedTableName = `\`${dbName}\`.\`${selectedTable.value}\``
     connectionId = selectedProject.value!
   } else if (selectedProjectType.value === 'snowflake') {
     engine = 'snowflake'
@@ -1117,6 +1282,14 @@ const navigateToTable = async (info: TableNavigationInfo) => {
       ? `${info.schemaName}.${info.tableName}`
       : info.tableName
     await selectTable(fullTableName)
+  } else if (info.connectionType === 'clickhouse') {
+    if (info.connectionId) {
+      await selectProject(info.connectionId)
+    }
+    if (info.databaseName) {
+      await selectClickHouseDatabase(info.databaseName)
+    }
+    await selectTable(info.tableName)
   } else if (info.connectionType === 'snowflake') {
     if (info.connectionId) {
       await selectProject(info.connectionId)
@@ -1229,7 +1402,7 @@ defineExpose({
       >
         <div class="column-header-area">
           <div class="column-header">
-            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Projects' : selectedProjectType === 'snowflake' ? 'Databases' : 'Tables' }}</span>
+            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Projects' : (selectedProjectType === 'snowflake' || selectedProjectType === 'clickhouse') ? 'Databases' : 'Tables' }}</span>
             <button
               class="column-filter-toggle"
               :class="{ active: col2FilterOpen || col2Filter }"
@@ -1264,18 +1437,20 @@ defineExpose({
             :class="['item', {
               selected: selectedProjectType === 'bigquery' ? selectedBigQueryProject === item.id :
                 selectedProjectType === 'snowflake' ? selectedSnowflakeDatabase === item.id :
+                selectedProjectType === 'clickhouse' ? selectedClickHouseDatabase === item.id :
                 selectedTable === item.id
             }]"
             @click="selectedProjectType === 'bigquery' ? selectBigQueryProject(item.id) :
               selectedProjectType === 'snowflake' ? selectSnowflakeDatabase(item.id) :
+              selectedProjectType === 'clickhouse' ? selectClickHouseDatabase(item.id) :
               selectTable(item.id)"
-            @dblclick="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' ? insertTableName(item) : null"
+            @dblclick="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' && selectedProjectType !== 'clickhouse' ? insertTableName(item) : null"
             @mouseenter="hoveredTableItem = item.id"
             @mouseleave="hoveredTableItem = null"
           >
             <span v-tooltip-overflow class="item-name">{{ item.name }}</span>
             <button
-              v-if="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake'"
+              v-if="selectedProjectType !== 'bigquery' && selectedProjectType !== 'snowflake' && selectedProjectType !== 'clickhouse'"
               v-tooltip="'Query this table'"
               class="query-button"
               :class="{ visible: hoveredTableItem === item.id }"
@@ -1298,15 +1473,15 @@ defineExpose({
         @mousedown="handleResizeStart($event, 2)"
       />
 
-      <!-- Column 3: BigQuery Datasets or Snowflake Schemas -->
+      <!-- Column 3: BigQuery Datasets, Snowflake Schemas, or ClickHouse Tables -->
       <div
-        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')"
+        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake') || (selectedClickHouseDatabase && selectedProjectType === 'clickhouse')"
         class="column"
         :style="{ width: `${col3Width}px` }"
       >
         <div class="column-header-area">
           <div class="column-header">
-            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Datasets' : 'Schemas' }}</span>
+            <span class="column-header-label">{{ selectedProjectType === 'bigquery' ? 'Datasets' : selectedProjectType === 'clickhouse' ? 'Tables' : 'Schemas' }}</span>
             <button
               class="column-filter-toggle"
               :class="{ active: col3FilterOpen || col3Filter }"
@@ -1342,23 +1517,31 @@ defineExpose({
             Retrieving...
           </div>
           <div
+            v-if="selectedProjectType === 'clickhouse' && loadingTables[`${selectedProject}:${selectedClickHouseDatabase}`]"
+            class="loading"
+          >
+            Retrieving...
+          </div>
+          <div
             v-for="item in filteredColumn3Items"
             :key="item.id"
             :class="['item', {
               selected: selectedProjectType === 'bigquery' ? selectedDataset === item.id :
                 selectedProjectType === 'snowflake' ? selectedSnowflakeSchema === item.id :
+                selectedProjectType === 'clickhouse' ? selectedTable === item.id :
                 selectedTable === item.id
             }]"
             @click="selectedProjectType === 'bigquery' ? selectDataset(item.id) :
               selectedProjectType === 'snowflake' ? selectSnowflakeSchema(item.id) :
+              selectedProjectType === 'clickhouse' ? selectTable(item.id) :
               selectTable(item.id)"
-            @dblclick="selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery' ? insertTableName(item) : null"
+            @dblclick="selectedProjectType === 'clickhouse' ? insertTableName(item) : (selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery' ? insertTableName(item) : null)"
             @mouseenter="hoveredTableItem = item.id"
             @mouseleave="hoveredTableItem = null"
           >
             <span v-tooltip-overflow class="item-name">{{ item.name }}</span>
             <button
-              v-if="selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery'"
+              v-if="selectedProjectType === 'clickhouse' || (selectedProjectType !== 'snowflake' && selectedProjectType !== 'bigquery')"
               v-tooltip="'Query this table'"
               class="query-button"
               :class="{ visible: hoveredTableItem === item.id }"
@@ -1372,7 +1555,7 @@ defineExpose({
 
       <!-- Resize handle 3 -->
       <div
-        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake')"
+        v-if="(selectedBigQueryProject && selectedProjectType === 'bigquery') || (selectedSnowflakeDatabase && selectedProjectType === 'snowflake') || (selectedClickHouseDatabase && selectedProjectType === 'clickhouse')"
         class="resize-handle"
         @mousedown="handleResizeStart($event, 3)"
       />

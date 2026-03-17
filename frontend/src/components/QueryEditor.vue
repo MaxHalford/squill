@@ -41,7 +41,7 @@ const props = defineProps<{
   dialect?: 'bigquery' | 'duckdb' | 'postgres'
   schema?: SchemaNamespace
   suggestion?: LineSuggestion | null
-  connectionType?: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
+  connectionType?: 'bigquery' | 'clickhouse' | 'duckdb' | 'postgres' | 'snowflake'
   connectionId?: string
   explainDisabledReason?: string
   canExplode?: boolean

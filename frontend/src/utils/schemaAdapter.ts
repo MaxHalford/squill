@@ -10,7 +10,7 @@
 import { useDuckDBStore } from '../stores/duckdb'
 import type { SchemaItem, ScoredSchemaItem } from './textSimilarity'
 
-export type ConnectionType = 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
+export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'postgres' | 'snowflake'
 
 interface SchemaCacheEntry {
   items: SchemaItem[]
@@ -143,6 +143,8 @@ export function formatSchemaForLLM(
   switch (connectionType) {
     case 'bigquery':
       return formatBigQuerySchema(schema, projectId)
+    case 'clickhouse':
+      return formatClickHouseSchema(schema)
     case 'postgres':
       return formatPostgresSchema(schema)
     case 'snowflake':
@@ -280,6 +282,40 @@ function formatSnowflakeSchema(schema: ScoredSchemaItem[]): string {
     for (const [schemaName, tables] of schemas) {
       lines.push(`${schemaName}: ${tables.join(', ')}`)
     }
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * Format ClickHouse schema grouped by database
+ * Output: Tables in `database`:
+ *         table1(col1, col2), table2(col1)
+ */
+function formatClickHouseSchema(schema: ScoredSchemaItem[]): string {
+  // Group tables by database
+  const grouped = new Map<string, string[]>()
+
+  for (const item of schema) {
+    // Parse "database.table" format
+    const parts = item.tableName.split('.')
+    const dbName = parts.length === 2 ? parts[0] : 'default'
+    const tableName = parts.length === 2 ? parts[1] : parts[0]
+
+    const colNames = item.columns.map((c) => c.name).join(', ')
+
+    if (!grouped.has(dbName)) {
+      grouped.set(dbName, [])
+    }
+    grouped.get(dbName)!.push(`${tableName}(${colNames})`)
+  }
+
+  // Format output
+  const lines: string[] = []
+
+  for (const [database, tables] of grouped) {
+    lines.push(`Tables in \`${database}\`:`)
+    lines.push(tables.join(', '))
   }
 
   return lines.join('\n')

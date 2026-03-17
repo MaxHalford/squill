@@ -52,6 +52,11 @@ FROM poems p
 JOIN authors a ON p.author_id = a.id
 ORDER BY p.year_published`,
 
+  clickhouse: `SELECT
+    currentDatabase() AS database,
+    currentUser() AS user,
+    version() AS version`,
+
   snowflake: `SELECT
     CURRENT_WAREHOUSE() AS warehouse,
     CURRENT_DATABASE() AS database,

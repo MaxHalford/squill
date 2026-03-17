@@ -28,6 +28,8 @@ dependencies = [
     "google-cloud-bigquery[bqstorage]>=3.40.0",
     # Snowflake
     "snowflake-connector-python>=3.0.0",
+    # ClickHouse
+    "clickhouse-connect>=0.7.0",
     "polar-sdk>=0.28.4",
     # CLI tools
     "pyyaml>=6.0",

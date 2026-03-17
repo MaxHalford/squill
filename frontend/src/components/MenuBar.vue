@@ -8,6 +8,7 @@ const ShareDialog = defineAsyncComponent(() => import('./ShareDialog.vue'))
 import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
 import { usePostgresStore } from '../stores/postgres'
+import { useClickHouseStore } from '../stores/clickhouse'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
@@ -20,6 +21,7 @@ import {
 } from '../utils/connectionHelpers'
 import { refreshSchemaCache } from '../utils/schemaAdapter'
 import PostgresConnectionModal from './PostgresConnectionModal.vue'
+import ClickHouseConnectionModal from './ClickHouseConnectionModal.vue'
 import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
 import CanvasDropdown from './CanvasDropdown.vue'
 
@@ -45,6 +47,7 @@ const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
 const postgresStore = usePostgresStore()
+const clickhouseStore = useClickHouseStore()
 const snowflakeStore = useSnowflakeStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
@@ -61,12 +64,15 @@ const accentColors = [
 // Emits for parent component to handle
 const emit = defineEmits<{
   'box-created': [boxId: number]
-  'connection-added': [type: 'bigquery' | 'postgres' | 'snowflake', connectionId: string]
+  'connection-added': [type: 'bigquery' | 'clickhouse' | 'postgres' | 'snowflake', connectionId: string]
   'show-shortcuts': []
 }>()
 
 // PostgreSQL modal state
 const showPostgresModal = ref(false)
+
+// ClickHouse modal state
+const showClickHouseModal = ref(false)
 
 // Snowflake modal state
 const showSnowflakeModal = ref(false)
@@ -241,6 +247,10 @@ const handleConnectionSelect = async (connectionId: string) => {
     // Prefetch PostgreSQL schema for autocompletion
     bigqueryStore.setProjectId(null)
     await postgresStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load PostgreSQL schema:', err))
+  } else if (connection.type === 'clickhouse') {
+    // Prefetch ClickHouse schema for autocompletion
+    bigqueryStore.setProjectId(null)
+    await clickhouseStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load ClickHouse schema:', err))
   } else if (connection.type === 'snowflake') {
     // Prefetch Snowflake schema for autocompletion
     bigqueryStore.setProjectId(null)
@@ -357,6 +367,8 @@ const handleAddDatabase = async (databaseType: string) => {
     } catch (error) {
       console.error('Failed to add database:', error)
     }
+  } else if (databaseType === 'clickhouse') {
+    showClickHouseModal.value = true
   } else if (databaseType === 'postgres') {
     showPostgresModal.value = true
   } else if (databaseType === 'snowflake') {
@@ -368,6 +380,14 @@ const handleAddDatabase = async (databaseType: string) => {
 const handlePostgresConnected = (connectionId: string) => {
   console.log('PostgreSQL connected:', connectionId)
   emit('connection-added', 'postgres', connectionId)
+  // Re-open dropdown to show the new connection
+  activeDropdown.value = 'connection'
+}
+
+// Handle successful ClickHouse connection
+const handleClickHouseConnected = (connectionId: string) => {
+  console.log('ClickHouse connected:', connectionId)
+  emit('connection-added', 'clickhouse', connectionId)
   // Re-open dropdown to show the new connection
   activeDropdown.value = 'connection'
 }
@@ -435,6 +455,7 @@ const handleRefreshSchemas = async () => {
 
     // Offset-based engines (identical pattern)
     const offsetEngines = [
+      { type: 'clickhouse' as const, label: 'ClickHouse', store: clickhouseStore },
       { type: 'postgres' as const, label: 'PostgreSQL', store: postgresStore },
       { type: 'snowflake' as const, label: 'Snowflake', store: snowflakeStore },
     ]
@@ -870,6 +891,17 @@ onUnmounted(() => {
                       class="db-icon"
                     >
                     {{ DATABASE_INFO.postgres.name }}
+                  </button>
+                  <button
+                    class="dropdown-item flyout-item"
+                    @click="handleAddDatabase('clickhouse')"
+                  >
+                    <img
+                      :src="DATABASE_INFO.clickhouse.logo"
+                      :alt="DATABASE_INFO.clickhouse.name"
+                      class="db-icon"
+                    >
+                    {{ DATABASE_INFO.clickhouse.name }}
                   </button>
                   <button
                     class="dropdown-item flyout-item"
@@ -1393,6 +1425,13 @@ onUnmounted(() => {
     :show="showPostgresModal"
     @close="showPostgresModal = false"
     @connected="handlePostgresConnected"
+  />
+
+  <!-- ClickHouse Connection Modal -->
+  <ClickHouseConnectionModal
+    :show="showClickHouseModal"
+    @close="showClickHouseModal = false"
+    @connected="handleClickHouseConnected"
   />
 
   <!-- Snowflake Connection Modal -->
