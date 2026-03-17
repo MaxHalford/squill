@@ -25,7 +25,7 @@ import { useQueryExecution } from '../composables/useQueryExecution'
 import { useCanvasStore } from '../stores/canvas'
 import { buildCTEQuery } from '../utils/cteResolver'
 import type { SchemaNamespace } from '../utils/schemaBuilder'
-import { suggestFix, type LineSuggestion, type FixContext } from '../services/ai'
+import { suggestFix, castSpell, type LineSuggestion, type FixContext } from '../services/ai'
 import { isFixableError } from '../utils/errorClassifier'
 import { getConnectionDisplayName } from '../utils/connectionHelpers'
 import { type DatabaseEngine, type QueryCompleteEvent } from '../types/database'
@@ -124,6 +124,9 @@ let backgroundLoadController: AbortController | null = null
 // Fix suggestion state
 const suggestion = ref<LineSuggestion | null>(null)
 const isFetchingFix = ref(false)
+
+// Spell casting state
+const isCastingSpell = ref(false)
 
 // BigQuery job reference for post-execution explain
 const lastBigQueryJobRef = ref<{ projectId: string; jobId: string } | null>(null)
@@ -620,6 +623,29 @@ const handleAcceptSuggestion = () => {
   }
 }
 
+const handleCastSpell = async (instruction: string, selectedText: string) => {
+  if (!userStore.sessionToken) return
+  isCastingSpell.value = true
+  try {
+    const query = editorRef.value?.getQuery() || queryText.value
+    const engine = currentEngine.value
+    const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = (engine === 'snowflake' || engine === 'clickhouse' || engine === 'mysql') ? 'postgres' : engine
+    const result = await castSpell({
+      query,
+      instruction,
+      database_dialect: databaseDialect,
+      selected_text: selectedText || undefined,
+    }, userStore.sessionToken)
+    if (result) {
+      queryText.value = result.rewrittenQuery
+    }
+  } catch (err) {
+    console.warn('Failed to cast spell:', err)
+  } finally {
+    isCastingSpell.value = false
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Splitter
 // ---------------------------------------------------------------------------
@@ -731,12 +757,14 @@ defineExpose({
       :connection-id="boxConnection?.id"
       :explain-disabled-reason="explainDisabledReason"
       :can-explode="canExplode"
+      :is-casting-spell="isCastingSpell"
       @run="runQuery()"
       @stop="stopQuery"
       @explain="explainQuery"
       @explode="emit('explode')"
       @accept-suggestion="handleAcceptSuggestion"
       @dismiss-suggestion="suggestion = null"
+      @cast-spell="handleCastSpell"
       @navigate-to-table="emit('navigate-to-table', $event)"
       @activate="handleEditorActivate"
       @ready="() => {}"

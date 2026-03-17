@@ -27,6 +27,13 @@ export interface FixRequest {
   database_dialect: 'bigquery' | 'postgres' | 'duckdb'
 }
 
+export interface SpellRequest {
+  query: string
+  instruction: string
+  database_dialect: 'bigquery' | 'postgres' | 'duckdb'
+  selected_text?: string
+}
+
 export interface FixContext {
   connectionId?: string
   connectionType?: ConnectionType
@@ -127,6 +134,42 @@ export async function suggestFix(
     }
   } catch (error) {
     console.error('Failed to get fix suggestion:', error)
+    return null
+  }
+}
+
+/**
+ * Request an AI-powered SQL query rewrite based on a natural-language instruction.
+ * Includes schema context when available.
+ */
+export async function castSpell(
+  request: SpellRequest,
+  sessionToken: string,
+): Promise<{ rewrittenQuery: string } | null> {
+  try {
+    const response = await fetch(`${BACKEND_URL}/cast-spell/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        query: request.query,
+        instruction: request.instruction,
+        database_dialect: request.database_dialect,
+        selected_text: request.selected_text || undefined,
+      }),
+    })
+
+    if (!response.ok) {
+      console.warn('Spell cast failed:', response.status)
+      return null
+    }
+
+    const data = await response.json()
+    return { rewrittenQuery: data.rewritten_query }
+  } catch (error) {
+    console.error('Failed to cast spell:', error)
     return null
   }
 }

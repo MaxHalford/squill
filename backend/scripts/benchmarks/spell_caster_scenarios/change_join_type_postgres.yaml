@@ -1,0 +1,16 @@
+input:
+  query: |
+    SELECT
+      u.name,
+      o.total
+    FROM users u
+    LEFT JOIN orders o ON o.user_id = u.id
+  instruction: "Change the LEFT JOIN to an INNER JOIN"
+  database_dialect: "postgres"
+expected:
+  query: |
+    SELECT
+      u.name,
+      o.total
+    FROM users u
+    JOIN orders o ON o.user_id = u.id

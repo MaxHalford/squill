@@ -48,10 +48,10 @@ const proFeatures: ProFeature[] = [
     released: true
   },
   {
-    title: 'Ask a wizard',
-    description: 'Pair-program SQL with an analytics agent in natural language.',
-    longDescription: '',
-    released: false
+    title: 'Cast a spell',
+    description: 'Edit queries with natural language.',
+    longDescription: 'Click the wand button in the query editor, type a natural-language instruction like "add a WHERE for date > 2024" or "change the LEFT JOIN to INNER", and an LLM rewrites your query in-place. It understands your schema context and works across BigQuery, PostgreSQL, and DuckDB.',
+    released: true
   },
   {
     title: 'Persistent storage',

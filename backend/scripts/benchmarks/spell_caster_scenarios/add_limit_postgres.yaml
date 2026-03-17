@@ -1,0 +1,15 @@
+input:
+  query: |
+    SELECT *
+    FROM logs
+    WHERE level = 'ERROR'
+    ORDER BY timestamp DESC
+  instruction: "Limit the results to 100 rows"
+  database_dialect: "postgres"
+expected:
+  query: |
+    SELECT *
+    FROM logs
+    WHERE level = 'ERROR'
+    ORDER BY timestamp DESC
+    LIMIT 100

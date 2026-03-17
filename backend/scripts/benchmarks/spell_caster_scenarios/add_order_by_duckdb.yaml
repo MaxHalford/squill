@@ -1,0 +1,17 @@
+input:
+  query: |
+    SELECT
+      product,
+      SUM(quantity) AS total_qty
+    FROM sales
+    GROUP BY product
+  instruction: "Order by total_qty descending"
+  database_dialect: "duckdb"
+expected:
+  query: |
+    SELECT
+      product,
+      SUM(quantity) AS total_qty
+    FROM sales
+    GROUP BY product
+    ORDER BY total_qty DESC

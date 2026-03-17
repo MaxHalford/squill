@@ -1,0 +1,24 @@
+input:
+  query: |
+    SELECT
+      user_id,
+      SUM(amount) AS total
+    FROM orders
+    WHERE status = 'completed'
+    GROUP BY user_id
+    HAVING SUM(amount) > 1000
+  instruction: "Extract the base query into a CTE called 'completed_orders' and select from it"
+  database_dialect: "postgres"
+expected:
+  query: |
+    WITH completed_orders AS (
+      SELECT
+        user_id,
+        SUM(amount) AS total
+      FROM orders
+      WHERE status = 'completed'
+      GROUP BY user_id
+    )
+    SELECT *
+    FROM completed_orders
+    WHERE total > 1000

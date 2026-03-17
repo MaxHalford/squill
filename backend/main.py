@@ -15,6 +15,7 @@ from routers.billing import router as billing_router
 from routers.canvas import router as canvas_router
 from routers.connections import router as connections_router
 from routers.hex_remover import router as hex_remover_router
+from routers.spell_caster import router as spell_caster_router
 from routers.postgres import router as postgres_router
 from routers.snowflake import router as snowflake_router
 from routers.clickhouse import router as clickhouse_router
@@ -79,6 +80,7 @@ app.include_router(bigquery_router)
 app.include_router(canvas_router)
 app.include_router(billing_router)
 app.include_router(hex_remover_router)
+app.include_router(spell_caster_router)
 app.include_router(connections_router)
 app.include_router(postgres_router)
 app.include_router(snowflake_router)

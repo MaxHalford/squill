@@ -1,0 +1,16 @@
+input:
+  query: |
+    SELECT
+      user_id,
+      COUNT(*) AS cnt
+    FROM events
+    GROUP BY user_id
+  instruction: "Rename the alias 'cnt' to 'event_count'"
+  database_dialect: "bigquery"
+expected:
+  query: |
+    SELECT
+      user_id,
+      COUNT(*) AS event_count
+    FROM events
+    GROUP BY user_id

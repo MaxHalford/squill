@@ -12,7 +12,7 @@ export interface LineSuggestion {
 </script>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, inject, nextTick } from 'vue'
 import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { Compartment, StateField, StateEffect, RangeSet, EditorState } from '@codemirror/state'
@@ -45,6 +45,7 @@ const props = defineProps<{
   connectionId?: string
   explainDisabledReason?: string
   canExplode?: boolean
+  isCastingSpell?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -58,6 +59,7 @@ const emit = defineEmits<{
   'navigate-to-table': [ref: TableReferenceWithPosition]
   'ready': []
   'activate': []
+  'cast-spell': [instruction: string, selectedText: string]
 }>()
 
 const settingsStore = useSettingsStore()
@@ -72,6 +74,11 @@ const editorView = ref<EditorView | null>(null)
 const scrollPreserverId = _nextScrollPreserverId++
 const registerScrollPreserver = inject<((id: number, fns: { save: () => unknown; restore: (saved: unknown) => void }) => void) | null>('registerScrollPreserver', null)
 const unregisterScrollPreserver = inject<((id: number) => void) | null>('unregisterScrollPreserver', null)
+
+// Spell input state
+const showSpellInput = ref(false)
+const spellInstruction = ref('')
+const spellInputRef = ref<HTMLInputElement | null>(null)
 
 // Dry run state for cost estimation
 const dryRunResult = ref<DryRunResult | null>(null)
@@ -186,6 +193,38 @@ const handleFormat = async () => {
   } catch {
     // Format failed — silently ignore
   }
+}
+
+// Spell input handlers
+const toggleSpellInput = () => {
+  if (!userStore.isPro) return
+  showSpellInput.value = !showSpellInput.value
+  spellInstruction.value = ''
+  if (showSpellInput.value) {
+    nextTick(() => spellInputRef.value?.focus())
+  }
+}
+
+const submitSpell = () => {
+  const instruction = spellInstruction.value.trim()
+  if (!instruction) return
+  const view = editorView.value
+  const selectedText = view ? view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to) : ''
+  emit('cast-spell', instruction, selectedText)
+  showSpellInput.value = false
+  spellInstruction.value = ''
+}
+
+const dismissSpellInput = () => {
+  showSpellInput.value = false
+  spellInstruction.value = ''
+}
+
+const handleSpellClickOutside = (e: MouseEvent) => {
+  if (!showSpellInput.value) return
+  const target = e.target as HTMLElement
+  if (target.closest('.spell-input-wrapper') || target.closest('.wand-btn')) return
+  dismissSpellInput()
 }
 
 const formatButtonTooltip = computed(() => {
@@ -833,6 +872,9 @@ onMounted(() => {
 
   // Signal that editor is ready
   emit('ready')
+
+  // Click-outside listener for spell input
+  document.addEventListener('mousedown', handleSpellClickOutside)
 })
 
 onUnmounted(() => {
@@ -840,6 +882,7 @@ onUnmounted(() => {
   editorView.value?.destroy()
   if (dryRunDebounceTimer) clearTimeout(dryRunDebounceTimer)
   if (validateTimer) clearTimeout(validateTimer)
+  document.removeEventListener('mousedown', handleSpellClickOutside)
 })
 
 // Accept the current suggestion by replacing or inserting a line
@@ -943,14 +986,44 @@ defineExpose({
       </svg>
     </button>
 
-    <!-- Wand button — hidden for free users, disabled for pro/vip (reserved for future use) -->
+    <!-- Spell input — inline text field to the left of the wand button -->
+    <div v-if="showSpellInput" class="spell-input-wrapper">
+      <input
+        ref="spellInputRef"
+        v-model="spellInstruction"
+        class="spell-input"
+        type="text"
+        placeholder="e.g. add a WHERE for date > 2024"
+        :disabled="isCastingSpell"
+        @keydown.enter.prevent="submitSpell"
+        @keydown.escape.prevent="dismissSpellInput"
+      />
+    </div>
+
+    <!-- Wand button — visible for all, disabled for non-pro -->
     <button
-      v-if="userStore.isPro"
-      v-tooltip="'Coming soon'"
+      v-tooltip="userStore.isPro ? (isCastingSpell ? 'Casting...' : 'Cast a spell') : 'Pro feature'"
       class="wand-btn"
-      disabled
+      :class="{ active: showSpellInput, casting: isCastingSpell }"
+      :disabled="!userStore.isPro || isCastingSpell"
+      @click.stop="toggleSpellInput"
     >
       <svg
+        v-if="isCastingSpell"
+        class="spin"
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+      </svg>
+      <svg
+        v-else
         width="12"
         height="12"
         viewBox="0 0 24 24"
@@ -1110,6 +1183,33 @@ defineExpose({
   opacity: 0.5;
 }
 
+/* Spell Input — inline field to the left of the wand button */
+.spell-input-wrapper {
+  position: absolute;
+  bottom: calc(var(--space-2) + 112px);
+  right: calc(var(--space-2) + 30px);
+  z-index: 2;
+}
+
+.spell-input {
+  width: 260px;
+  padding: 3px 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  background: var(--surface-primary);
+  border: var(--border-width-thin) solid var(--border-secondary);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.spell-input:focus {
+  border-color: var(--text-secondary);
+}
+
+.spell-input::placeholder {
+  color: var(--text-tertiary);
+}
+
 /* Wand Button — stacked above Explode */
 .wand-btn {
   position: absolute;
@@ -1121,11 +1221,33 @@ defineExpose({
   background: transparent;
   border: none;
   border-radius: var(--border-radius-sm);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   line-height: 1;
-  cursor: not-allowed;
+  cursor: pointer;
   z-index: 1;
-  opacity: 0.4;
+}
+
+.wand-btn:not(:disabled):hover {
+  color: var(--text-primary);
+}
+
+.wand-btn.active {
+  color: var(--text-primary);
+}
+
+.wand-btn:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wand-btn .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Format Button — stacked above Explain */

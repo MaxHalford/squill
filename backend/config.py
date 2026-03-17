@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     ]
 
     # VIP emails (always treated as VIP regardless of database value)
-    vip_emails: set[str] = {"maxhalford25@gmail.com"}
+    vip_emails: set[str] = {"maxhalford25@gmail.com", "max@carbonfact.com"}
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
