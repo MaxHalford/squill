@@ -50,7 +50,7 @@ const proFeatures: ProFeature[] = [
   {
     title: 'Cast a spell',
     description: 'Edit queries with natural language.',
-    longDescription: 'Click the wand button in the query editor, type a natural-language instruction like "add a WHERE for date > 2024" or "change the LEFT JOIN to INNER", and an LLM rewrites your query in-place. It understands your schema context and works across BigQuery, PostgreSQL, and DuckDB.',
+    longDescription: 'Click the wand button in the query editor, type a natural-language instruction like "take years after 2012" or "use an inner join", and an LLM rewrites your query in-place.',
     released: true
   },
   {

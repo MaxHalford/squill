@@ -78,7 +78,44 @@ const unregisterScrollPreserver = inject<((id: number) => void) | null>('unregis
 // Spell input state
 const showSpellInput = ref(false)
 const spellInstruction = ref('')
-const spellInputRef = ref<HTMLInputElement | null>(null)
+const spellInputRef = ref<HTMLTextAreaElement | null>(null)
+
+// Casting starfield animation
+const starFrames = ['.', '·', '+', '*', '✦', '*', '+', '·']
+interface ScatteredStar {
+  x: number
+  y: number
+  offset: number
+  speed: number
+}
+const castingStars = ref<ScatteredStar[]>([])
+const castingTick = ref(0)
+let castingTimer: ReturnType<typeof setInterval> | null = null
+
+function seedCastingStars() {
+  castingStars.value = Array.from({ length: 12 + Math.floor(Math.random() * 6) }, () => ({
+    x: 5 + Math.random() * 90,
+    y: 5 + Math.random() * 90,
+    offset: Math.floor(Math.random() * 8),
+    speed: 0.3 + Math.random() * 0.4,
+  }))
+}
+
+function starDisplay(star: ScatteredStar): string {
+  const tick = star.offset + Math.floor(castingTick.value * 0.1 / star.speed)
+  return starFrames[tick % starFrames.length]
+}
+
+watch(() => props.isCastingSpell, (casting) => {
+  if (casting) {
+    seedCastingStars()
+    castingTick.value = 0
+    castingTimer = setInterval(() => { castingTick.value++ }, 100)
+  } else {
+    if (castingTimer) { clearInterval(castingTimer); castingTimer = null }
+    castingStars.value = []
+  }
+})
 
 // Dry run state for cost estimation
 const dryRunResult = ref<DryRunResult | null>(null)
@@ -882,6 +919,7 @@ onUnmounted(() => {
   editorView.value?.destroy()
   if (dryRunDebounceTimer) clearTimeout(dryRunDebounceTimer)
   if (validateTimer) clearTimeout(validateTimer)
+  if (castingTimer) clearInterval(castingTimer)
   document.removeEventListener('mousedown', handleSpellClickOutside)
 })
 
@@ -955,6 +993,17 @@ defineExpose({
       class="query-editor"
     />
 
+    <!-- Casting overlay — starfield over editor while spell is being cast -->
+    <div v-if="isCastingSpell" class="casting-overlay">
+      <span
+        v-for="(star, i) in castingStars"
+        :key="i"
+        class="casting-star"
+        :style="{ left: star.x + '%', top: star.y + '%' }"
+      >{{ starDisplay(star) }}</span>
+      <span class="casting-label">Casting...</span>
+    </div>
+
     <!-- SQLGlot error tooltip — side-anchored -->
     <div
       v-if="hoveredError"
@@ -986,16 +1035,16 @@ defineExpose({
       </svg>
     </button>
 
-    <!-- Spell input — inline text field to the left of the wand button -->
+    <!-- Spell input — textarea centered above the wand button -->
     <div v-if="showSpellInput" class="spell-input-wrapper">
-      <input
+      <textarea
         ref="spellInputRef"
         v-model="spellInstruction"
         class="spell-input"
-        type="text"
         placeholder="e.g. add a WHERE for date > 2024"
+        rows="3"
         :disabled="isCastingSpell"
-        @keydown.enter.prevent="submitSpell"
+        @keydown.enter.exact.prevent="submitSpell"
         @keydown.escape.prevent="dismissSpellInput"
       />
     </div>
@@ -1183,23 +1232,25 @@ defineExpose({
   opacity: 0.5;
 }
 
-/* Spell Input — inline field to the left of the wand button */
+/* Spell Input — textarea centered above the wand button */
 .spell-input-wrapper {
   position: absolute;
-  bottom: calc(var(--space-2) + 112px);
-  right: calc(var(--space-2) + 30px);
-  z-index: 2;
+  bottom: calc(var(--space-2) + 30px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
 }
 
 .spell-input {
-  width: 260px;
-  padding: 3px 8px;
+  width: 360px;
+  padding: 8px 10px;
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body-sm);
   background: var(--surface-primary);
-  border: var(--border-width-thin) solid var(--border-secondary);
+  border: 2px solid var(--border-secondary);
   color: var(--text-primary);
   outline: none;
+  resize: none;
 }
 
 .spell-input:focus {
@@ -1208,6 +1259,35 @@ defineExpose({
 
 .spell-input::placeholder {
   color: var(--text-tertiary);
+}
+
+/* Casting overlay — starfield over the editor */
+.casting-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-primary);
+  opacity: 0.85;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.casting-star {
+  position: absolute;
+  font-family: var(--font-family-mono);
+  font-size: 14px;
+  color: var(--text-tertiary);
+  user-select: none;
+  pointer-events: none;
+}
+
+.casting-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
 }
 
 /* Wand Button — stacked above Explode */
