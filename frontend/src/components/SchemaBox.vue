@@ -164,8 +164,19 @@ const dragStartWidth = ref(0)
 // Column 1: Connections (DuckDB, BigQuery, PostgreSQL, Snowflake)
 const projects = computed(() => {
   const items: { id: string; name: string; type: string; connectionId?: string }[] = [
-    { id: 'duckdb', name: DATABASE_INFO.duckdb.name, type: 'duckdb' }
+    { id: 'duckdb', name: `${DATABASE_INFO.duckdb.name} (local)`, type: 'duckdb' }
   ]
+
+  // Show imported DuckDB files as separate entries
+  const duckdbConnections = connectionsStore.getConnectionsByType('duckdb')
+  duckdbConnections.filter(c => c.database).forEach(conn => {
+    items.push({
+      id: conn.id,
+      name: conn.name,
+      type: 'duckdb',
+      connectionId: conn.id,
+    })
+  })
 
   // Show one entry per BigQuery connection
   const bigqueryConnections = connectionsStore.getConnectionsByType('bigquery')
@@ -233,19 +244,41 @@ const selectedProjectType = computed(() => {
   return project?.type || 'bigquery'
 })
 
+// Check if the selected project is an imported (attached) DuckDB file
+const isImportedDuckDB = computed(() => {
+  if (!selectedProject.value) return false
+  return selectedProject.value.startsWith('duckdb-') && selectedProject.value !== 'duckdb'
+})
+
+// Get the alias for an imported DuckDB connection
+const importedDuckDBAlias = computed(() => {
+  if (!isImportedDuckDB.value) return null
+  return selectedProject.value!.replace(/^duckdb-/, '')
+})
+
 // Column 2: Datasets (BigQuery), Databases (Snowflake), or Tables (DuckDB/PostgreSQL)
 const column2Items = computed((): BrowserItem[] => {
   if (!selectedProject.value) return []
 
-  if (selectedProject.value === 'duckdb') {
-    // Show DuckDB tables directly (filter out internal analytics tables)
-    return Object.keys(duckdbStore.tables)
-      .filter(tableName => !tableName.startsWith('_analytics_'))
-      .map(tableName => ({
-        id: tableName,
-        name: tableName,
+  if (isImportedDuckDB.value && importedDuckDBAlias.value) {
+    // Show tables from attached DuckDB database
+    const dbInfo = duckdbStore.attachedDatabases[importedDuckDBAlias.value]
+    if (!dbInfo) return []
+    return Object.entries(dbInfo.tables).map(([tableName, meta]) => ({
+      id: tableName,
+      name: tableName,
+      type: 'table',
+      rowCount: meta.rowCount,
+    }))
+  } else if (selectedProject.value === 'duckdb') {
+    // Show DuckDB tables directly (filter out internal tables and query result views)
+    return Object.entries(duckdbStore.tables)
+      .filter(([name, meta]) => !name.startsWith('_analytics_') && !meta.isView)
+      .map(([name, meta]) => ({
+        id: name,
+        name,
         type: 'table',
-        rowCount: duckdbStore.tables[tableName].rowCount
+        rowCount: meta.rowCount,
       }))
   } else if (selectedProjectType.value === 'postgres') {
     // Show PostgreSQL tables directly (grouped by schema)
@@ -294,7 +327,7 @@ const column2Items = computed((): BrowserItem[] => {
 
 // Column 3: Tables (for BigQuery) or Schemas (for Snowflake)
 const column3Items = computed(() => {
-  if (selectedProject.value === 'duckdb') return []
+  if (selectedProject.value === 'duckdb' || isImportedDuckDB.value) return []
 
   if (selectedProjectType.value === 'snowflake') {
     // Show Snowflake schemas when database is selected
@@ -963,7 +996,34 @@ const loadSnowflakeTablesForSchema = async (connectionId: string, databaseName: 
 
 // Load table schema and metadata
 const loadSchema = async (tableId: string, key: string) => {
-  if (selectedProject.value === 'duckdb') {
+  if (isImportedDuckDB.value && importedDuckDBAlias.value) {
+    // Imported (attached) DuckDB: query schema from attached database
+    const alias = importedDuckDBAlias.value
+    const dbInfo = duckdbStore.attachedDatabases[alias]
+    const tableMeta = dbInfo?.tables[tableId]
+
+    loadingSchema.value[tableId] = true
+    try {
+      const qualifiedName = `"${alias}"."main"."${tableId}"`
+      const result = await duckdbStore.runQuery(`DESCRIBE ${qualifiedName}`)
+      schemas.value[key] = result.rows.map(row => ({
+        name: String(row.column_name),
+        type: String(row.column_type),
+      }))
+    } catch (err) {
+      // Fall back to column names from metadata
+      if (tableMeta?.columns) {
+        schemas.value[key] = tableMeta.columns.map(col => ({ name: col, type: 'VARCHAR' }))
+      }
+    } finally {
+      loadingSchema.value[tableId] = false
+    }
+    tableMetadata.value[key] = {
+      rowCount: tableMeta?.rowCount ?? null,
+      sizeBytes: null,
+      engine: 'duckdb',
+    }
+  } else if (selectedProject.value === 'duckdb') {
     // DuckDB schema + metadata
     const table = duckdbStore.tables[tableId]
     if (table && table.columns) {
@@ -1112,7 +1172,9 @@ const loadSchema = async (tableId: string, key: string) => {
 const insertTableName = (item: BrowserItem) => {
   let tableName = ''
 
-  if (selectedProject.value === 'duckdb') {
+  if (isImportedDuckDB.value && importedDuckDBAlias.value) {
+    tableName = `"${importedDuckDBAlias.value}"."main"."${item.name}"`
+  } else if (selectedProject.value === 'duckdb') {
     tableName = item.name
   } else if (selectedProjectType.value === 'postgres') {
     // PostgreSQL: use schema.table or just table if public schema
@@ -1147,7 +1209,19 @@ const queryTable = (item: BrowserItem) => {
   let fullTableName = ''
   let connectionId: string | undefined
 
-  if (selectedProject.value === 'duckdb') {
+  if (isImportedDuckDB.value && importedDuckDBAlias.value) {
+    engine = 'duckdb'
+    const alias = importedDuckDBAlias.value
+    fullTableName = `"${alias}"."main"."${item.name}"`
+    connectionId = selectedProject.value!
+    emit('query-table', {
+      tableName: fullTableName,
+      boxName: `${alias}.${item.name}`,
+      engine,
+      connectionId,
+    })
+    return
+  } else if (selectedProject.value === 'duckdb') {
     engine = 'duckdb'
     fullTableName = item.name
   } else if (selectedProjectType.value === 'postgres') {
@@ -2076,7 +2150,6 @@ defineExpose({
 
 .item.selected {
   background: var(--table-row-hover-bg);
-  font-weight: 500;
 }
 
 .item-name {

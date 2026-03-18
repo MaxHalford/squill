@@ -115,6 +115,9 @@ export function getConnectionDisplayName(connection: Connection | null | undefin
   const typeName = getConnectionTypeName(connection.type)
 
   if (connection.type === 'duckdb') {
+    if (connection.database) {
+      return `${typeName} · ${connection.name}`
+    }
     return `${typeName} (local)`
   }
 

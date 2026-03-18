@@ -69,6 +69,7 @@ const emit = defineEmits<{
   'box-created': [boxId: number]
   'connection-added': [type: 'bigquery' | 'clickhouse' | 'mysql' | 'postgres' | 'snowflake', connectionId: string]
   'show-shortcuts': []
+  'import-files': [files: File[]]
 }>()
 
 // PostgreSQL modal state
@@ -199,6 +200,19 @@ const boxTypes: Array<{ id: BoxType; name: string; disabled?: boolean; title?: s
   { id: 'note', name: 'Sticky note' },
   { id: 'history', name: 'Query history' },
 ]
+
+// Import file input
+const importFileInput = ref<HTMLInputElement | null>(null)
+const handleImportClick = () => {
+  importFileInput.value?.click()
+}
+const handleImportFiles = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files.length > 0) {
+    emit('import-files', Array.from(input.files))
+    input.value = '' // Reset so same file can be re-selected
+  }
+}
 
 // Submenu state
 const addDatabaseMenuOpen = ref(false)
@@ -737,6 +751,7 @@ onUnmounted(() => {
                     </svg>
                   </button>
                   <button
+                    v-if="connection.id !== 'duckdb-local'"
                     v-tooltip="'Delete'"
                     class="delete-btn"
                     @click="handleDeleteConnection(connection.id, $event)"
@@ -953,6 +968,24 @@ onUnmounted(() => {
         </Transition>
       </div>
 
+      <!-- Import -->
+      <div class="menu-item">
+        <button
+          class="menu-button"
+          @click="handleImportClick"
+        >
+          <span class="menu-text">Import</span>
+        </button>
+        <input
+          ref="importFileInput"
+          type="file"
+          accept=".csv,.duckdb"
+          multiple
+          style="display: none"
+          @change="handleImportFiles"
+        />
+      </div>
+
       <!-- Add Box Menu -->
       <div
         class="menu-item"
@@ -962,7 +995,7 @@ onUnmounted(() => {
           class="menu-button"
           @click.stop="toggleDropdown('box')"
         >
-          <span class="menu-text">Add</span>
+          <span class="menu-text">New</span>
           <span class="menu-caret">
             <svg
               width="10"

@@ -13,7 +13,7 @@ interface Point {
 
 const emit = defineEmits<{
   'canvas-click': []
-  'csv-drop': [payload: { csvFiles: File[]; nonCsvFiles: File[]; position: Point }]
+  'csv-drop': [payload: { csvFiles: File[]; duckdbFiles?: File[]; nonCsvFiles: File[]; position: Point }]
   'cursor-move': [x: number, y: number]
   'cursor-leave': []
 }>()
@@ -482,13 +482,20 @@ const handleDrop = (e: DragEvent) => {
   const files = e.dataTransfer?.files
   if (!files?.length) return
 
-  const allFiles = Array.from(files)
-  const csvFiles = allFiles.filter(f => f.name.toLowerCase().endsWith('.csv') || f.type === 'text/csv')
-  const nonCsvFiles = allFiles.filter(f => !f.name.toLowerCase().endsWith('.csv') && f.type !== 'text/csv')
+  const csvFiles: File[] = []
+  const duckdbFiles: File[] = []
+  const nonSupportedFiles: File[] = []
+  for (const f of Array.from(files)) {
+    const lower = f.name.toLowerCase()
+    if (lower.endsWith('.csv') || f.type === 'text/csv') csvFiles.push(f)
+    else if (lower.endsWith('.duckdb')) duckdbFiles.push(f)
+    else nonSupportedFiles.push(f)
+  }
 
   emit('csv-drop', {
     csvFiles,
-    nonCsvFiles,
+    duckdbFiles,
+    nonCsvFiles: nonSupportedFiles,
     position: screenToCanvas(e.clientX, e.clientY)
   })
 }

@@ -4,7 +4,7 @@ import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
 import { DataType as ArrowDataType } from 'apache-arrow'
 import { loadCsvWithDuckDB } from '../services/csvHandler'
-import { sanitizeTableName, escapeSqlString } from '../utils/sqlSanitize'
+import { sanitizeTableName, sanitizeFileName, escapeSqlString } from '../utils/sqlSanitize'
 import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
 import { buildDuckDBSchema, type SchemaNamespace } from '../utils/schemaBuilder'
 import type { SchemaItem } from '../utils/textSimilarity'
@@ -19,6 +19,9 @@ interface TableMetadata {
   // Native column types from the source database (Postgres, BigQuery, Snowflake).
   // When present, these are served back to the UI instead of DuckDB/Arrow types.
   nativeColumnTypes?: Record<string, string>
+  // True for DuckDB query results stored as views (not real tables).
+  // These should not appear in the schema browser.
+  isView?: boolean
 }
 
 /** Row in the _schemas DuckDB table */
@@ -118,6 +121,12 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // Track available tables (table name -> metadata)
   const tables = ref<Record<string, TableMetadata>>({})
 
+  // Track attached (imported) DuckDB databases: alias → { opfsPath, tables }
+  const attachedDatabases = ref<Record<string, {
+    opfsPath: string
+    tables: Record<string, { rowCount: number, columns: string[] }>
+  }>>({})
+
   // Reactive trigger for table schema changes
   const schemaVersion = ref(0)
 
@@ -208,19 +217,19 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     if (!conn.value) return
 
     try {
-      // Single query: get row counts for all user tables
+      // Single query: get row counts for local tables only (exclude attached databases)
       const countResult = await conn.value.query(`
         SELECT table_name, estimated_size as row_count
         FROM duckdb_tables()
-        WHERE schema_name = 'main'
+        WHERE schema_name = 'main' AND database_name = current_database()
       `)
       const countRows = countResult.toArray()
 
-      // Single query: get all columns grouped by table
+      // Single query: get all columns for local tables only
       const colResult = await conn.value.query(`
         SELECT table_name, column_name
         FROM information_schema.columns
-        WHERE table_schema = 'main'
+        WHERE table_schema = 'main' AND table_catalog = current_database()
         ORDER BY table_name, ordinal_position
       `)
       const colRows = colResult.toArray()
@@ -247,6 +256,52 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }
     } catch (err) {
       console.warn('Failed to load tables metadata:', err)
+    }
+  }
+
+  // Load metadata (tables, row counts, columns) for an attached DuckDB database.
+  // Returns table names for caller convenience.
+  const loadAttachedTablesMetadata = async (alias: string, opfsPath: string): Promise<string[]> => {
+    if (!conn.value) return []
+
+    try {
+      const escapedAlias = alias.replace(/'/g, "''")
+
+      // Get tables and row counts
+      const countResult = await conn.value.query(
+        `SELECT table_name, estimated_size as row_count FROM duckdb_tables() WHERE database_name = '${escapedAlias}'`
+      )
+      const countRows = countResult.toArray()
+
+      // Get columns
+      const colResult = await conn.value.query(
+        `SELECT table_name, column_name FROM information_schema.columns WHERE table_catalog = '${escapedAlias}' ORDER BY table_name, ordinal_position`
+      )
+      const colRows = colResult.toArray()
+
+      // Group columns by table
+      const columnsByTable = new Map<string, string[]>()
+      for (const row of colRows) {
+        const tbl = row.table_name as string
+        if (!columnsByTable.has(tbl)) columnsByTable.set(tbl, [])
+        columnsByTable.get(tbl)!.push(row.column_name as string)
+      }
+
+      const tablesMap: Record<string, { rowCount: number, columns: string[] }> = {}
+      for (const row of countRows) {
+        const tableName = row.table_name as string
+        tablesMap[tableName] = {
+          rowCount: Number(row.row_count || 0),
+          columns: columnsByTable.get(tableName) || [],
+        }
+      }
+
+      attachedDatabases.value[alias] = { opfsPath, tables: tablesMap }
+      schemaVersion.value++
+      return Object.keys(tablesMap)
+    } catch (err) {
+      console.warn(`Failed to load metadata for attached database ${alias}:`, err)
+      return []
     }
   }
 
@@ -489,12 +544,14 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     const startTime = performance.now()
 
     try {
-      // Use CREATE OR REPLACE TABLE AS to store results directly in DuckDB
-      await conn.value!.query(`CREATE OR REPLACE TABLE ${tableName} AS (${query})`)
+      // Use a VIEW instead of a TABLE — the data is already in DuckDB,
+      // so there's no need to duplicate it. ResultsTable can paginate views
+      // via queryTablePage() the same way it does tables.
+      await conn.value!.query(`CREATE OR REPLACE VIEW ${tableName} AS (${query})`)
 
       const endTime = performance.now()
 
-      // Get row count without transferring data
+      // Get row count via the view (window COUNT avoids a separate query)
       const countResult = await conn.value!.query(`SELECT COUNT(*) as count FROM ${tableName}`)
       const countData = countResult.toArray()
       const rowCount = Number(countData[0]?.count || 0)
@@ -504,18 +561,17 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       const columns = schemaResult.schema.fields.map(f => f.name)
       const columnTypes = await describeTableTypes(tableName)
 
-      // Update metadata (cache columnTypes so queryTablePage skips DESCRIBE)
+      // Update metadata (cache columnTypes so queryTablePage skips DESCRIBE).
+      // Mark as view so the schema browser can filter it out.
       tables.value[tableName] = {
         rowCount,
         columns,
         lastUpdated: Date.now(),
         originalBoxName: boxName,
         boxId,
-        nativeColumnTypes: columnTypes
+        nativeColumnTypes: columnTypes,
+        isView: true,
       }
-
-      // Trigger reactive updates for dependent components
-      schemaVersion.value++
 
       // Return empty rows - ResultsTable will fetch via queryTablePage()
       return {
@@ -711,8 +767,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         return
       }
 
-      // Use ALTER TABLE to rename
-      await conn.value!.query(`ALTER TABLE ${oldTableName} RENAME TO ${newTableName}`)
+      // Use ALTER TABLE/VIEW to rename
+      const isView = tables.value[oldTableName]?.isView
+      await conn.value!.query(`ALTER ${isView ? 'VIEW' : 'TABLE'} ${oldTableName} RENAME TO ${newTableName}`)
 
       // Update metadata
       tables.value[newTableName] = {
@@ -767,6 +824,65 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     } catch (err: unknown) {
       console.error(`Failed to load CSV ${file.name}:`, err)
       throw new Error(`Failed to load CSV: ${getErrorMessage(err)}`, { cause: err })
+    }
+  }
+
+  // Attach an imported .duckdb file via OPFS
+  const attachDuckDBFile = async (file: File): Promise<{ alias: string, tables: string[] }> => {
+    await ensureInit()
+
+    // Sanitize filename for OPFS and SQL alias
+    const safeName = sanitizeFileName(file.name)
+    const alias = safeName.replace(/\.duckdb$/i, '').toLowerCase().replace(/[^a-z0-9_]/g, '_')
+
+    // Read file once, persist to OPFS, and register with DuckDB's VFS
+    const buffer = new Uint8Array(await file.arrayBuffer())
+
+    const root = await navigator.storage.getDirectory()
+    const fileHandle = await root.getFileHandle(safeName, { create: true })
+    const writable = await fileHandle.createWritable()
+    await writable.write(buffer)
+    await writable.close()
+
+    // Detach if already attached (re-import)
+    try {
+      await conn.value!.query(`DETACH "${alias.replace(/"/g, '""')}"`)
+    } catch {
+      // Not attached — ignore
+    }
+
+    await db.value!.registerFileBuffer(safeName, buffer)
+    await conn.value!.query(`ATTACH '${safeName.replace(/'/g, "''")}' AS "${alias.replace(/"/g, '""')}" (READ_ONLY)`)
+
+    // Load metadata and get table names in one pass
+    const tableNames = await loadAttachedTablesMetadata(alias, safeName)
+
+    console.log(`Attached DuckDB file: ${safeName} as "${alias}" with ${tableNames.length} tables`)
+    return { alias, tables: tableNames }
+  }
+
+  // Re-attach a previously imported DuckDB file (call on startup for persisted connections)
+  // opfsFileName is the sanitized filename stored in the connection's database field
+  const reattachDuckDBFile = async (opfsFileName: string, alias: string): Promise<boolean> => {
+    await ensureInit()
+    try {
+      // Read file from OPFS and register with DuckDB's VFS
+      const root = await navigator.storage.getDirectory()
+      const fileHandle = await root.getFileHandle(opfsFileName)
+      const file = await fileHandle.getFile()
+      const buffer = new Uint8Array(await file.arrayBuffer())
+      await db.value!.registerFileBuffer(opfsFileName, buffer)
+
+      await conn.value!.query(`ATTACH '${opfsFileName.replace(/'/g, "''")}' AS "${alias.replace(/"/g, '""')}" (READ_ONLY)`)
+      console.log(`Re-attached DuckDB: ${alias}`)
+
+      // Load metadata so schema browser can show tables
+      await loadAttachedTablesMetadata(alias, opfsFileName)
+
+      return true
+    } catch (err: unknown) {
+      console.warn(`Failed to re-attach DuckDB ${alias}:`, err)
+      return false
     }
   }
 
@@ -1112,6 +1228,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     isInitializing,
     initError,
     tables,
+    attachedDatabases,
     schemaVersion,
     getTableNames,
     getFreshTableNames,
@@ -1133,6 +1250,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     loadTablesMetadata,
     renameTable,
     loadCsvFile,
+    attachDuckDBFile,
+    reattachDuckDBFile,
+    loadAttachedTablesMetadata,
     exportTable,
     replaceConnectionSchemas,
     replaceConnectionCatalogSchemas,

@@ -36,6 +36,7 @@ import { useSqlGlotStore } from '../stores/sqlglot'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
+import { sanitizeFileName } from '../utils/sqlSanitize'
 import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
 import { changelog, type ChangelogEntry } from '../data/changelog'
 import { loadItem, saveItem } from '../utils/storage'
@@ -439,15 +440,21 @@ const handleRestoreQuery = async (data: { query: string; connectionId: string; c
   }, 300)
 }
 
-const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
+const handleCsvDrop = async ({ csvFiles, duckdbFiles, nonCsvFiles, position }: {
   csvFiles: File[],
+  duckdbFiles?: File[],
   nonCsvFiles: File[],
   position: { x: number, y: number }
 }) => {
-  // Show error for non-CSV files
+  // Handle DuckDB files
+  if (duckdbFiles && duckdbFiles.length > 0) {
+    await handleImportDuckDBFiles(duckdbFiles)
+  }
+
+  // Show error for unsupported files
   if (nonCsvFiles.length > 0) {
     const fileNames = nonCsvFiles.map(f => f.name).join(', ')
-    alert(`Only CSV files are supported. Skipped: ${fileNames}`)
+    alert(`Only CSV and DuckDB files are supported. Skipped: ${fileNames}`)
   }
 
   // If no CSV files, exit early
@@ -527,10 +534,70 @@ const handleCsvDrop = async ({ csvFiles, nonCsvFiles, position }: {
   uploadCurrentIndex.value = 0
 }
 
+// Import DuckDB files: attach, register connection, create query box
+const handleImportDuckDBFiles = async (duckdbFiles: File[]) => {
+  for (const file of duckdbFiles) {
+    try {
+      const { alias, tables } = await duckdbStore.attachDuckDBFile(file)
+
+      // Register as a new connection
+      const connectionId = `duckdb-${alias}`
+      connectionsStore.upsertConnection({
+        id: connectionId,
+        type: 'duckdb',
+        name: file.name.replace(/\.duckdb$/i, ''),
+        database: sanitizeFileName(file.name),
+        createdAt: Date.now(),
+      })
+
+      // Activate the new connection
+      connectionsStore.setActiveConnection(connectionId)
+
+      // Create a query box for the first table (like CSV import)
+      if (tables.length > 0) {
+        const firstTable = tables[0]
+        const tableName = `"${alias}"."main"."${firstTable}"`
+        const position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
+        const boxId = canvasStore.addBox('sql', position, 'duckdb', connectionId)
+        canvasStore.updateBoxName(boxId, `${alias}.${firstTable}`)
+        canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${tableName}`)
+        selectBox(boxId, { shouldPan: true })
+
+        await nextTick()
+        setTimeout(async () => {
+          await executeBoxQuery(boxId)
+        }, 100)
+      }
+
+      console.log(`Imported DuckDB: ${alias} with tables: ${tables.join(', ')}`)
+    } catch (err: unknown) {
+      console.error(`Failed to import DuckDB file ${file.name}:`, err)
+      alert(`Failed to import ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+}
+
+// Handle import from MenuBar: routes CSV and DuckDB files to their handlers
+const handleImportFiles = async (files: File[]) => {
+  const csvFiles = files.filter(f => f.name.toLowerCase().endsWith('.csv'))
+  const duckdbFiles = files.filter(f => f.name.toLowerCase().endsWith('.duckdb'))
+
+  if (csvFiles.length > 0) {
+    await duckdbStore.initialize()
+    const position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
+    await handleCsvDrop({ csvFiles, nonCsvFiles: [], position })
+    connectionsStore.addDuckDBConnection()
+  }
+
+  if (duckdbFiles.length > 0) {
+    await handleImportDuckDBFiles(duckdbFiles)
+  }
+}
+
 const handleQueryTableFromSchema = async (data: {
   tableName: string,
   boxName?: string,
-  engine: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake',
+  engine: 'bigquery' | 'clickhouse' | 'duckdb' | 'mysql' | 'postgres' | 'snowflake',
   connectionId?: string
 }) => {
   try {
@@ -1142,6 +1209,14 @@ onMounted(async () => {
   // Ensure DuckDB local connection always exists in the selector
   connectionsStore.addDuckDBConnection()
 
+  // Re-attach any imported DuckDB files from previous sessions
+  for (const conn of connectionsStore.connections) {
+    if (conn.type === 'duckdb' && conn.database) {
+      const alias = conn.id.replace(/^duckdb-/, '')
+      duckdbStore.reattachDuckDBFile(conn.database, alias).catch(() => {})
+    }
+  }
+
   // Initialize SQLGlot (Pyodide WASM) — non-blocking, runs in background
   sqlglotStore.initialize().catch(err => {
     console.warn('SQLGlot initialization failed:', err)
@@ -1205,6 +1280,7 @@ onUnmounted(() => {
       @box-created="handleBoxCreated"
       @connection-added="handleConnectionAdded"
       @show-shortcuts="handleShowShortcuts"
+      @import-files="handleImportFiles"
     />
 
     <!-- Keyboard Shortcuts Modal -->
