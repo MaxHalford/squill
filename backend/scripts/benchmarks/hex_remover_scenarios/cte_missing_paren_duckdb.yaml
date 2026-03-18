@@ -1,0 +1,48 @@
+input:
+  query: |
+    WITH characters AS
+        SELECT * FROM (
+            VALUES
+                ('Eleven', 'Millie Bobby Brown', 'Main', 1),
+                ('Mike Wheeler', 'Finn Wolfhard', 'Main', 1),
+                ('Dustin Henderson', 'Gaten Matarazzo', 'Main', 1),
+                ('Lucas Sinclair', 'Caleb McLaughlin', 'Main', 1),
+                ('Will Byers', 'Noah Schnapp', 'Main', 1),
+                ('Joyce Byers', 'Winona Ryder', 'Main', 1),
+                ('Jim Hopper', 'David Harbour', 'Main', 1),
+                ('Nancy Wheeler', 'Natalia Dyer', 'Main', 1),
+                ('Jonathan Byers', 'Charlie Heaton', 'Main', 1),
+                ('Steve Harrington', 'Joe Keery', 'Main', 1),
+                ('Max Mayfield', 'Sadie Sink', 'Main', 2),
+                ('Robin Buckley', 'Maya Hawke', 'Main', 3),
+                ('Eddie Munson', 'Joseph Quinn', 'Main', 4)
+        ) AS characters(character_name, actor_name, role_type, first_appearance_season)
+    )
+
+    SELECT *
+    FROM characters
+  error_message: 'Parser Error: syntax error at or near "SELECT"'
+  database_dialect: "duckdb"
+expected:
+  query: |
+    WITH characters AS (
+        SELECT * FROM (
+            VALUES
+                ('Eleven', 'Millie Bobby Brown', 'Main', 1),
+                ('Mike Wheeler', 'Finn Wolfhard', 'Main', 1),
+                ('Dustin Henderson', 'Gaten Matarazzo', 'Main', 1),
+                ('Lucas Sinclair', 'Caleb McLaughlin', 'Main', 1),
+                ('Will Byers', 'Noah Schnapp', 'Main', 1),
+                ('Joyce Byers', 'Winona Ryder', 'Main', 1),
+                ('Jim Hopper', 'David Harbour', 'Main', 1),
+                ('Nancy Wheeler', 'Natalia Dyer', 'Main', 1),
+                ('Jonathan Byers', 'Charlie Heaton', 'Main', 1),
+                ('Steve Harrington', 'Joe Keery', 'Main', 1),
+                ('Max Mayfield', 'Sadie Sink', 'Main', 2),
+                ('Robin Buckley', 'Maya Hawke', 'Main', 3),
+                ('Eddie Munson', 'Joseph Quinn', 'Main', 4)
+        ) AS characters(character_name, actor_name, role_type, first_appearance_season)
+    )
+
+    SELECT *
+    FROM characters

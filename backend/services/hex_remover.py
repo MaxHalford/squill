@@ -65,7 +65,7 @@ class FixError(Exception):
 # OpenAI client (lazy-initialised from OPENAI_API_KEY env var)
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-4.1"
 
 _client: openai.OpenAI | None = None
 

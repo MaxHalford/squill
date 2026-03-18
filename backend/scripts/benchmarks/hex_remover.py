@@ -18,8 +18,10 @@ import sqlglot
 from scripts.benchmarks.common import build_arg_parser, load_scenarios, run_benchmark
 from services.hex_remover import (
     DEFAULT_MODEL,
+    STATIC_FIXER_PROMPT,
     FixError,
     FixResponse,
+    _build_user_prompt,
     suggest_fix_core,
 )
 
@@ -59,10 +61,10 @@ def normalize_sql(query: str, dialect: str) -> str:
     )[0]
 
 
-def check_expectations(
+def _check_single_expected(
     query: str, result: FixResponse, expected: dict, dialect: str
 ) -> list[str]:
-    """Compare the corrected query against the expected query using SQLGlot."""
+    """Compare the corrected query against a single expected outcome."""
     failures: list[str] = []
 
     if expected.get("no_relevant_fix"):
@@ -90,6 +92,25 @@ def check_expectations(
         failures.append(f"  got:\n{corrected_norm}")
 
     return failures
+
+
+def check_expectations(
+    query: str, result: FixResponse, expected: dict | list[dict], dialect: str
+) -> list[str]:
+    """Compare the corrected query against one or more expected outcomes.
+
+    When *expected* is a list, the check passes if ANY alternative matches.
+    """
+    alternatives = expected if isinstance(expected, list) else [expected]
+
+    last_failures: list[str] = []
+    for alt in alternatives:
+        failures = _check_single_expected(query, result, alt, dialect)
+        if not failures:
+            return []
+        last_failures = failures
+
+    return last_failures
 
 
 # ---------------------------------------------------------------------------
@@ -148,10 +169,42 @@ def run_scenario(
 # ---------------------------------------------------------------------------
 
 
+def debug_scenarios(scenarios: list[dict]) -> None:
+    """Print the prompts that would be sent for each scenario, without calling the API."""
+    from scripts.benchmarks.common import BOLD, DIM, RESET
+
+    for scenario in scenarios:
+        name = scenario["name"]
+        inp = scenario["input"]
+
+        print(f"\n{BOLD}=== {name} ==={RESET}\n")
+
+        print(f"{DIM}[system]{RESET}")
+        print(STATIC_FIXER_PROMPT)
+
+        print(f"\n{DIM}[system]{RESET}")
+        print(f"SQL dialect: {inp['database_dialect'].title()}")
+
+        print(f"\n{DIM}[user]{RESET}")
+        print(
+            _build_user_prompt(
+                inp["query"],
+                inp["error_message"],
+                inp.get("schema_context"),
+                inp.get("sample_queries"),
+            )
+        )
+
+
 def main() -> None:
     parser = build_arg_parser(
         description="Benchmark for the Hex remover (AI SQL fixer)",
         default_scenarios=DEFAULT_SCENARIOS,
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print the prompts that would be sent without running the benchmark",
     )
     args = parser.parse_args()
     args.retries = min(args.retries, 5)
@@ -160,6 +213,10 @@ def main() -> None:
         Path(args.scenarios),
         names=args.names or None,
     )
+
+    if args.debug:
+        debug_scenarios(scenarios)
+        return
 
     run_benchmark(
         title="Hex remover benchmark",
