@@ -886,25 +886,6 @@ defineExpose({ resetPagination, triggerReveal, refresh })
 <template>
   <section class="results-section">
     <div
-      v-if="error"
-      class="error-banner"
-      role="alert"
-    >
-      <div class="error-message">
-        {{ error }}
-      </div>
-      <div
-        class="fix-status-wrapper"
-        :class="{ 'has-content': isFetchingFix || noRelevantFix }"
-      >
-        <div class="fix-status-inner">
-          <span v-if="isFetchingFix">Getting fix suggestion...</span>
-          <span v-else-if="noRelevantFix">No relevant fix found</span>
-        </div>
-      </div>
-    </div>
-
-    <div
       ref="tableContainerRef"
       class="table-container"
       role="region"
@@ -912,7 +893,25 @@ defineExpose({ resetPagination, triggerReveal, refresh })
       tabindex="0"
     >
       <div
-        v-if="isRunning"
+        v-if="error"
+        class="error-centered"
+        role="alert"
+      >
+        <div class="error-message">
+          {{ error }}
+        </div>
+        <div
+          class="fix-status-wrapper"
+          :class="{ 'has-content': isFetchingFix || noRelevantFix }"
+        >
+          <div class="fix-status-inner">
+            <span v-if="isFetchingFix">Getting fix suggestion...</span>
+            <span v-else-if="noRelevantFix">No relevant fix found</span>
+          </div>
+        </div>
+      </div>
+      <div
+        v-else-if="isRunning"
         class="idle-state running-starfield"
       >
         <template v-for="(item, i) in scatteredItems" :key="i">
@@ -1139,7 +1138,7 @@ defineExpose({ resetPagination, triggerReveal, refresh })
         Empty table
       </div>
       <div
-        v-else-if="!tableName && !error"
+        v-else-if="!tableName"
         class="idle-state"
       >
         <span class="idle-text"><button class="run-link" @click="emit('run-query')">Run</button> query to view results</span>
@@ -1318,14 +1317,15 @@ defineExpose({ resetPagination, triggerReveal, refresh })
   contain: layout style paint;
 }
 
-.error-banner {
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-error-bg);
-  border-block-end: var(--border-width-thin) solid var(--border-secondary);
-  font-size: var(--font-size-body-sm);
-  flex-shrink: 0;
+.error-centered {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--font-size-body-sm);
 }
 
 .error-message {
