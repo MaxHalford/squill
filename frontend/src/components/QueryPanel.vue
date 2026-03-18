@@ -511,6 +511,9 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
       error.value = errorMessage
       console.error('Query error:', err)
 
+      // Stop the timer immediately so the results pane doesn't keep counting
+      isRunning.value = false
+
       emit('query-error', errorMessage)
 
       // Request AI fix suggestion
