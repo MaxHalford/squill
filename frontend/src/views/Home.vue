@@ -350,6 +350,9 @@ const handleUpdateMultiPosition = (data: { id: number; x: number; y: number }) =
 }
 
 const handleDelete = (id: number) => {
+  // Clean up any DuckDB tables/views associated with this box
+  duckdbStore.dropTablesForBox(id)
+
   // Find the box element and add deleting class for animation
   const boxEl = document.querySelector(`[data-box-id="${id}"]`)
   if (boxEl) {

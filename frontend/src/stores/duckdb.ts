@@ -787,6 +787,23 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
+  // Drop all DuckDB tables/views associated with a box (called when box is deleted)
+  const dropTablesForBox = async (boxId: number) => {
+    if (!conn.value) return
+
+    const toDrop = Object.entries(tables.value).filter(([, meta]) => meta.boxId === boxId)
+    for (const [tableName, meta] of toDrop) {
+      try {
+        const kind = meta.isView ? 'VIEW' : 'TABLE'
+        await conn.value.query(`DROP ${kind} IF EXISTS ${tableName}`)
+        delete tables.value[tableName]
+      } catch (err) {
+        console.warn(`Failed to drop ${tableName}:`, err)
+      }
+    }
+    if (toDrop.length > 0) schemaVersion.value++
+  }
+
   // Load CSV file into DuckDB
   const loadCsvFile = async (
     file: File,
@@ -1247,6 +1264,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     sanitizeTableName,
     loadTablesMetadata,
     renameTable,
+    dropTablesForBox,
     loadCsvFile,
     attachDuckDBFile,
     reattachDuckDBFile,
