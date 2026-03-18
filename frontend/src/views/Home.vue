@@ -300,7 +300,7 @@ const handleCsvFileInput = async (event: Event) => {
   const center = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
 
   // Process CSV files using existing handler
-  await handleCsvDrop({
+  await handleFileDrop({
     csvFiles,
     nonCsvFiles: [],
     position: center
@@ -440,7 +440,7 @@ const handleRestoreQuery = async (data: { query: string; connectionId: string; c
   }, 300)
 }
 
-const handleCsvDrop = async ({ csvFiles, duckdbFiles, nonCsvFiles, position }: {
+const handleFileDrop = async ({ csvFiles, duckdbFiles, nonCsvFiles, position }: {
   csvFiles: File[],
   duckdbFiles?: File[],
   nonCsvFiles: File[],
@@ -585,7 +585,7 @@ const handleImportFiles = async (files: File[]) => {
   if (csvFiles.length > 0) {
     await duckdbStore.initialize()
     const position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
-    await handleCsvDrop({ csvFiles, nonCsvFiles: [], position })
+    await handleFileDrop({ csvFiles, nonCsvFiles: [], position })
     connectionsStore.addDuckDBConnection()
   }
 
@@ -617,7 +617,7 @@ const handleQueryTableFromSchema = async (data: {
     }
 
     // Generate query and box name (use provided boxName if available, e.g., for Snowflake without quotes)
-    const query = generateSelectQuery(data.tableName, data.engine)
+    const query = generateSelectQuery(data.tableName)
     const boxName = generateQueryBoxName(data.boxName || data.tableName)
 
     // Get connection ID based on engine
@@ -1209,13 +1209,12 @@ onMounted(async () => {
   // Ensure DuckDB local connection always exists in the selector
   connectionsStore.addDuckDBConnection()
 
-  // Re-attach any imported DuckDB files from previous sessions
-  for (const conn of connectionsStore.connections) {
-    if (conn.type === 'duckdb' && conn.database) {
-      const alias = conn.id.replace(/^duckdb-/, '')
-      duckdbStore.reattachDuckDBFile(conn.database, alias).catch(() => {})
-    }
-  }
+  // Re-attach any imported DuckDB files from previous sessions (parallel)
+  await Promise.all(
+    connectionsStore.connections
+      .filter(conn => conn.type === 'duckdb' && conn.database)
+      .map(conn => duckdbStore.reattachDuckDBFile(conn.database!, conn.id.replace(/^duckdb-/, '')).catch(() => {}))
+  )
 
   // Initialize SQLGlot (Pyodide WASM) — non-blocking, runs in background
   sqlglotStore.initialize().catch(err => {
@@ -1351,7 +1350,7 @@ onUnmounted(() => {
       ref="canvasRef"
       :boxes="canvasStore.boxes"
       @canvas-click="deselectBox"
-      @csv-drop="handleCsvDrop"
+      @file-drop="handleFileDrop"
       @cursor-move="handleCursorMove"
       @cursor-leave="handleCursorLeave"
     >

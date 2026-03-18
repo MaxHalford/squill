@@ -1,7 +1,4 @@
-export function generateSelectQuery(
-  tableName: string,
-  _engine?: string
-): string {
+export function generateSelectQuery(tableName: string): string {
   return `SELECT *\nFROM ${tableName}`
 }
 

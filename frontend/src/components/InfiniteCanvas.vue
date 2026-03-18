@@ -13,7 +13,7 @@ interface Point {
 
 const emit = defineEmits<{
   'canvas-click': []
-  'csv-drop': [payload: { csvFiles: File[]; duckdbFiles?: File[]; nonCsvFiles: File[]; position: Point }]
+  'file-drop': [payload: { csvFiles: File[]; duckdbFiles?: File[]; nonCsvFiles: File[]; position: Point }]
   'cursor-move': [x: number, y: number]
   'cursor-leave': []
 }>()
@@ -492,7 +492,7 @@ const handleDrop = (e: DragEvent) => {
     else nonSupportedFiles.push(f)
   }
 
-  emit('csv-drop', {
+  emit('file-drop', {
     csvFiles,
     duckdbFiles,
     nonCsvFiles: nonSupportedFiles,
@@ -656,7 +656,7 @@ onUnmounted(() => {
 
 /* File drag overlay */
 .infinite-canvas.dragging-file::before {
-  content: 'Drop CSV file to import';
+  content: 'Drop file to import';
   position: fixed;
   inset: 0;
   background: color-mix(in srgb, var(--color-accent) 15%, transparent);

@@ -39,6 +39,17 @@ export interface SchemaRow {
 /** Internal tables that should be hidden from user-visible table lists */
 const INTERNAL_TABLES = new Set(['_schemas'])
 
+/** Group column rows by table name (shared by loadTablesMetadata and loadAttachedTablesMetadata) */
+const groupColumnsByTable = (colRows: { table_name: unknown; column_name: unknown }[]): Map<string, string[]> => {
+  const result = new Map<string, string[]>()
+  for (const row of colRows) {
+    const tbl = row.table_name as string
+    if (!result.has(tbl)) result.set(tbl, [])
+    result.get(tbl)!.push(row.column_name as string)
+  }
+  return result
+}
+
 // JSON-serializable value type for query results
 type SerializableValue = string | number | boolean | null | SerializableValue[] | { [key: string]: SerializableValue }
 
@@ -121,9 +132,8 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // Track available tables (table name -> metadata)
   const tables = ref<Record<string, TableMetadata>>({})
 
-  // Track attached (imported) DuckDB databases: alias → { opfsPath, tables }
+  // Track attached (imported) DuckDB databases: alias → { tables }
   const attachedDatabases = ref<Record<string, {
-    opfsPath: string
     tables: Record<string, { rowCount: number, columns: string[] }>
   }>>({})
 
@@ -234,13 +244,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       `)
       const colRows = colResult.toArray()
 
-      // Group columns by table name
-      const columnsByTable = new Map<string, string[]>()
-      for (const row of colRows) {
-        const tbl = row.table_name as string
-        if (!columnsByTable.has(tbl)) columnsByTable.set(tbl, [])
-        columnsByTable.get(tbl)!.push(row.column_name as string)
-      }
+      const columnsByTable = groupColumnsByTable(colRows)
 
       const now = Date.now()
       for (const row of countRows) {
@@ -261,7 +265,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
   // Load metadata (tables, row counts, columns) for an attached DuckDB database.
   // Returns table names for caller convenience.
-  const loadAttachedTablesMetadata = async (alias: string, opfsPath: string): Promise<string[]> => {
+  const loadAttachedTablesMetadata = async (alias: string): Promise<string[]> => {
     if (!conn.value) return []
 
     try {
@@ -279,13 +283,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       )
       const colRows = colResult.toArray()
 
-      // Group columns by table
-      const columnsByTable = new Map<string, string[]>()
-      for (const row of colRows) {
-        const tbl = row.table_name as string
-        if (!columnsByTable.has(tbl)) columnsByTable.set(tbl, [])
-        columnsByTable.get(tbl)!.push(row.column_name as string)
-      }
+      const columnsByTable = groupColumnsByTable(colRows)
 
       const tablesMap: Record<string, { rowCount: number, columns: string[] }> = {}
       for (const row of countRows) {
@@ -296,7 +294,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         }
       }
 
-      attachedDatabases.value[alias] = { opfsPath, tables: tablesMap }
+      attachedDatabases.value[alias] = { tables: tablesMap }
       schemaVersion.value++
       return Object.keys(tablesMap)
     } catch (err) {
@@ -855,7 +853,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     await conn.value!.query(`ATTACH '${safeName.replace(/'/g, "''")}' AS "${alias.replace(/"/g, '""')}" (READ_ONLY)`)
 
     // Load metadata and get table names in one pass
-    const tableNames = await loadAttachedTablesMetadata(alias, safeName)
+    const tableNames = await loadAttachedTablesMetadata(alias)
 
     console.log(`Attached DuckDB file: ${safeName} as "${alias}" with ${tableNames.length} tables`)
     return { alias, tables: tableNames }
@@ -877,7 +875,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       console.log(`Re-attached DuckDB: ${alias}`)
 
       // Load metadata so schema browser can show tables
-      await loadAttachedTablesMetadata(alias, opfsFileName)
+      await loadAttachedTablesMetadata(alias)
 
       return true
     } catch (err: unknown) {
