@@ -1047,6 +1047,17 @@ defineExpose({
         @keydown.enter.exact.prevent="submitSpell"
         @keydown.escape.prevent="dismissSpellInput"
       />
+      <button
+        v-tooltip="'Submit (Enter)'"
+        class="spell-submit-btn"
+        :disabled="isCastingSpell || !spellInstruction.trim()"
+        @click.stop="submitSpell"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+          <path d="m9 10-5 5 5 5" />
+        </svg>
+      </button>
     </div>
 
     <!-- Wand button — visible for all, disabled for non-pro -->
@@ -1239,11 +1250,39 @@ defineExpose({
   left: 50%;
   transform: translateX(-50%);
   z-index: 3;
+  /* Contain the absolutely-positioned submit button */
+  display: inline-block;
+}
+
+.spell-submit-btn {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.spell-submit-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.spell-submit-btn:disabled {
+  color: var(--text-tertiary);
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .spell-input {
+  display: block;
   width: 360px;
-  padding: 8px 10px;
+  padding: 8px 36px 8px 10px;
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body-sm);
   background: var(--surface-primary);
