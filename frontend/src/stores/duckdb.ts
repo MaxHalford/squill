@@ -787,21 +787,47 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
-  // Drop all DuckDB tables/views associated with a box (called when box is deleted)
-  const dropTablesForBox = async (boxId: number) => {
+  // Garbage-collect orphaned tables and views from local DuckDB.
+  // Drops anything not in INTERNAL_TABLES and not owned by a live box.
+  const garbageCollect = async (liveBoxIds: Set<number>) => {
     if (!conn.value) return
 
-    const toDrop = Object.entries(tables.value).filter(([, meta]) => meta.boxId === boxId)
-    for (const [tableName, meta] of toDrop) {
-      try {
-        const kind = meta.isView ? 'VIEW' : 'TABLE'
-        await conn.value.query(`DROP ${kind} IF EXISTS ${tableName}`)
-        delete tables.value[tableName]
-      } catch (err) {
-        console.warn(`Failed to drop ${tableName}:`, err)
+    try {
+      // Query DuckDB directly for all user tables and views in local database
+      const result = await conn.value.query(`
+        SELECT table_name, table_type FROM information_schema.tables
+        WHERE table_schema = 'main' AND table_catalog = current_database()
+      `)
+      const rows = result.toArray()
+
+      let dropped = 0
+      for (const row of rows) {
+        const name = row.table_name as string
+        const type = row.table_type as string
+        if (INTERNAL_TABLES.has(name)) continue
+
+        // Check if any live box owns this table
+        const meta = tables.value[name]
+        if (meta?.boxId != null && liveBoxIds.has(meta.boxId)) continue
+
+        // Orphaned — drop it
+        const kind = type === 'VIEW' ? 'VIEW' : 'TABLE'
+        try {
+          await conn.value!.query(`DROP ${kind} IF EXISTS "${name.replace(/"/g, '""')}"`)
+          delete tables.value[name]
+          dropped++
+        } catch (err) {
+          console.warn(`GC: failed to drop ${name}:`, err)
+        }
       }
+
+      if (dropped > 0) {
+        schemaVersion.value++
+        console.log(`GC: dropped ${dropped} orphaned table(s)/view(s)`)
+      }
+    } catch (err) {
+      console.warn('GC: failed to scan tables:', err)
     }
-    if (toDrop.length > 0) schemaVersion.value++
   }
 
   // Load CSV file into DuckDB
@@ -1264,7 +1290,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     sanitizeTableName,
     loadTablesMetadata,
     renameTable,
-    dropTablesForBox,
+    garbageCollect,
     loadCsvFile,
     attachDuckDBFile,
     reattachDuckDBFile,

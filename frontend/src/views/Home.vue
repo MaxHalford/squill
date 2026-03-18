@@ -349,10 +349,12 @@ const handleUpdateMultiPosition = (data: { id: number; x: number; y: number }) =
   canvasStore.updateBoxPosition(data.id, { x: data.x, y: data.y })
 }
 
-const handleDelete = (id: number) => {
-  // Clean up any DuckDB tables/views associated with this box
-  duckdbStore.dropTablesForBox(id)
+const runGarbageCollect = () => {
+  const liveBoxIds = new Set(canvasStore.boxes.map(b => b.id))
+  duckdbStore.garbageCollect(liveBoxIds)
+}
 
+const handleDelete = (id: number) => {
   // Find the box element and add deleting class for animation
   const boxEl = document.querySelector(`[data-box-id="${id}"]`)
   if (boxEl) {
@@ -360,6 +362,7 @@ const handleDelete = (id: number) => {
     // Wait for animation to complete before removing
     setTimeout(() => {
       const previousBoxId = canvasStore.removeBox(id)
+      runGarbageCollect()
       // If there was a previous box, select it and pan to it
       if (previousBoxId !== null) {
         selectBox(previousBoxId, { shouldPan: true })
@@ -368,6 +371,7 @@ const handleDelete = (id: number) => {
   } else {
     // Fallback: remove immediately if element not found
     const previousBoxId = canvasStore.removeBox(id)
+    runGarbageCollect()
     if (previousBoxId !== null) {
       selectBox(previousBoxId, { shouldPan: true })
     }
@@ -1218,6 +1222,9 @@ onMounted(async () => {
       .filter(conn => conn.type === 'duckdb' && conn.database)
       .map(conn => duckdbStore.reattachDuckDBFile(conn.database!, conn.id.replace(/^duckdb-/, '')).catch(() => {}))
   )
+
+  // Clean up orphaned tables/views from previous sessions
+  runGarbageCollect()
 
   // Initialize SQLGlot (Pyodide WASM) — non-blocking, runs in background
   sqlglotStore.initialize().catch(err => {
