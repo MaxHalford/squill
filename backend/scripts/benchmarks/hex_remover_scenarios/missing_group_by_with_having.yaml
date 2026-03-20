@@ -1,0 +1,17 @@
+input:
+  query: |
+    SELECT c.account_sku, COUNT(*)
+    FROM kaya.core__components c
+    WHERE c.account_slug = 'acme'
+    AND NOT c.is_product_component
+    HAVING COUNT(*) = 1
+  error_message: 'column "c.account_sku" must appear in the GROUP BY clause or be used in an aggregate function'
+  database_dialect: "bigquery"
+expected:
+  query: |
+    SELECT c.account_sku, COUNT(*)
+    FROM kaya.core__components c
+    WHERE c.account_slug = 'acme'
+    AND NOT c.is_product_component
+    GROUP BY c.account_sku
+    HAVING COUNT(*) = 1
