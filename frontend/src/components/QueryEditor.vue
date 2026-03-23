@@ -1204,6 +1204,7 @@ defineExpose({
 .query-editor :deep(.cm-editor) {
   height: 100%;
   overflow: hidden;
+  font-feature-settings: "liga" 0;
 }
 
 .query-editor :deep(.cm-scroller) {

@@ -1356,7 +1356,7 @@ defineExpose({ resetPagination, triggerReveal, refresh })
   flex: 1;
   min-height: 0;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   cursor: default;
   position: relative;
   scrollbar-width: none;
@@ -1375,6 +1375,7 @@ defineExpose({ resetPagination, triggerReveal, refresh })
   table-layout: fixed;
   font-size: var(--table-font-size);
   font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
   text-align: start;
   line-height: 1.3;

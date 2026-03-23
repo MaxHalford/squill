@@ -391,6 +391,7 @@ onUnmounted(() => {
 
 .editor :deep(.cm-editor) {
   height: 100%;
+  font-feature-settings: "liga" 0;
 }
 
 .editor :deep(.cm-scroller) {

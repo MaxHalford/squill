@@ -284,8 +284,7 @@ body {
   background: var(--surface-primary);
   overscroll-behavior-x: none;
   overflow-x: hidden;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
 }
 
 /* Scrollbar styling */
