@@ -22,10 +22,15 @@ from routers.clickhouse import router as clickhouse_router
 from routers.mysql import router as mysql_router
 from routers.user import router as user_router
 from routers.wizard import router as wizard_router
+from routers.ws import router as ws_router
+from mcp_server import mcp
 from services.postgres_pool import PostgresPoolManager
 from services.snowflake_pool import SnowflakeConnectionManager
 from services.clickhouse_pool import ClickHouseConnectionManager
 from services.mysql_pool import MysqlConnectionManager
+
+# Build MCP sub-app once at module level (routes + middleware are set up here)
+_mcp_app = mcp.streamable_http_app()
 
 # Configure logging
 logging.basicConfig(
@@ -52,7 +57,10 @@ async def lifespan(app: FastAPI):
     run_migrations()
     logger.info("Migrations complete")
 
-    yield
+    # Start MCP sub-app lifespan (initializes the StreamableHTTP session manager)
+    mcp_lifespan = _mcp_app.router.lifespan_context
+    async with mcp_lifespan(_mcp_app):
+        yield
 
     # Shutdown
     logger.info("Shutting down...")
@@ -88,6 +96,44 @@ app.include_router(clickhouse_router)
 app.include_router(mysql_router)
 app.include_router(user_router)
 app.include_router(wizard_router)
+app.include_router(ws_router)
+
+# Mount MCP server with OAuth at /mcp
+# streamable_http_path="/" is set in FastMCP constructor so endpoint is at /mcp/ not /mcp/mcp/
+app.mount("/mcp", _mcp_app)
+
+
+# Proxy well-known OAuth endpoints from root to MCP sub-app.
+# Claude Code discovers these at the server root per RFC 9728.
+@app.get("/.well-known/oauth-protected-resource")
+@app.get("/.well-known/oauth-protected-resource/{path:path}")
+def oauth_protected_resource(path: str = ""):
+    return {
+        "resource": "http://localhost:8000/mcp",
+        "authorization_servers": ["http://localhost:8000/mcp"],
+        "scopes_supported": ["mcp"],
+        "bearer_methods_supported": ["header"],
+    }
+
+
+@app.get("/.well-known/oauth-authorization-server")
+@app.get("/.well-known/oauth-authorization-server/{path:path}")
+async def oauth_authorization_server(path: str = ""):
+    """Proxy to MCP sub-app's OAuth AS metadata."""
+    import httpx
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "http://localhost:8000/mcp/.well-known/oauth-authorization-server"
+        )
+        return resp.json()
+
+
+@app.get("/.well-known/openid-configuration")
+@app.get("/.well-known/openid-configuration/{path:path}")
+async def openid_configuration(path: str = ""):
+    """Alias for OAuth AS metadata (OIDC fallback)."""
+    return await oauth_authorization_server(path)
 
 
 @app.get("/")

@@ -1,16 +1,17 @@
-"""Canvas persistence and sharing endpoints for Pro/VIP users."""
+"""Canvas persistence, box CRUD, and sharing endpoints for Pro/VIP users."""
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Canvas, CanvasShare, User
+from models import Box, Canvas, CanvasShare, User
 from routers.connections import check_pro_or_vip
 from services.auth import get_current_user
 
@@ -43,8 +44,66 @@ class CanvasListResponse(BaseModel):
     canvases: list[CanvasResponse]
 
 
+# --- Box schemas ---
+
+
+class BoxCreateRequest(BaseModel):
+    """Box state from the frontend. Stored as-is in JSONB."""
+
+    state: dict[str, Any]
+
+
+class BoxBatchCreateRequest(BaseModel):
+    boxes: list[dict[str, Any]]  # list of state objects
+
+
+class BoxUpdateRequest(BaseModel):
+    """Partial state update — merged into existing state."""
+
+    fields: dict[str, Any]
+
+
+class BoxBatchUpdateItem(BaseModel):
+    box_id: int
+    fields: dict[str, Any]
+
+
+class BoxBatchUpdateRequest(BaseModel):
+    updates: list[BoxBatchUpdateItem]
+
+
+class BoxBatchDeleteRequest(BaseModel):
+    box_ids: list[int]
+
+
+class BoxResponse(BaseModel):
+    box_id: int
+    state: dict[str, Any]
+
+
+class CanvasSnapshotResponse(BaseModel):
+    id: str
+    name: str
+    version: int
+    next_box_id: int
+    boxes: list[BoxResponse]
+    created_at: datetime
+    updated_at: datetime
+
+
+class CanvasImportRequest(BaseModel):
+    """One-time import of full canvas state from frontend IndexedDB."""
+
+    boxes: list[dict[str, Any]]  # list of full box state objects with 'id' field
+    next_box_id: int
+
+
+# --- Share schemas ---
+
+
 class ShareCreateRequest(BaseModel):
     permission: str  # 'read' | 'write'
+    email: str | None = None  # optional: restrict to specific email
     expires_at: datetime | None = None
 
 
@@ -52,6 +111,7 @@ class ShareResponse(BaseModel):
     id: str
     share_token: str
     permission: str
+    email: str | None
     created_at: datetime
     expires_at: datetime | None
 
@@ -187,6 +247,262 @@ async def delete_canvas(
 
 
 # ---------------------------------------------------------------------------
+# Canvas snapshot & box CRUD
+# ---------------------------------------------------------------------------
+
+
+@router.get("/canvas/{canvas_id}/snapshot", response_model=CanvasSnapshotResponse)
+async def get_canvas_snapshot(
+    canvas_id: str,
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full canvas state including all boxes. Returns ETag for concurrency."""
+    check_pro_or_vip(user)
+    canvas = await _get_owned_canvas(canvas_id, user, db)
+    result = await db.execute(
+        select(Box).where(Box.canvas_id == canvas_id).order_by(Box.box_id)
+    )
+    boxes = result.scalars().all()
+    response.headers["ETag"] = f'"{canvas.version}"'
+    return CanvasSnapshotResponse(
+        id=canvas.id,
+        name=canvas.name,
+        version=canvas.version,
+        next_box_id=canvas.next_box_id,
+        boxes=[BoxResponse(box_id=b.box_id, state=b.state) for b in boxes],
+        created_at=canvas.created_at,
+        updated_at=canvas.updated_at,
+    )
+
+
+@router.post(
+    "/canvas/{canvas_id}/boxes",
+    response_model=BoxResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_box(
+    canvas_id: str,
+    body: BoxCreateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a single box. Server assigns box_id from next_box_id."""
+    check_pro_or_vip(user)
+    canvas = await _get_owned_canvas(canvas_id, user, db)
+
+    box_id = canvas.next_box_id
+    canvas.next_box_id += 1
+    canvas.version += 1
+
+    box = Box(canvas_id=canvas_id, box_id=box_id, state=body.state)
+    db.add(box)
+    await db.commit()
+    await db.refresh(box)
+    return BoxResponse(box_id=box.box_id, state=box.state)
+
+
+@router.post(
+    "/canvas/{canvas_id}/boxes/batch",
+    response_model=list[BoxResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_boxes_batch(
+    canvas_id: str,
+    body: BoxBatchCreateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create multiple boxes atomically (e.g. for CTE explode)."""
+    check_pro_or_vip(user)
+    if len(body.boxes) > 100:
+        raise HTTPException(status_code=400, detail="Maximum 100 boxes per batch")
+    canvas = await _get_owned_canvas(canvas_id, user, db)
+
+    created: list[Box] = []
+    for state in body.boxes:
+        box_id = canvas.next_box_id
+        canvas.next_box_id += 1
+        box = Box(canvas_id=canvas_id, box_id=box_id, state=state)
+        db.add(box)
+        created.append(box)
+
+    canvas.version += 1
+    await db.commit()
+    return [BoxResponse(box_id=b.box_id, state=b.state) for b in created]
+
+
+@router.patch("/canvas/{canvas_id}/boxes/{box_id}", response_model=BoxResponse)
+async def update_box(
+    canvas_id: str,
+    box_id: int,
+    body: BoxUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    if_match: str | None = Header(None),
+):
+    """Partial update — merge fields into existing box state."""
+    check_pro_or_vip(user)
+    canvas = await _get_owned_canvas(canvas_id, user, db)
+
+    if if_match is not None:
+        expected = int(if_match.strip('"'))
+        if canvas.version != expected:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Version mismatch: expected {expected}, current {canvas.version}",
+            )
+
+    result = await db.execute(
+        select(Box).where(Box.canvas_id == canvas_id, Box.box_id == box_id)
+    )
+    box = result.scalar_one_or_none()
+    if not box:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Box not found"
+        )
+
+    merged = {**box.state, **body.fields}
+    box.state = merged
+    canvas.version += 1
+    await db.commit()
+    await db.refresh(box)
+    return BoxResponse(box_id=box.box_id, state=box.state)
+
+
+@router.patch("/canvas/{canvas_id}/boxes/batch", response_model=list[BoxResponse])
+async def update_boxes_batch(
+    canvas_id: str,
+    body: BoxBatchUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Batch update multiple boxes (e.g. move several boxes at once)."""
+    check_pro_or_vip(user)
+    if len(body.updates) > 100:
+        raise HTTPException(status_code=400, detail="Maximum 100 updates per batch")
+    canvas = await _get_owned_canvas(canvas_id, user, db)
+
+    box_ids = [u.box_id for u in body.updates]
+    result = await db.execute(
+        select(Box).where(Box.canvas_id == canvas_id, Box.box_id.in_(box_ids))
+    )
+    boxes_by_id = {b.box_id: b for b in result.scalars().all()}
+
+    updated: list[BoxResponse] = []
+    for item in body.updates:
+        box = boxes_by_id.get(item.box_id)
+        if box:
+            box.state = {**box.state, **item.fields}
+            updated.append(BoxResponse(box_id=box.box_id, state=box.state))
+
+    canvas.version += 1
+    await db.commit()
+    return updated
+
+
+@router.delete(
+    "/canvas/{canvas_id}/boxes/{box_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_box(
+    canvas_id: str,
+    box_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a single box."""
+    check_pro_or_vip(user)
+    canvas = await _get_owned_canvas(canvas_id, user, db)
+    result = await db.execute(
+        select(Box).where(Box.canvas_id == canvas_id, Box.box_id == box_id)
+    )
+    box = result.scalar_one_or_none()
+    if not box:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Box not found"
+        )
+    await db.delete(box)
+    canvas.version += 1
+    await db.commit()
+
+
+@router.post(
+    "/canvas/{canvas_id}/boxes/batch-delete",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_boxes_batch(
+    canvas_id: str,
+    body: BoxBatchDeleteRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete multiple boxes at once."""
+    check_pro_or_vip(user)
+    canvas = await _get_owned_canvas(canvas_id, user, db)
+    await db.execute(
+        delete(Box).where(Box.canvas_id == canvas_id, Box.box_id.in_(body.box_ids))
+    )
+    canvas.version += 1
+    await db.commit()
+
+
+@router.post(
+    "/canvas/{canvas_id}/import",
+    response_model=CanvasSnapshotResponse,
+)
+async def import_canvas_state(
+    canvas_id: str,
+    body: CanvasImportRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Import full canvas state from frontend IndexedDB. Idempotent.
+
+    Used once when a free user upgrades to Pro and their local state
+    needs to be pushed to the server.
+    """
+    check_pro_or_vip(user)
+    canvas = await _get_owned_canvas(canvas_id, user, db)
+
+    # Idempotent: if boxes already exist, skip import and return current state
+    existing = await db.execute(
+        select(Box.box_id).where(Box.canvas_id == canvas_id).limit(1)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return await _snapshot(canvas, db)
+
+    for box_state in body.boxes:
+        box_id = box_state.get("id", 0)
+        # Strip the 'id' field from state (it's stored as box_id column)
+        state = {k: v for k, v in box_state.items() if k != "id"}
+        db.add(Box(canvas_id=canvas_id, box_id=box_id, state=state))
+
+    canvas.next_box_id = body.next_box_id
+    canvas.version += 1
+    await db.commit()
+    return await _snapshot(canvas, db)
+
+
+async def _snapshot(canvas: Canvas, db: AsyncSession) -> CanvasSnapshotResponse:
+    """Build a CanvasSnapshotResponse from a canvas + its boxes."""
+    result = await db.execute(
+        select(Box).where(Box.canvas_id == canvas.id).order_by(Box.box_id)
+    )
+    boxes = result.scalars().all()
+    return CanvasSnapshotResponse(
+        id=canvas.id,
+        name=canvas.name,
+        version=canvas.version,
+        next_box_id=canvas.next_box_id,
+        boxes=[BoxResponse(box_id=b.box_id, state=b.state) for b in boxes],
+        created_at=canvas.created_at,
+        updated_at=canvas.updated_at,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Share links
 # ---------------------------------------------------------------------------
 
@@ -215,6 +531,7 @@ async def create_share(
         owner_user_id=user.id,
         share_token=uuid4().hex,  # 32-char hex, URL-safe
         permission=body.permission,
+        email=body.email,
         expires_at=body.expires_at,
     )
     db.add(share)
@@ -225,6 +542,7 @@ async def create_share(
         id=share.id,
         share_token=share.share_token,
         permission=share.permission,
+        email=share.email,
         created_at=share.created_at,
         expires_at=share.expires_at,
     )
@@ -258,6 +576,7 @@ async def list_shares(
                 id=s.id,
                 share_token=s.share_token,
                 permission=s.permission,
+                email=s.email,
                 created_at=s.created_at,
                 expires_at=s.expires_at,
             )

@@ -85,8 +85,8 @@ const createShare = async (permission: 'read' | 'write') => {
     canvasStore.setCanvasShared(canvasId.value!, true)
     // Start collaboration immediately so the current IDB state is pushed to Hocuspocus.
     // Only needed on first share — if already collaborative, Yjs is already live.
-    if (!canvasStore.isCollaborative && userStore.sessionToken) {
-      canvasStore.enableCollaboration(canvasId.value!, userStore.sessionToken, true)
+    if (canvasStore.persistenceMode !== 'synced' && userStore.sessionToken) {
+      canvasStore.enableSync(canvasId.value!)
     }
     copyToClipboard(share.share_token)
   } catch {

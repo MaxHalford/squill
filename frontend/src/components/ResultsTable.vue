@@ -1378,7 +1378,6 @@ defineExpose({ resetPagination, triggerReveal, refresh })
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
   text-align: start;
-  line-height: 1.3;
   /* Contain layout to prevent zoom recalc propagation */
   contain: layout style;
 }
@@ -1387,15 +1386,16 @@ defineExpose({ resetPagination, triggerReveal, refresh })
   background: var(--color-selection);
 }
 
-/* All cells base styles - compact TUI padding */
+/* All cells base styles - no vertical padding so ::selection covers full row height */
 .results-table th,
 .results-table td {
-  padding: var(--table-cell-padding);
+  padding: 0 8px;
+  line-height: 22px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 300px;
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 /* Header cells - TUI style */
@@ -1583,9 +1583,10 @@ defineExpose({ resetPagination, triggerReveal, refresh })
   position: sticky;
   inset-inline-start: 0;
   z-index: 1;
-  padding: 3px 6px;
+  padding: 0 6px;
+  line-height: 22px;
   text-align: end;
-  vertical-align: middle;
+  vertical-align: top;
   user-select: none;
   background: var(--surface-primary);
 }

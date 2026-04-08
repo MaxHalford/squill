@@ -9,7 +9,7 @@ dependencies = [
     "openai>=2.14.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.0.0",
-    "uvicorn>=0.34.0",
+    "uvicorn[standard]>=0.34.0",
     # Database
     "asyncpg>=0.30.0",
     "aiosqlite>=0.20.0",
@@ -38,6 +38,8 @@ dependencies = [
     "sqlglot>=26.0",
     "dotenv>=0.9.9",
     "orjson>=3.11.7",
+    # MCP server
+    "mcp[cli]>=1.9.0",
 ]
 
 [dependency-groups]

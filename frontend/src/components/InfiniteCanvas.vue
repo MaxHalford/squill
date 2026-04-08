@@ -560,7 +560,7 @@ onUnmounted(() => {
       <slot />
 
       <!-- Remote user cursors (awareness) -->
-      <CursorOverlay v-if="canvasStore.isCollaborative" />
+      <CursorOverlay v-if="canvasStore.persistenceMode === 'synced'" />
 
       <!-- Teleport target for box creation buttons -->
       <div id="box-creation-buttons-container" />

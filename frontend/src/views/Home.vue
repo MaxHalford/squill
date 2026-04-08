@@ -255,6 +255,9 @@ const createDefaultBoxes = () => {
 // Handle box created from MenuBar
 const handleBoxCreated = (boxId: number) => {
   selectBox(boxId, { shouldPan: true })
+  setTimeout(() => {
+    sqlBoxRefs.value.get(boxId)?.focusEditor()
+  }, 300)
 }
 
 // Handle connection added from MenuBar
@@ -857,6 +860,18 @@ const handleKeyDown = (e: KeyboardEvent) => {
                         activeElement?.tagName === 'TEXTAREA' ||
                         activeElement?.classList.contains('cm-content')
 
+  // Cmd+J to create new SQL box
+  if ((e.ctrlKey || e.metaKey) && e.key === 'j' && !isInTextInput) {
+    e.preventDefault()
+    e.stopPropagation()
+    const boxId = canvasStore.addBox('sql')
+    selectBox(boxId, { shouldPan: true })
+    setTimeout(() => {
+      sqlBoxRefs.value.get(boxId)?.focusEditor()
+    }, 300)
+    return
+  }
+
   // Delete/Backspace to remove selected box(es)
   // Allow delete even if focus is inside the selected box (but not in a text input)
   if ((e.key === 'Delete' || e.key === 'Backspace') && !isInTextInput) {
@@ -1065,7 +1080,7 @@ const cursorColor = computed(() => {
   return CURSOR_COLORS[guestColorIndex]
 })
 const handleCursorMove = (x: number, y: number) => {
-  if (!canvasStore.isCollaborative) return
+  if (canvasStore.persistenceMode !== 'synced') return
   const name = userStore.user?.firstName ?? userStore.user?.email?.split('@')[0] ?? 'Guest'
   canvasStore.setLocalCursor(x, y, name, cursorColor.value)
 }
@@ -1095,7 +1110,7 @@ const enableAsOwner = async (canvasId: string, meta: { name: string }) => {
   } catch (err) {
     console.warn('[collab] Failed to register canvas on server:', err)
   }
-  canvasStore.enableCollaboration(canvasId, userStore.sessionToken!, true)
+  canvasStore.enableSync(canvasId)
 }
 
 const initCollaboration = async () => {
@@ -1131,11 +1146,8 @@ const initCollaboration = async () => {
       } else {
         // Recipient: persist token so future navigations auto-reconnect
         canvasStore.setShareToken(canvas_id, shareToken, permission)
-        const token = permission === 'write' && userStore.sessionToken
-          ? userStore.sessionToken
-          : shareToken
         canvasStore.isReadOnly = permission === 'read'
-        canvasStore.enableCollaboration(canvas_id, token)
+        canvasStore.enableSync(canvas_id)
         // Keep ?share= in URL so it's easy to re-copy; also triggers auto-reconnect logic
         router.replace({ path: '/app', query: { share: shareToken } })
       }
@@ -1151,11 +1163,8 @@ const initCollaboration = async () => {
   if (activeId) {
     const meta = canvasStore.canvasIndex.find(c => c.id === activeId)
     if (meta?.shareToken && !treatAsOwner(meta)) {
-      const token = meta.sharePermission === 'write' && userStore.sessionToken
-        ? userStore.sessionToken
-        : meta.shareToken
       canvasStore.isReadOnly = meta.sharePermission === 'read'
-      canvasStore.enableCollaboration(activeId, token)
+      canvasStore.enableSync(activeId)
       router.replace({ path: '/app', query: { share: meta.shareToken } })
       return
     }
@@ -1189,11 +1198,8 @@ watch(() => canvasStore.activeCanvasId, async (newId, oldId) => {
   // ── Collaboration re-init ──────────────────────────────────────────────────────
   // Recipient: has a stored share token (and is not the owner of this canvas)
   if (meta?.shareToken && !asOwner) {
-    const token = meta.sharePermission === 'write' && userStore.sessionToken
-      ? userStore.sessionToken
-      : meta.shareToken
     canvasStore.isReadOnly = meta.sharePermission === 'read'
-    canvasStore.enableCollaboration(newId, token)
+    canvasStore.enableSync(newId)
     return
   }
 
@@ -1254,7 +1260,7 @@ onMounted(async () => {
     canvasStore.setCanvasRef(canvasRef.value)
   }
 
-  if (canvasStore.isCollaborative) {
+  if (canvasStore.persistenceMode === 'synced') {
     // Boxes arrive asynchronously from Yjs — fit to view once the first batch lands
     const stopWatch = watch(
       () => canvasStore.boxes.length,

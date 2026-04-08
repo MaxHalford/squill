@@ -11,7 +11,6 @@ import { usePostgresStore } from '../stores/postgres'
 import { useClickHouseStore } from '../stores/clickhouse'
 import { useMysqlStore } from '../stores/mysql'
 import { useSnowflakeStore } from '../stores/snowflake'
-import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import type { BoxType } from '../types/canvas'
 import type { ConnectionType } from '../types/connection'
@@ -25,7 +24,8 @@ import PostgresConnectionModal from './PostgresConnectionModal.vue'
 import ClickHouseConnectionModal from './ClickHouseConnectionModal.vue'
 import MysqlConnectionModal from './MysqlConnectionModal.vue'
 import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
-import CanvasDropdown from './CanvasDropdown.vue'
+import SettingsPanel from './SettingsPanel.vue'
+import CopyButton from './CopyButton.vue'
 
 const router = useRouter()
 const bigqueryStore = useBigQueryStore()
@@ -52,17 +52,7 @@ const postgresStore = usePostgresStore()
 const clickhouseStore = useClickHouseStore()
 const mysqlStore = useMysqlStore()
 const snowflakeStore = useSnowflakeStore()
-const settingsStore = useSettingsStore()
 const userStore = useUserStore()
-
-// Accent color palette presets
-const accentColors = [
-  '#9333ea',  // Purple (default)
-  '#aed581',  // Green
-  '#81d4fa',  // Blue
-  '#ffcc80',  // Orange
-  '#f87171',  // Red
-]
 
 // Emits for parent component to handle
 const emit = defineEmits<{
@@ -84,6 +74,9 @@ const showMysqlModal = ref(false)
 // Snowflake modal state
 const showSnowflakeModal = ref(false)
 
+// Settings panel state
+const showSettingsPanel = ref(false)
+
 // Delayed expired state - prevents flash when tokens are being refreshed
 // Only show "(Expired)" after the token has been expired for 2 seconds
 const EXPIRED_DELAY_MS = 2000
@@ -94,12 +87,6 @@ const delayedExpiredConnections = ref<Set<string>>(new Set())
 const shouldShowExpired = (connectionId: string): boolean => {
   return delayedExpiredConnections.value.has(connectionId)
 }
-
-// Check if active connection should show expired state (with delay)
-const shouldShowActiveExpired = computed(() => {
-  if (!connectionsStore.activeConnectionId) return false
-  return delayedExpiredConnections.value.has(connectionsStore.activeConnectionId)
-})
 
 // Watch for changes in connection expired states and apply delay
 watch(
@@ -141,12 +128,14 @@ onUnmounted(() => {
 })
 
 // Single dropdown state - opening one closes others
-const activeDropdown = ref<string | null>(null) // 'canvas', 'connection', 'box', 'settings', 'user'
+const activeDropdown = ref<string | null>(null) // 'canvas', 'connection', 'new', 'tools', 'user'
 const showShareDialog = ref(false)
+const showMcpModal = ref(false)
 
-const shareButtonTitle = computed(() =>
-  !userStore.isPro ? 'Sharing requires a Pro account' : undefined
-)
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+const mcpUrl = computed(() => `${BACKEND_URL}/mcp/`)
+const mcpCommand = computed(() => `claude mcp add --transport http squill ${mcpUrl.value}`)
+const mcpJson = computed(() => JSON.stringify({ mcpServers: { squill: { type: 'http', url: mcpUrl.value } } }, null, 2))
 
 const userDisplayName = computed(() => {
   const u = userStore.user
@@ -194,13 +183,6 @@ const showShortcuts = () => {
   emit('show-shortcuts')
 }
 
-const boxTypes: Array<{ id: BoxType; name: string; disabled?: boolean; title?: string }> = [
-  { id: 'sql', name: 'SQL editor' },
-  { id: 'schema', name: 'Schema browser' },
-  { id: 'note', name: 'Sticky note' },
-  { id: 'history', name: 'Query history' },
-]
-
 // Import file input
 const importFileInput = ref<HTMLInputElement | null>(null)
 const handleImportClick = () => {
@@ -216,11 +198,6 @@ const handleImportFiles = (event: Event) => {
 
 // Submenu state
 const addDatabaseMenuOpen = ref(false)
-
-// Settings state
-const fetchBatchInputValue = ref<number | string>(settingsStore.fetchBatchSize)
-const paginationInputValue = ref<number | string>(settingsStore.paginationSize)
-const editorFontSizeInputValue = ref<number | string>(settingsStore.editorFontSize)
 
 // Toggle dropdown - opening one closes all others
 const toggleDropdown = (dropdown: string) => {
@@ -300,14 +277,6 @@ const isBillingProject = (projectId: string): boolean => {
 }
 
 // Count of extra selected projects beyond the billing project
-const extraProjectCount = computed(() => {
-  const conn = connectionsStore.activeConnection
-  if (!conn) return 0
-  const schemaIds = connectionsStore.getSchemaProjectIds(conn.id)
-  // Subtract 1 for the billing project (if it's in the list)
-  return Math.max(0, schemaIds.length - 1)
-})
-
 // Handle project toggle — add/remove from schemaProjectIds
 const handleProjectToggle = async (projectId: string) => {
   const connectionId = connectionsStore.activeConnectionId
@@ -463,6 +432,7 @@ const addBox = (boxType: BoxType) => {
 
 // Handle refresh schemas for all connections (resilient — skip failures, warn in console)
 const handleRefreshSchemas = async () => {
+  closeDropdown()
   try {
     const connections = connectionsStore.connections
 
@@ -514,6 +484,7 @@ const handleRefreshSchemas = async () => {
 
 // Handle reset all data
 const handleResetAll = async () => {
+  closeDropdown()
   if (confirm('This will clear all data including connections, queries, and cached results. Are you sure?')) {
     const { deleteDatabase } = await import('../utils/db')
     await deleteDatabase()
@@ -521,75 +492,58 @@ const handleResetAll = async () => {
   }
 }
 
-// Handle fetch batch size changes with debouncing
-let fetchBatchDebounceTimer: ReturnType<typeof setTimeout> | null = null
-const handleFetchBatchChange = (e: Event) => {
-  const value = (e.target as HTMLInputElement).value
-  fetchBatchInputValue.value = value
-
-  // Debounce setting the value
-  if (fetchBatchDebounceTimer) clearTimeout(fetchBatchDebounceTimer)
-  fetchBatchDebounceTimer = setTimeout(() => {
-    const numValue = parseInt(value, 10)
-    if (!isNaN(numValue) && numValue > 0) {
-      settingsStore.setFetchBatchSize(numValue)
-    }
-  }, 500)
-}
-
-// Handle pagination size changes with debouncing
-let paginationDebounceTimer: ReturnType<typeof setTimeout> | null = null
-const handlePaginationChange = (e: Event) => {
-  const value = (e.target as HTMLInputElement).value
-  paginationInputValue.value = value
-
-  // Debounce setting the value
-  if (paginationDebounceTimer) clearTimeout(paginationDebounceTimer)
-  paginationDebounceTimer = setTimeout(() => {
-    const numValue = parseInt(value, 10)
-    if (!isNaN(numValue) && numValue > 0) {
-      settingsStore.setPaginationSize(numValue)
-    }
-  }, 500)
-}
-
-// Handle editor font size changes with debouncing
-let fontSizeDebounceTimer: ReturnType<typeof setTimeout> | null = null
-const handleEditorFontSizeChange = (e: Event) => {
-  const value = (e.target as HTMLInputElement).value
-  editorFontSizeInputValue.value = value
-
-  // Debounce setting the value
-  if (fontSizeDebounceTimer) clearTimeout(fontSizeDebounceTimer)
-  fontSizeDebounceTimer = setTimeout(() => {
-    const numValue = parseInt(value, 10)
-    if (!isNaN(numValue) && numValue >= 8 && numValue <= 24) {
-      settingsStore.setEditorFontSize(numValue)
-    }
-  }, 500)
-}
-
-// Sync fetch batch input when store changes
-watch(() => settingsStore.fetchBatchSize, (newValue) => {
-  fetchBatchInputValue.value = newValue
-})
-
-// Sync pagination input when store changes
-watch(() => settingsStore.paginationSize, (newValue) => {
-  paginationInputValue.value = newValue
-})
-
-// Sync editor font size input when store changes
-watch(() => settingsStore.editorFontSize, (newValue) => {
-  editorFontSizeInputValue.value = newValue
-})
-
 // Auto-focus the project filter input when it appears (after projects load)
 watch(projectSearchRef, (el) => {
   if (el && activeDropdown.value === 'connection') {
     el.focus()
   }
 })
+
+// --- Canvas management (inlined from CanvasDropdown) ---
+
+// Canvas list sorted by recent
+const canvasList = computed(() => canvasStore.getCanvasList())
+
+// Handle canvas selection
+const handleCanvasSelect = async (canvasId: string) => {
+  await canvasStore.switchCanvas(canvasId)
+  closeDropdown()
+}
+
+// Handle create new canvas
+const handleCreateCanvas = () => {
+  canvasStore.createCanvas()
+  closeDropdown()
+}
+
+// Handle duplicate active canvas
+const handleDuplicateActive = async () => {
+  if (!canvasStore.activeCanvasId) return
+  await canvasStore.duplicateCanvas(canvasStore.activeCanvasId)
+  closeDropdown()
+}
+
+// Handle delete active canvas
+const handleDeleteActive = async () => {
+  if (canvasList.value.length <= 1) return
+  const canvas = canvasList.value.find(c => c.id === canvasStore.activeCanvasId)
+  if (canvas && confirm(`Delete "${canvas.name}"? This cannot be undone.`)) {
+    await canvasStore.deleteCanvas(canvas.id)
+  }
+  closeDropdown()
+}
+
+// Handle rename active canvas (simple prompt for now)
+const handleRenameActive = () => {
+  if (!canvasStore.activeCanvasId) return
+  const canvas = canvasList.value.find(c => c.id === canvasStore.activeCanvasId)
+  if (!canvas) return
+  const newName = prompt('Rename canvas:', canvas.name)
+  if (newName && newName.trim()) {
+    canvasStore.renameCanvas(canvas.id, newName.trim())
+  }
+  closeDropdown()
+}
 
 // Close dropdown when clicking outside
 const handleClickOutside = (e: Event) => {
@@ -610,33 +564,91 @@ onUnmounted(() => {
 <template>
   <div class="menu-bar">
     <div class="menu-left">
-      <router-link
-        to="/"
-        class="app-name"
-      >
+      <!-- Logo -->
+      <router-link to="/" class="app-name">
         Squill
       </router-link>
 
-      <!-- Canvas Dropdown -->
-      <CanvasDropdown
-        :active-dropdown="activeDropdown"
-        @toggle-dropdown="toggleDropdown"
-        @close-dropdown="closeDropdown"
-      />
-
-      <!-- Share button -->
-      <div class="menu-item">
-        <button
-          class="menu-button share-button"
-          :disabled="!canvasStore.activeCanvasId || !userStore.isPro"
-          :title="shareButtonTitle"
-          @click.stop="showShareDialog = true"
-        >
-          Share
+      <!-- Canvas Menu -->
+      <div class="menu-item" :class="{ active: activeDropdown === 'canvas' }">
+        <button class="menu-button" @click.stop="toggleDropdown('canvas')">
+          <span class="menu-text">Canvas</span>
+          <span class="menu-caret">&#x25BE;</span>
         </button>
+        <Transition name="dropdown">
+          <div v-if="activeDropdown === 'canvas'" class="dropdown os-dropdown">
+            <!-- Canvas list -->
+            <button
+              v-for="canvas in canvasList"
+              :key="canvas.id"
+              class="dropdown-item"
+              :class="{ selected: canvas.id === canvasStore.activeCanvasId }"
+              @click="handleCanvasSelect(canvas.id)"
+            >
+              {{ canvas.name }}
+            </button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item" @click="handleCreateCanvas">New canvas</button>
+            <button
+              class="dropdown-item"
+              :disabled="!canvasStore.activeCanvasId"
+              @click="handleDuplicateActive"
+            >Duplicate canvas</button>
+            <button
+              class="dropdown-item"
+              :disabled="!canvasStore.activeCanvasId"
+              @click="handleRenameActive"
+            >Rename canvas...</button>
+            <div class="dropdown-divider"></div>
+            <button
+              class="dropdown-item"
+              :disabled="!userStore.isPro || !canvasStore.activeCanvasId"
+              @click="showShareDialog = true; activeDropdown = null"
+            >
+              Share...
+              <span v-if="!userStore.isPro" class="item-hint">(Pro)</span>
+            </button>
+            <div class="dropdown-divider"></div>
+            <button
+              class="dropdown-item dropdown-item-danger"
+              :disabled="canvasStore.canvasIndex.length <= 1"
+              @click="handleDeleteActive"
+            >Delete canvas</button>
+          </div>
+        </Transition>
       </div>
 
-      <!-- Unified Connection Dropdown -->
+      <!-- New Menu -->
+      <div class="menu-item" :class="{ active: activeDropdown === 'new' }">
+        <button class="menu-button" @click.stop="toggleDropdown('new')">
+          <span class="menu-text">New</span>
+          <span class="menu-caret">&#x25BE;</span>
+        </button>
+        <Transition name="dropdown">
+          <div v-if="activeDropdown === 'new'" class="dropdown os-dropdown">
+            <button class="dropdown-item" @click="addBox('sql')">
+              SQL editor <span class="shortcut">&#x2318;J</span>
+            </button>
+            <button class="dropdown-item" @click="addBox('note')">Sticky note</button>
+            <button class="dropdown-item" @click="addBox('schema')">Schema browser</button>
+            <button class="dropdown-item" @click="addBox('history')">Query history</button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item" @click="handleImportClick">
+              Import file...
+            </button>
+            <input
+              ref="importFileInput"
+              type="file"
+              accept=".csv,.duckdb"
+              multiple
+              style="display:none"
+              @change="handleImportFiles"
+            >
+          </div>
+        </Transition>
+      </div>
+
+      <!-- Connection Menu -->
       <div
         class="menu-item"
         :class="{ active: activeDropdown === 'connection' }"
@@ -645,64 +657,17 @@ onUnmounted(() => {
           class="menu-button"
           @click.stop="toggleDropdown('connection')"
         >
-          <span
-            v-if="connectionsStore.activeConnection?.type === 'bigquery' && connectionsStore.activeConnection?.projectId"
-            class="menu-text"
-          >
-            {{ getConnectionDisplayName(connectionsStore.activeConnection) }} / {{ connectionsStore.activeConnection.projectId }}<span
-              v-if="extraProjectCount > 0"
-              class="extra-projects-badge"
-            > (+{{ extraProjectCount }})</span>
-            <span
-              v-if="shouldShowActiveExpired"
-              class="token-expired-indicator"
-            > (Expired)</span>
-          </span>
-          <span
-            v-else-if="connectionsStore.activeConnection"
-            class="menu-text"
-          >
-            {{ getConnectionDisplayName(connectionsStore.activeConnection) }}
-            <span
-              v-if="shouldShowActiveExpired"
-              class="token-expired-indicator"
-            > (Expired)</span>
-          </span>
-          <span
-            v-else
-            class="menu-text placeholder-text"
-          >
-            No connection
-          </span>
-          <span class="menu-caret">
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </span>
+          <span class="menu-text">Connection</span>
+          <span class="menu-caret">&#x25BE;</span>
         </button>
 
         <Transition name="dropdown">
           <div
             v-if="activeDropdown === 'connection'"
-            class="dropdown connection-dropdown"
+            class="dropdown os-dropdown connection-dropdown"
           >
             <!-- Connections Section -->
-            <div
-              v-if="connectionsStore.connections.length > 0"
-              class="dropdown-section"
-            >
-              <div class="section-label">
-                Connections
-              </div>
+            <template v-if="connectionsStore.connections.length > 0">
               <button
                 v-for="connection in connectionsStore.connections"
                 :key="connection.id"
@@ -771,56 +736,21 @@ onUnmounted(() => {
                   </button>
                 </div>
               </button>
-            </div>
+            </template>
 
-            <!-- Projects Section (BigQuery only) -->
-            <div
-              v-if="connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired"
-              class="dropdown-section projects-section"
-            >
-              <div class="section-label">
-                Projects
-              </div>
-              <div
-                v-if="sortedProjects.length > 5"
-                class="project-search-wrapper"
-              >
-                <input
-                  ref="projectSearchRef"
-                  v-model="projectSearch"
-                  type="text"
-                  class="project-search"
-                  placeholder="Filter projects..."
-                  @click.stop
-                  @keydown.stop
-                >
-              </div>
-              <div
-                v-if="projectsLoading && sortedProjects.length === 0"
-                class="dropdown-message"
-              >
-                Retrieving projects...
-              </div>
-              <div
-                v-else-if="filteredProjects.length === 0"
-                class="dropdown-message"
-              >
-                {{ sortedProjects.length === 0 ? 'No projects found' : 'No matching projects' }}
-              </div>
+            <div class="dropdown-divider"></div>
+
+            <!-- Add database submenu trigger -->
+            <div class="submenu-trigger">
               <button
-                v-for="project in filteredProjects"
-                :key="project.projectId"
-                class="dropdown-item project-item"
-                :class="{ selected: isProjectSelected(project.projectId) }"
-                @click="handleProjectToggle(project.projectId)"
+                class="dropdown-item"
+                @click.stop="addDatabaseMenuOpen = !addDatabaseMenuOpen"
               >
-                <span
-                  v-if="isProjectSelected(project.projectId)"
-                  class="item-check"
-                >
+                Add database...
+                <span class="dropdown-arrow">
                   <svg
-                    width="12"
-                    height="12"
+                    width="10"
+                    height="10"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -828,51 +758,120 @@ onUnmounted(() => {
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   >
-                    <path d="M20 6L9 17l-5-5" />
-                  </svg>
-                </span>
-                <span
-                  v-else
-                  class="item-check-placeholder"
-                />
-                <span class="item-text">{{ project.projectId }}</span>
-                <span
-                  v-tooltip="isProjectSelected(project.projectId) ? (isBillingProject(project.projectId) ? 'Billing project' : 'Set as billing project') : undefined"
-                  role="button"
-                  tabindex="0"
-                  class="billing-pin-btn"
-                  :class="{ active: isBillingProject(project.projectId), hidden: !isProjectSelected(project.projectId) }"
-                  @click.stop="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
-                  @keydown.enter.stop="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
-                >
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    :fill="isBillingProject(project.projectId) ? 'currentColor' : 'none'"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                    <path d="M9 6l6 6-6 6" />
                   </svg>
                 </span>
               </button>
+
+              <!-- Flyout submenu -->
+              <div
+                class="flyout-menu"
+                :class="{ open: addDatabaseMenuOpen }"
+                @click.stop
+              >
+                <button
+                  class="dropdown-item flyout-item"
+                  @click="handleAddDatabase('bigquery')"
+                >
+                  <img
+                    :src="DATABASE_INFO.bigquery.logo"
+                    :alt="DATABASE_INFO.bigquery.name"
+                    class="db-icon"
+                  >
+                  {{ DATABASE_INFO.bigquery.name }}
+                </button>
+                <button
+                  class="dropdown-item flyout-item"
+                  @click="handleAddDatabase('postgres')"
+                >
+                  <img
+                    :src="DATABASE_INFO.postgres.logo"
+                    :alt="DATABASE_INFO.postgres.name"
+                    class="db-icon"
+                  >
+                  {{ DATABASE_INFO.postgres.name }}
+                </button>
+                <button
+                  class="dropdown-item flyout-item"
+                  @click="handleAddDatabase('clickhouse')"
+                >
+                  <img
+                    :src="DATABASE_INFO.clickhouse.logo"
+                    :alt="DATABASE_INFO.clickhouse.name"
+                    class="db-icon"
+                  >
+                  {{ DATABASE_INFO.clickhouse.name }}
+                </button>
+                <button
+                  class="dropdown-item flyout-item"
+                  @click="handleAddDatabase('mysql')"
+                >
+                  <img
+                    :src="DATABASE_INFO.mysql.logo"
+                    :alt="DATABASE_INFO.mysql.name"
+                    class="db-icon"
+                  >
+                  {{ DATABASE_INFO.mysql.name }}
+                </button>
+                <button
+                  class="dropdown-item flyout-item"
+                  @click="handleAddDatabase('snowflake')"
+                >
+                  <img
+                    :src="DATABASE_INFO.snowflake.logo"
+                    :alt="DATABASE_INFO.snowflake.name"
+                    class="db-icon"
+                  >
+                  {{ DATABASE_INFO.snowflake.name }}
+                </button>
+              </div>
             </div>
 
-            <!-- Add Database Section -->
-            <div class="dropdown-section add-section">
-              <div class="section-divider" />
-              <div class="submenu-trigger">
-                <button
-                  class="dropdown-item add-item"
-                  @click.stop="addDatabaseMenuOpen = !addDatabaseMenuOpen"
+            <!-- Projects Section (BigQuery only) -->
+            <template v-if="connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired">
+              <div class="dropdown-divider"></div>
+              <div class="dropdown-label">PROJECTS</div>
+              <div class="projects-section">
+                <div
+                  v-if="sortedProjects.length > 5"
+                  class="project-search-wrapper"
                 >
-                  <span class="add-icon">
+                  <input
+                    ref="projectSearchRef"
+                    v-model="projectSearch"
+                    type="text"
+                    class="project-search"
+                    placeholder="Filter projects..."
+                    @click.stop
+                    @keydown.stop
+                  >
+                </div>
+                <div
+                  v-if="projectsLoading && sortedProjects.length === 0"
+                  class="dropdown-message"
+                >
+                  Retrieving projects...
+                </div>
+                <div
+                  v-else-if="filteredProjects.length === 0"
+                  class="dropdown-message"
+                >
+                  {{ sortedProjects.length === 0 ? 'No projects found' : 'No matching projects' }}
+                </div>
+                <button
+                  v-for="project in filteredProjects"
+                  :key="project.projectId"
+                  class="dropdown-item project-item"
+                  :class="{ selected: isProjectSelected(project.projectId) }"
+                  @click="handleProjectToggle(project.projectId)"
+                >
+                  <span
+                    v-if="isProjectSelected(project.projectId)"
+                    class="item-check"
+                  >
                     <svg
-                      width="14"
-                      height="14"
+                      width="12"
+                      height="12"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -880,154 +879,62 @@ onUnmounted(() => {
                       stroke-linecap="round"
                       stroke-linejoin="round"
                     >
-                      <path d="M12 5v14M5 12h14" />
+                      <path d="M20 6L9 17l-5-5" />
                     </svg>
                   </span>
-                  Add database
-                  <span class="dropdown-arrow">
+                  <span
+                    v-else
+                    class="item-check-placeholder"
+                  />
+                  <span class="item-text">{{ project.projectId }}</span>
+                  <span
+                    v-tooltip="isProjectSelected(project.projectId) ? (isBillingProject(project.projectId) ? 'Billing project' : 'Set as billing project') : undefined"
+                    role="button"
+                    tabindex="0"
+                    class="billing-pin-btn"
+                    :class="{ active: isBillingProject(project.projectId), hidden: !isProjectSelected(project.projectId) }"
+                    @click.stop="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
+                    @keydown.enter.stop="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
+                  >
                     <svg
-                      width="10"
-                      height="10"
+                      width="12"
+                      height="12"
                       viewBox="0 0 24 24"
-                      fill="none"
+                      :fill="isBillingProject(project.projectId) ? 'currentColor' : 'none'"
                       stroke="currentColor"
-                      stroke-width="2.5"
+                      stroke-width="2"
                       stroke-linecap="round"
                       stroke-linejoin="round"
                     >
-                      <path d="M9 6l6 6-6 6" />
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                     </svg>
                   </span>
                 </button>
-
-                <!-- Flyout submenu -->
-                <div
-                  class="flyout-menu"
-                  :class="{ open: addDatabaseMenuOpen }"
-                  @click.stop
-                >
-                  <button
-                    class="dropdown-item flyout-item"
-                    @click="handleAddDatabase('bigquery')"
-                  >
-                    <img
-                      :src="DATABASE_INFO.bigquery.logo"
-                      :alt="DATABASE_INFO.bigquery.name"
-                      class="db-icon"
-                    >
-                    {{ DATABASE_INFO.bigquery.name }}
-                  </button>
-                  <button
-                    class="dropdown-item flyout-item"
-                    @click="handleAddDatabase('postgres')"
-                  >
-                    <img
-                      :src="DATABASE_INFO.postgres.logo"
-                      :alt="DATABASE_INFO.postgres.name"
-                      class="db-icon"
-                    >
-                    {{ DATABASE_INFO.postgres.name }}
-                  </button>
-                  <button
-                    class="dropdown-item flyout-item"
-                    @click="handleAddDatabase('clickhouse')"
-                  >
-                    <img
-                      :src="DATABASE_INFO.clickhouse.logo"
-                      :alt="DATABASE_INFO.clickhouse.name"
-                      class="db-icon"
-                    >
-                    {{ DATABASE_INFO.clickhouse.name }}
-                  </button>
-                  <button
-                    class="dropdown-item flyout-item"
-                    @click="handleAddDatabase('mysql')"
-                  >
-                    <img
-                      :src="DATABASE_INFO.mysql.logo"
-                      :alt="DATABASE_INFO.mysql.name"
-                      class="db-icon"
-                    >
-                    {{ DATABASE_INFO.mysql.name }}
-                  </button>
-                  <button
-                    class="dropdown-item flyout-item"
-                    @click="handleAddDatabase('snowflake')"
-                  >
-                    <img
-                      :src="DATABASE_INFO.snowflake.logo"
-                      :alt="DATABASE_INFO.snowflake.name"
-                      class="db-icon"
-                    >
-                    {{ DATABASE_INFO.snowflake.name }}
-                  </button>
-                </div>
               </div>
-            </div>
+            </template>
           </div>
         </Transition>
       </div>
 
-      <!-- Import -->
-      <div class="menu-item">
-        <button
-          class="menu-button"
-          @click="handleImportClick"
-        >
-          <span class="menu-text">Import</span>
+      <!-- Tools Menu -->
+      <div class="menu-item" :class="{ active: activeDropdown === 'tools' }">
+        <button class="menu-button" @click.stop="toggleDropdown('tools')">
+          <span class="menu-text">Tools</span>
+          <span class="menu-caret">&#x25BE;</span>
         </button>
-        <input
-          ref="importFileInput"
-          type="file"
-          accept=".csv,.duckdb"
-          multiple
-          style="display: none"
-          @change="handleImportFiles"
-        />
-      </div>
-
-      <!-- Add Box Menu -->
-      <div
-        class="menu-item"
-        :class="{ active: activeDropdown === 'box' }"
-      >
-        <button
-          class="menu-button"
-          @click.stop="toggleDropdown('box')"
-        >
-          <span class="menu-text">New</span>
-          <span class="menu-caret">
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </span>
-        </button>
-
         <Transition name="dropdown">
-          <div
-            v-if="activeDropdown === 'box'"
-            class="dropdown"
-          >
-            <button
-              v-for="boxType in boxTypes"
-              :key="boxType.id"
-              class="dropdown-item"
-              :disabled="boxType.disabled"
-              :title="boxType.title"
-              @click="!boxType.disabled && addBox(boxType.id)"
-            >
-              <div class="item-main">
-                <span class="item-text">{{ boxType.name }}</span>
-              </div>
+          <div v-if="activeDropdown === 'tools'" class="dropdown os-dropdown">
+            <button class="dropdown-item" @click="showMcpModal = true; activeDropdown = null">
+              Connect via MCP...
+            </button>
+            <button class="dropdown-item" @click="handleRefreshSchemas">Refresh schemas</button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item" @click="showShortcuts">
+              Keyboard shortcuts
+            </button>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item dropdown-item-danger" @click="handleResetAll">
+              Reset all data...
             </button>
           </div>
         </Transition>
@@ -1035,372 +942,8 @@ onUnmounted(() => {
     </div>
 
     <div class="menu-right">
-      <!-- Settings Menu -->
-      <div
-        class="menu-item"
-        :class="{ active: activeDropdown === 'settings' }"
-      >
-        <button
-          class="menu-button"
-          @click.stop="toggleDropdown('settings')"
-        >
-          <span class="menu-text">Settings</span>
-          <span class="menu-caret">
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </span>
-        </button>
-
-        <Transition name="dropdown">
-          <div
-            v-if="activeDropdown === 'settings'"
-            class="dropdown settings-dropdown right-dropdown"
-          >
-            <div class="settings-section">
-              <div class="setting-header">
-                Fetch pagination
-              </div>
-              <div class="setting-description">
-                Load large result sets in batches for better performance
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <input
-                    type="checkbox"
-                    :checked="settingsStore.fetchPaginationEnabled"
-                    class="setting-checkbox"
-                    @change="settingsStore.toggleFetchPagination"
-                  >
-                  <span>Enable fetch pagination</span>
-                </label>
-              </div>
-
-              <div
-                class="setting-row"
-                :class="{ disabled: !settingsStore.fetchPaginationEnabled }"
-              >
-                <label class="setting-label">
-                  <span>Rows per batch</span>
-                  <input
-                    type="number"
-                    :value="fetchBatchInputValue"
-                    :disabled="!settingsStore.fetchPaginationEnabled"
-                    min="100"
-                    max="100000"
-                    class="setting-input-number"
-                    @input="handleFetchBatchChange"
-                  >
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Hex remover
-                <span
-                  v-if="!userStore.isPro"
-                  class="pro-badge"
-                >Pro</span>
-              </div>
-              <div class="setting-description">
-                Automatically suggest fixes when queries fail
-              </div>
-
-              <div
-                class="setting-row"
-                :class="{ disabled: !userStore.isPro }"
-              >
-                <label class="setting-label">
-                  <input
-                    type="checkbox"
-                    :checked="settingsStore.autofixEnabled"
-                    :disabled="!userStore.isPro"
-                    class="setting-checkbox"
-                    @change="settingsStore.toggleAutofix"
-                  >
-                  <span>Enable hex remover</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Pagination size
-              </div>
-              <div class="setting-description">
-                Number of rows to display per page in results tables
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <span>Rows per page</span>
-                  <input
-                    type="number"
-                    :value="paginationInputValue"
-                    min="1"
-                    max="10000"
-                    class="setting-input-number"
-                    @input="handlePaginationChange"
-                  >
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Code editor
-              </div>
-              <div class="setting-description">
-                Configure the SQL editor appearance
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <span>Font size</span>
-                  <input
-                    type="number"
-                    :value="editorFontSizeInputValue"
-                    min="8"
-                    max="24"
-                    class="setting-input-number"
-                    @input="handleEditorFontSizeChange"
-                  >
-                </label>
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <input
-                    type="checkbox"
-                    :checked="settingsStore.showEditorLineNumbers"
-                    class="setting-checkbox"
-                    @change="settingsStore.toggleEditorLineNumbers"
-                  >
-                  <span>Show line numbers</span>
-                </label>
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <input
-                    type="checkbox"
-                    :checked="settingsStore.tableLinkEnabled"
-                    class="setting-checkbox"
-                    @change="settingsStore.toggleTableLink"
-                  >
-                  <span>⌘+click table navigation</span>
-                </label>
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <input
-                    type="checkbox"
-                    :checked="settingsStore.sqlBoxLayout === 'horizontal'"
-                    class="setting-checkbox"
-                    @change="settingsStore.toggleSqlBoxLayout"
-                  >
-                  <span>Horizontal split</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Appearance
-              </div>
-              <div class="setting-description">
-                Change the look and feel of the canvas
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <span>Theme</span>
-                  <select
-                    :value="settingsStore.themePreference"
-                    class="setting-select"
-                    @change="settingsStore.setThemePreference(($event.target as HTMLSelectElement).value as 'system' | 'light' | 'dark')"
-                  >
-                    <option value="system">System</option>
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                  </select>
-                </label>
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <span>Canvas pattern</span>
-                  <select
-                    :value="settingsStore.canvasPattern"
-                    class="setting-select"
-                    @change="settingsStore.setCanvasPattern(($event.target as HTMLSelectElement).value as 'dots' | 'grid' | 'waves' | 'none')"
-                  >
-                    <option value="dots">Dots</option>
-                    <option value="grid">Grid</option>
-                    <option value="waves">Waves</option>
-                    <option value="none">None</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Accent color
-              </div>
-              <div class="setting-description">
-                Main highlight color used throughout the app
-              </div>
-              <div class="color-palette">
-                <button
-                  v-for="color in accentColors"
-                  :key="color"
-                  class="color-swatch"
-                  :class="{ active: settingsStore.accentColor === color }"
-                  :style="{ background: color }"
-                  :title="color"
-                  @click="settingsStore.setTableLinkHighlightColor(color)"
-                />
-                <label class="color-picker-wrapper">
-                  <input
-                    type="color"
-                    class="color-picker-input"
-                    :value="settingsStore.accentColor"
-                    @input="settingsStore.setTableLinkHighlightColor(($event.target as HTMLInputElement).value)"
-                  >
-                  <span
-                    class="color-swatch color-picker-swatch"
-                    :class="{ active: !accentColors.includes(settingsStore.accentColor) }"
-                    :style="{ background: accentColors.includes(settingsStore.accentColor) ? 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' : settingsStore.accentColor }"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Viewport behavior
-              </div>
-              <div class="setting-description">
-                Control how the viewport moves when interacting with boxes
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <input
-                    type="checkbox"
-                    :checked="settingsStore.panToBoxOnSelect"
-                    class="setting-checkbox"
-                    @change="settingsStore.togglePanToBoxOnSelect"
-                  >
-                  <span>Pan to box on select</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Notifications
-              </div>
-              <div class="setting-description">
-                Announce query results when the tab is in the background
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <input
-                    type="checkbox"
-                    :checked="settingsStore.voiceNotifyEnabled"
-                    class="setting-checkbox"
-                    @change="settingsStore.toggleVoiceNotify"
-                  >
-                  <span>Voice notify on long queries</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Execution
-              </div>
-              <div class="setting-description">
-                Automatically re-run downstream dependent boxes when an upstream box executes
-              </div>
-
-              <div class="setting-row">
-                <label class="setting-label">
-                  <input
-                    type="checkbox"
-                    :checked="settingsStore.autoRunDownstream"
-                    class="setting-checkbox"
-                    @change="settingsStore.toggleAutoRunDownstream"
-                  >
-                  <span>Auto-run downstream boxes</span>
-                </label>
-              </div>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Schema cache
-              </div>
-              <div class="setting-description">
-                Refresh schema information for all connections
-              </div>
-              <button
-                class="action-button"
-                @click="handleRefreshSchemas"
-              >
-                Refresh schemas
-              </button>
-            </div>
-
-            <div class="settings-section">
-              <div class="setting-header">
-                Help
-              </div>
-              <button
-                class="action-button"
-                @click="showShortcuts"
-              >
-                Keyboard shortcuts
-              </button>
-            </div>
-
-            <div class="settings-section settings-section-danger">
-              <div class="setting-header">
-                Reset
-              </div>
-              <div class="setting-description">
-                Clear all data including connections, queries, and cached results
-              </div>
-              <button
-                class="reset-button"
-                @click="handleResetAll"
-              >
-                Reset all data
-              </button>
-            </div>
-          </div>
-        </Transition>
-      </div>
       <!-- Pro Badge -->
-      <span
-        v-if="userStore.isPro"
-        class="pro-badge menu-pro-badge"
-      >Pro</span>
+      <span v-if="userStore.isPro" class="pro-badge menu-pro-badge">Pro</span>
 
       <!-- User Menu -->
       <div
@@ -1417,7 +960,7 @@ onUnmounted(() => {
         <Transition name="dropdown">
           <div
             v-if="activeDropdown === 'user'"
-            class="dropdown user-dropdown"
+            class="dropdown os-dropdown user-dropdown"
           >
             <div class="user-info">
               <div class="user-name">
@@ -1478,10 +1021,18 @@ onUnmounted(() => {
               <img class="provider-icon provider-icon-invert" src="/logos/github.svg" alt="">
               <span class="item-text">Continue with GitHub</span>
             </button>
-            <!-- Microsoft SSO disabled for now -->
           </div>
         </Transition>
       </div>
+
+      <!-- Settings gear -->
+      <button class="tray-button" title="Settings" @click="showSettingsPanel = true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -1518,6 +1069,66 @@ onUnmounted(() => {
     :show="showShareDialog"
     @close="showShareDialog = false"
   />
+
+  <!-- MCP Setup Modal -->
+  <Teleport to="body">
+    <Transition name="dropdown">
+      <div v-if="showMcpModal" class="modal-overlay" @click.self="showMcpModal = false">
+        <div class="modal-content mcp-modal">
+          <div class="modal-header">
+            <h3 class="modal-title">Connect via MCP</h3>
+            <button class="modal-close" @click="showMcpModal = false">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p>Connect your AI coding assistant to Squill using the <a href="https://modelcontextprotocol.io" target="_blank">Model Context Protocol</a>.</p>
+
+            <div class="mcp-section">
+              <div class="mcp-section-title">Claude Code</div>
+              <div class="mcp-code-wrapper">
+                <pre class="mcp-code"><code>claude mcp add --transport http squill {{ mcpUrl }}</code></pre>
+                <CopyButton :text="mcpCommand" size="sm" class="mcp-copy" />
+              </div>
+              <div class="mcp-hint">Run this in your terminal, then authenticate via the browser.</div>
+            </div>
+
+            <div class="mcp-section">
+              <div class="mcp-section-title">Cursor / VS Code / Other</div>
+              <div class="mcp-hint">Add to your MCP config:</div>
+              <div class="mcp-code-wrapper">
+                <pre class="mcp-code"><code>{
+  "mcpServers": {
+    "squill": {
+      "type": "http",
+      "url": "{{ mcpUrl }}"
+    }
+  }
+}</code></pre>
+                <CopyButton :text="mcpJson" size="sm" class="mcp-copy" />
+              </div>
+            </div>
+
+            <div class="mcp-section">
+              <div class="mcp-section-title">Available tools</div>
+              <div class="mcp-tools">
+                <span class="mcp-tool">list_canvases</span>
+                <span class="mcp-tool">get_canvas</span>
+                <span class="mcp-tool">create_box</span>
+                <span class="mcp-tool">update_box</span>
+                <span class="mcp-tool">delete_box</span>
+                <span class="mcp-tool">execute_query</span>
+                <span class="mcp-tool">list_connections</span>
+                <span class="mcp-tool">list_tables</span>
+                <span class="mcp-tool">get_table_schema</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- Settings Panel -->
+  <SettingsPanel :show="showSettingsPanel" @close="showSettingsPanel = false" />
 </template>
 
 <style scoped>
@@ -1606,23 +1217,20 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.token-expired-indicator {
-  color: var(--color-error);
-  font-weight: 600;
-}
-
 .menu-caret {
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0.6;
+  font-size: 10px;
 }
 
-.menu-caret svg {
-  display: block;
+.token-expired-indicator {
+  color: var(--color-error);
+  font-weight: 600;
 }
 
-/* Dropdown */
+/* Dropdown base */
 .dropdown {
   position: absolute;
   top: 100%;
@@ -1638,44 +1246,86 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-.user-dropdown,
-.right-dropdown {
-  right: 0;
-  left: auto;
+/* OS-style dropdown */
+.os-dropdown {
+  min-width: 220px;
+  padding: var(--space-1) 0;
 }
 
-.user-menu-item {
-  position: relative;
+.dropdown-label {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-caption);
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--border-secondary);
+  margin: var(--space-1) 0;
 }
 
 .dropdown-item {
-  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--dropdown-item-padding);
-  background: transparent;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
   border: none;
-  border-bottom: var(--dropdown-item-border);
-  text-align: left;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--text-primary);
   font-size: var(--font-size-body-sm);
   font-family: var(--font-family-ui);
-  color: var(--text-primary);
   cursor: pointer;
+  text-align: left;
   outline: none;
   transition: background 0.1s;
 }
 
-.dropdown-item:last-child {
-  border-bottom: none;
+.dropdown-item:hover {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
 }
 
-.dropdown-item:hover {
-  background: var(--dropdown-item-hover-bg);
+.dropdown-item:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.dropdown-item:disabled:hover {
+  background: none;
+  color: var(--text-tertiary);
 }
 
 .dropdown-item.selected {
+  font-weight: 600;
   background: var(--surface-secondary);
+  border-left: 2px solid var(--text-primary);
+}
+
+.dropdown-item-danger {
+  color: var(--color-error, #ef4444);
+}
+
+.shortcut {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  margin-left: var(--space-4);
+}
+
+.dropdown-item:hover .shortcut {
+  color: var(--text-tertiary);
+}
+
+.item-hint {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  margin-left: var(--space-2);
+}
+
+.item-text {
+  flex: 1;
 }
 
 .item-main {
@@ -1685,26 +1335,32 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.item-text {
-  flex: 1;
-}
-
-.item-check {
+/* Tray buttons (right side) */
+.tray-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-accent);
-}
-
-.item-check svg {
-  display: block;
-}
-
-.dropdown-message {
-  padding: var(--space-3);
-  text-align: center;
-  font-size: var(--font-size-body-sm);
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
   color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.tray-button:hover {
+  color: var(--text-primary);
+}
+
+/* User dropdown and right-aligned dropdowns */
+.user-dropdown {
+  right: 0;
+  left: auto;
+}
+
+.user-menu-item {
+  position: relative;
 }
 
 /* User Button */
@@ -1731,8 +1387,10 @@ onUnmounted(() => {
 }
 
 .user-info {
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin-left: 2px; /* align with dropdown-item border-left */
   border-bottom: var(--border-width-thin) solid var(--border-secondary);
+  margin-bottom: var(--space-1);
 }
 
 .user-name {
@@ -1796,46 +1454,7 @@ html.dark .provider-icon-invert {
   filter: invert(1);
 }
 
-/* Error Toast */
-.error-toast {
-  position: fixed;
-  top: 40px;
-  right: var(--space-3);
-  max-width: 300px;
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-error-bg);
-  border: var(--border-width-thin) solid var(--border-error);
-  color: var(--color-error);
-  font-size: var(--font-size-caption);
-  box-shadow: var(--shadow-md);
-  z-index: 2001;
-}
-
-/* Settings Dropdown */
-.settings-dropdown {
-  min-width: 280px;
-  padding: 0;
-}
-
-.settings-section {
-  padding: var(--space-3);
-  border-bottom: var(--border-width-thin) solid var(--border-secondary);
-}
-
-.settings-section:last-child {
-  border-bottom: none;
-}
-
-.setting-header {
-  font-size: var(--font-size-body-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--space-1);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
+/* Pro badge */
 .pro-badge {
   font-size: 9px;
   font-weight: 700;
@@ -1851,179 +1470,7 @@ html.dark .provider-icon-invert {
   margin-right: var(--space-2);
 }
 
-.setting-description {
-  font-size: var(--font-size-caption);
-  color: var(--text-secondary);
-  margin-bottom: var(--space-3);
-  line-height: var(--line-height-normal);
-}
-
-.setting-row {
-  margin-bottom: var(--space-2);
-}
-
-.setting-row:last-child {
-  margin-bottom: 0;
-}
-
-.setting-row.disabled {
-  opacity: 0.5;
-}
-
-.setting-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  font-size: var(--font-size-body-sm);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.setting-checkbox {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  margin-right: var(--space-1);
-}
-
-.setting-input-number {
-  width: 80px;
-  padding: var(--space-1) var(--space-2);
-  border: none;
-  background: var(--surface-primary);
-  font-size: var(--font-size-body-sm);
-  font-family: var(--font-family-mono);
-  color: var(--text-primary);
-  text-align: right;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.setting-input-number:focus {
-  border-color: var(--color-accent);
-}
-
-.setting-input-number:disabled {
-  background: var(--surface-secondary);
-  cursor: not-allowed;
-}
-
-.setting-select {
-  padding: var(--space-1) var(--space-2);
-  border: none;
-  background: var(--surface-primary);
-  font-size: var(--font-size-body-sm);
-  font-family: var(--font-family-ui);
-  color: var(--text-primary);
-  outline: none;
-  cursor: pointer;
-}
-
-/* Remove number input spinners for cleaner look */
-.setting-input-number::-webkit-inner-spin-button,
-.setting-input-number::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.settings-section-danger {
-  background: rgba(255, 0, 0, 0.05);
-}
-
-.action-button {
-  width: 100%;
-  padding: var(--space-2);
-  background: #007bff;
-  color: white;
-  border: none;
-  font-size: var(--font-size-body-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.action-button:hover:not(:disabled) {
-  background: #0056b3;
-}
-
-.action-button:active:not(:disabled) {
-  background: #004494;
-}
-
-.action-button:disabled {
-  background: var(--surface-secondary);
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.reset-button {
-  width: 100%;
-  padding: var(--space-2);
-  background: #dc3545;
-  color: white;
-  border: none;
-  font-size: var(--font-size-body-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.reset-button:hover {
-  background: #c82333;
-}
-
-.reset-button:active {
-  background: #bd2130;
-}
-
-.setting-input-number[type=number] {
-  -moz-appearance: textfield;
-}
-
-/* Color palette for highlight colors */
-.color-palette {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.color-swatch {
-  width: 24px;
-  height: 24px;
-  border: none;
-  cursor: pointer;
-  transition: transform 0.1s, box-shadow 0.1s;
-  padding: 0;
-}
-
-.color-swatch:hover {
-  transform: scale(1.1);
-}
-
-.color-swatch.active {
-  box-shadow: 0 0 0 2px var(--surface-primary), 0 0 0 3px var(--border-secondary);
-}
-
-.color-picker-wrapper {
-  position: relative;
-  cursor: pointer;
-}
-
-.color-picker-input {
-  position: absolute;
-  width: 24px;
-  height: 24px;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.color-picker-swatch {
-  display: block;
-}
-
-/* Connection Dropdown Styles */
+/* Connection dropdown specifics */
 .connection-dropdown {
   min-width: 300px;
   max-width: 400px;
@@ -2033,32 +1480,10 @@ html.dark .provider-icon-invert {
   max-height: calc(100vh - 60px);
 }
 
-.dropdown-section {
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.projects-section {
-  overflow-y: auto;
-  flex-shrink: 1;
-  min-height: 0;
-}
-
-.section-label {
-  font-size: var(--font-size-caption);
-  font-weight: 600;
-  color: var(--text-secondary);
-  padding: var(--space-2) var(--space-3) var(--space-1) var(--space-3);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: var(--surface-secondary);
-}
-
 .connection-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
 }
 
 .connection-item.expired {
@@ -2125,36 +1550,6 @@ html.dark .provider-icon-invert {
   color: white;
 }
 
-.section-divider {
-  height: var(--border-width-thin);
-  background: var(--border-primary);
-}
-
-.add-section {
-  background: var(--surface-secondary);
-}
-
-.add-item {
-  color: var(--color-primary);
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.add-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-.add-icon svg {
-  display: block;
-}
-
 .dropdown-arrow {
   display: flex;
   align-items: center;
@@ -2173,11 +1568,6 @@ html.dark .provider-icon-invert {
 /* Flyout submenu trigger container */
 .submenu-trigger {
   position: relative;
-}
-
-/* Highlight parent item when flyout is open */
-.submenu-trigger:has(.flyout-menu) .add-item {
-  background: var(--surface-secondary);
 }
 
 /* Flyout menu - appears to the right like classic OS menus */
@@ -2209,7 +1599,6 @@ html.dark .provider-icon-invert {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  border-bottom: none; /* Clean look for single item */
 }
 
 .flyout-item:hover {
@@ -2219,6 +1608,13 @@ html.dark .provider-icon-invert {
 .db-icon {
   width: 16px;
   height: 16px;
+}
+
+/* Projects section */
+.projects-section {
+  overflow-y: auto;
+  flex-shrink: 1;
+  min-height: 0;
 }
 
 .project-search-wrapper {
@@ -2252,6 +1648,17 @@ html.dark .provider-icon-invert {
   font-family: var(--font-family-mono);
   font-size: var(--font-size-body-sm);
   gap: var(--space-2);
+}
+
+.item-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+}
+
+.item-check svg {
+  display: block;
 }
 
 .item-check-placeholder {
@@ -2297,35 +1704,11 @@ html.dark .provider-icon-invert {
   font-style: italic;
 }
 
-/* About Dropdown */
-.about-dropdown {
-  min-width: 180px;
-}
-
-.about-dropdown .dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.item-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
+.dropdown-message {
+  padding: var(--space-3);
+  text-align: center;
+  font-size: var(--font-size-body-sm);
   color: var(--text-secondary);
-}
-
-.about-dropdown .dropdown-item:hover .item-icon {
-  color: var(--text-primary);
-}
-
-.external-link-icon {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--text-tertiary);
 }
 
 /* About Modal - uses global .modal-overlay from style.css */
@@ -2390,6 +1773,73 @@ html.dark .provider-icon-invert {
 
 .modal-body p:last-child {
   margin-bottom: 0;
+}
+
+/* MCP Modal */
+.mcp-modal {
+  max-width: 560px;
+}
+
+.mcp-section {
+  margin-bottom: var(--space-4);
+}
+
+.mcp-section:last-child {
+  margin-bottom: 0;
+}
+
+.mcp-section-title {
+  font-weight: 600;
+  font-size: var(--font-size-body-sm);
+  margin-bottom: var(--space-2);
+  color: var(--text-primary);
+}
+
+.mcp-code-wrapper {
+  position: relative;
+}
+
+.mcp-copy {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+}
+
+.mcp-code {
+  background: var(--surface-secondary);
+  border: var(--border-width-thin) solid var(--border-secondary);
+  padding: var(--space-3);
+  padding-right: var(--space-8);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-code);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.mcp-code code {
+  color: var(--text-primary);
+}
+
+.mcp-hint {
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  margin-top: var(--space-1);
+}
+
+.mcp-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.mcp-tool {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-caption);
+  background: var(--surface-secondary);
+  border: var(--border-width-thin) solid var(--border-secondary);
+  padding: 2px var(--space-2);
+  color: var(--text-secondary);
 }
 
 /* Dropdown animation */

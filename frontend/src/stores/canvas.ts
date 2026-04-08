@@ -1,20 +1,18 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, watch, computed, onScopeDispose } from 'vue'
-import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex } from '../types/canvas'
+import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex, CursorState } from '../types/canvas'
 import type { DatabaseEngine } from '../types/database'
 import { getDefaultQuery } from '../constants/defaultQueries'
 import { computeExplodeLayout } from '../utils/cteParser'
 import type { ExplodedQuery } from '../utils/cteParser'
-import { CanvasDataSchema, MultiCanvasIndexSchema } from '../utils/storageSchemas'
+import { CanvasDataSchema } from '../utils/storageSchemas'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
 import {
-  createCollaborationSession,
-  destroyCollaborationSession,
-  ymapToBox,
-  boxToYmap,
-  type CollaborationSession,
-  type CursorState,
-} from '../utils/collaboration'
+  LocalPersistence,
+  SyncedPersistence,
+  type CanvasPersistence,
+} from '../utils/canvasPersistence'
+import type { CanvasWSEvent } from '../utils/canvasWebSocket'
 
 // Debounce utility for auto-save
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
@@ -167,18 +165,15 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Rectangle selection state
   const rectangleSelection = ref<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
 
-  // Undo/Redo stacks (used in non-collaborative mode only)
+  // Undo/Redo stacks
   const undoStack = ref<UndoRedoState[]>([])
   const redoStack = ref<UndoRedoState[]>([])
 
-  // Collaborative mode (Yjs + Hocuspocus, Pro users only)
-  // shallowRef prevents Vue from deep-proxying Yjs/Hocuspocus internals
-  const session = shallowRef<CollaborationSession | null>(null)
-  const isCollaborative = computed(() => session.value !== null)
-  const isHocuspocusConnected = ref(false)
+  // Persistence layer (local IDB for free, API+WS for Pro)
+  let persistence: CanvasPersistence = new LocalPersistence()
+  const persistenceMode = ref<'local' | 'synced'>('local')
+  const isSyncConnected = ref(false)
   const isReadOnly = ref(false)
-  let unobserveYjs: (() => void) | null = null
-  let unobserveAwareness: (() => void) | null = null
   const remoteCursors = shallowRef<Map<number, CursorState>>(new Map())
 
   // Computed: active canvas name for display
@@ -200,20 +195,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     saveItem('canvas:index', index).catch(error => {
       console.error('Failed to save canvas index:', error)
     })
-  }
-
-  const loadIndex = async (): Promise<MultiCanvasIndex | null> => {
-    try {
-      const data = await loadItem<MultiCanvasIndex>('canvas:index')
-      if (!data) return null
-      const result = MultiCanvasIndexSchema.safeParse(data)
-      if (result.success) return result.data
-      console.warn('Canvas index validation failed:', result.error.issues)
-      return null
-    } catch (error) {
-      console.error('Failed to load canvas index:', error)
-      return null
-    }
   }
 
   const saveCanvasData = (canvasId: string) => {
@@ -261,23 +242,119 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Load state (main entry point)
   // ============================================
 
+  const initPersistence = async () => {
+    // Dispose previous persistence (important for navigation back/forth)
+    persistence.dispose()
+
+    // Check if user is Pro to determine persistence mode
+    try {
+      const { useUserStore } = await import('./user')
+      const userStore = useUserStore()
+      await userStore.ready
+      if (userStore.isPro && userStore.sessionToken) {
+        persistence = new SyncedPersistence(userStore.sessionToken)
+        persistenceMode.value = 'synced'
+      } else {
+        persistence = new LocalPersistence()
+        persistenceMode.value = 'local'
+      }
+    } catch {
+      persistence = new LocalPersistence()
+      persistenceMode.value = 'local'
+    }
+
+    // Wire up remote event handling for synced mode
+    if (persistence.isSynced) {
+      persistence.onRemoteEvent = handleRemoteEvent
+      persistence.onConnectionChange = (connected) => {
+        isSyncConnected.value = connected
+      }
+    }
+  }
+
+  const handleRemoteEvent = (event: CanvasWSEvent) => {
+    const { type, data } = event
+    // Ignore events from this client (already applied optimistically)
+    // We don't have a local client_id to compare, so trust all remote events
+    // The WS server excludes the sender for mutations
+    switch (type) {
+      case 'snapshot':
+        // Initial sync handled by loadCanvas, ignore here
+        break
+      case 'box.created': {
+        const boxData = data as { box_id: number; state: Record<string, unknown> }
+        const newBox: Box = { id: boxData.box_id, ...boxData.state } as Box
+        if (!boxes.value.find(b => b.id === newBox.id)) {
+          boxes.value.push(newBox)
+        }
+        break
+      }
+      case 'box.updated': {
+        const update = data as { box_id: number; fields: Record<string, unknown> }
+        const box = boxes.value.find(b => b.id === update.box_id)
+        if (box) Object.assign(box, update.fields)
+        break
+      }
+      case 'box.deleted': {
+        const del = data as { box_id: number }
+        const idx = boxes.value.findIndex(b => b.id === del.box_id)
+        if (idx !== -1) boxes.value.splice(idx, 1)
+        break
+      }
+      case 'box.batch_updated': {
+        const batch = data as { updates: { box_id: number; fields: Record<string, unknown> }[] }
+        for (const u of batch.updates) {
+          const box = boxes.value.find(b => b.id === u.box_id)
+          if (box) Object.assign(box, u.fields)
+        }
+        break
+      }
+      case 'cursor.moved': {
+        const cursor = data as { user_id: string; name: string; x: number; y: number; client_id: string }
+        const cursors = new Map(remoteCursors.value)
+        cursors.set(Number(cursor.client_id) || cursors.size, {
+          x: cursor.x,
+          y: cursor.y,
+          name: cursor.name,
+          color: '#3b82f6',
+        } as CursorState)
+        remoteCursors.value = cursors
+        break
+      }
+      case 'presence.left': {
+        const left = data as { client_id: string }
+        const cursors = new Map(remoteCursors.value)
+        cursors.delete(Number(left.client_id) || 0)
+        remoteCursors.value = cursors
+        break
+      }
+    }
+  }
+
   const loadState = async () => {
-    // Load index
-    const index = await loadIndex()
+    // Initialize persistence based on user plan
+    await initPersistence()
+
+    // Load index (from API for Pro, IDB for free)
+    const index = await persistence.loadIndex()
 
     if (index && index.canvases.length > 0) {
       canvasIndex.value = index.canvases
       activeCanvasId.value = index.activeCanvasId
 
       // Load active canvas data
-      const data = await loadCanvasData(index.activeCanvasId)
+      const data = await persistence.loadCanvas(index.activeCanvasId)
       if (data) {
         boxes.value = data.boxes
         nextBoxId.value = data.nextBoxId
       } else {
-        // Canvas data missing, reset
         boxes.value = []
         nextBoxId.value = 1
+      }
+
+      // Connect WebSocket for real-time sync
+      if (persistence.isSynced) {
+        persistence.connectToCanvas(index.activeCanvasId)
       }
     } else {
       // No existing data, create default canvas
@@ -299,9 +376,9 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Debounced auto-save to prevent IDB thrashing during drag operations
   const debouncedSaveState = debounce(saveState, 500)
 
-  // Watch for changes and auto-save to IDB (debounced, skipped in collaborative mode)
+  // Watch for changes and auto-save to IDB (debounced, skipped in synced mode where API handles persistence)
   watch([boxes, nextBoxId], () => {
-    if (!isCollaborative.value) debouncedSaveState()
+    if (persistenceMode.value === 'local') debouncedSaveState()
   }, { deep: true })
 
   // Flush pending saves when store scope is disposed
@@ -314,8 +391,8 @@ export const useCanvasStore = defineStore('canvas', () => {
   // ============================================
 
   const createCanvas = (name?: string): string => {
-    // Save current canvas first if exists (IDB only; collaborative saves are handled by Hocuspocus)
-    if (activeCanvasId.value && !isCollaborative.value) {
+    // Save current canvas first if exists
+    if (activeCanvasId.value && persistenceMode.value === 'local') {
       saveCanvasData(activeCanvasId.value)
     }
 
@@ -360,14 +437,14 @@ export const useCanvasStore = defineStore('canvas', () => {
   const switchCanvas = async (canvasId: string) => {
     if (canvasId === activeCanvasId.value) return
 
-    // Disconnect collaboration before switching canvases
-    disableCollaboration()
+    // Disconnect real-time sync before switching canvases
+    disableSync()
 
     // Flush pending saves before switching (IDB only)
-    if (!isCollaborative.value) debouncedSaveState.flush()
+    if (persistenceMode.value === 'local') debouncedSaveState.flush()
 
     // Save current canvas (IDB only; Hocuspocus handles collaborative saves)
-    if (activeCanvasId.value && !isCollaborative.value) {
+    if (activeCanvasId.value && persistenceMode.value === 'local') {
       saveCanvasData(activeCanvasId.value)
     }
 
@@ -383,6 +460,11 @@ export const useCanvasStore = defineStore('canvas', () => {
       undoStack.value = []
       redoStack.value = []
       saveIndex()
+
+      // Reconnect WebSocket for the new canvas
+      if (persistence.isSynced) {
+        persistence.connectToCanvas(canvasId)
+      }
     }
   }
 
@@ -419,7 +501,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     if (!sourceData) return null
 
     // Save current canvas first (IDB only)
-    if (activeCanvasId.value && !isCollaborative.value) {
+    if (activeCanvasId.value && persistenceMode.value === 'local') {
       saveCanvasData(activeCanvasId.value)
     }
 
@@ -536,7 +618,7 @@ export const useCanvasStore = defineStore('canvas', () => {
 
   const saveToUndoStack = () => {
     // In collaborative mode, Y.UndoManager tracks history automatically
-    if (isCollaborative.value) return
+    // Undo stack works in both local and synced modes
     undoStack.value.push({
       boxes: JSON.parse(JSON.stringify(boxes.value)),
       selectedBoxId: selectedBoxId.value,
@@ -549,10 +631,6 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   const undo = () => {
-    if (isCollaborative.value) {
-      session.value!.undoManager.undo()
-      return
-    }
     if (undoStack.value.length === 0) return
 
     redoStack.value.push({
@@ -568,10 +646,6 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   const redo = () => {
-    if (isCollaborative.value) {
-      session.value!.undoManager.redo()
-      return
-    }
     if (redoStack.value.length === 0) return
 
     undoStack.value.push({
@@ -640,14 +714,9 @@ export const useCanvasStore = defineStore('canvas', () => {
       dependencies: [],
       connectionId: connectionId
     }
-    if (isCollaborative.value) {
-      const s = session.value!
-      s.doc.transact(() => {
-        s.boxesArray.push([boxToYmap(newBox)])
-        s.canvasMap.set('nextBoxId', nextBoxId.value)
-      })
-    } else {
-      boxes.value.push(newBox)
+    boxes.value.push(newBox)
+    if (activeCanvasId.value) {
+      persistence.onBoxAdded(activeCanvasId.value, newBox)
     }
     return newBox.id
   }
@@ -709,18 +778,11 @@ export const useCanvasStore = defineStore('canvas', () => {
       finalBox.dependencies = [...nameToId.values()].filter(id => id !== finalBox.id)
     }
 
-    if (isCollaborative.value) {
-      const s = session.value!
-      s.doc.transact(() => {
-        const origIndex = boxes.value.findIndex(b => b.id === boxId)
-        if (origIndex !== -1) s.boxesArray.delete(origIndex, 1)
-        for (const box of newBoxes) s.boxesArray.push([boxToYmap(box)])
-        s.canvasMap.set('nextBoxId', nextBoxId.value)
-      })
-    } else {
-      const origIndex = boxes.value.findIndex(b => b.id === boxId)
-      if (origIndex !== -1) boxes.value.splice(origIndex, 1)
-      boxes.value.push(...newBoxes)
+    const origIndex = boxes.value.findIndex(b => b.id === boxId)
+    if (origIndex !== -1) boxes.value.splice(origIndex, 1)
+    boxes.value.push(...newBoxes)
+    if (activeCanvasId.value) {
+      persistence.onBoxesReplaced(activeCanvasId.value, boxId, newBoxes)
     }
 
     return newBoxes.map(b => b.id)
@@ -734,12 +796,9 @@ export const useCanvasStore = defineStore('canvas', () => {
     const index = boxes.value.findIndex(box => box.id === id)
     if (index !== -1) {
       saveToUndoStack()
-      if (isCollaborative.value) {
-        session.value!.doc.transact(() => {
-          session.value!.boxesArray.delete(index, 1)
-        })
-      } else {
-        boxes.value.splice(index, 1)
+      boxes.value.splice(index, 1)
+      if (activeCanvasId.value) {
+        persistence.onBoxRemoved(activeCanvasId.value, id)
       }
 
       selectionHistory.value = selectionHistory.value.filter(historyId => historyId !== id)
@@ -823,41 +882,23 @@ export const useCanvasStore = defineStore('canvas', () => {
     saveToUndoStack()
 
     const idsToRemove = new Set(boxIds)
-    if (isCollaborative.value) {
-      const s = session.value!
-      s.doc.transact(() => {
-        // Delete from highest index to lowest to preserve indices
-        const indices: number[] = []
-        s.boxesArray.toArray().forEach((ymap, i) => {
-          if (idsToRemove.has(ymap.get('id') as number)) indices.push(i)
-        })
-        for (let i = indices.length - 1; i >= 0; i--) {
-          s.boxesArray.delete(indices[i], 1)
-        }
-      })
-    } else {
-      boxes.value = boxes.value.filter(box => !idsToRemove.has(box.id))
+    boxes.value = boxes.value.filter(box => !idsToRemove.has(box.id))
+    if (activeCanvasId.value) {
+      persistence.onBoxesRemoved(activeCanvasId.value, boxIds)
     }
 
     selectedBoxId.value = null
     selectedBoxIds.value.clear()
   }
 
-  // Helper: update one or more fields on a box Y.Map (collaborative) or plain object (local)
+  // Helper: update one or more fields on a box
   const updateBoxFields = (id: number, fields: Partial<Box>) => {
-    if (isCollaborative.value) {
-      const s = session.value!
-      const ymap = s.boxesArray.toArray().find(m => m.get('id') === id)
-      if (ymap) {
-        s.doc.transact(() => {
-          for (const [key, value] of Object.entries(fields)) {
-            if (value !== undefined) ymap.set(key, value)
-          }
-        })
+    const box = boxes.value.find(b => b.id === id)
+    if (box) {
+      Object.assign(box, fields)
+      if (activeCanvasId.value) {
+        persistence.onBoxUpdated(activeCanvasId.value, id, fields)
       }
-    } else {
-      const box = boxes.value.find(b => b.id === id)
-      if (box) Object.assign(box, fields)
     }
   }
 
@@ -941,14 +982,9 @@ export const useCanvasStore = defineStore('canvas', () => {
       connectionId: originalBox.connectionId,
       editorHeight: originalBox.editorHeight
     }
-    if (isCollaborative.value) {
-      const s = session.value!
-      s.doc.transact(() => {
-        s.boxesArray.push([boxToYmap(newBox)])
-        s.canvasMap.set('nextBoxId', nextBoxId.value)
-      })
-    } else {
-      boxes.value.push(newBox)
+    boxes.value.push(newBox)
+    if (activeCanvasId.value) {
+      persistence.onBoxAdded(activeCanvasId.value, newBox)
     }
     return newBox.id
   }
@@ -991,14 +1027,9 @@ export const useCanvasStore = defineStore('canvas', () => {
         connectionId: originalBox.connectionId,
         editorHeight: originalBox.editorHeight
       }
-      if (isCollaborative.value) {
-        const s = session.value!
-        s.doc.transact(() => {
-          s.boxesArray.push([boxToYmap(newBox)])
-          s.canvasMap.set('nextBoxId', nextBoxId.value)
-        })
-      } else {
-        boxes.value.push(newBox)
+      boxes.value.push(newBox)
+      if (activeCanvasId.value) {
+        persistence.onBoxAdded(activeCanvasId.value, newBox)
       }
       newBoxIds.push(boxId)
     })
@@ -1007,142 +1038,39 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // ============================================
-  // Collaboration (Yjs + Hocuspocus, Pro only)
+  // Real-time sync (WebSocket, Pro only)
   // ============================================
 
-  /**
-   * Enable real-time collaboration for a canvas.
-   * Connects to Hocuspocus and syncs state via Yjs.
-   *
-   * forceLocalMigration=true (owner paths): local IDB is always the source of
-   * truth on first sync — overwrites any stale server state. Safe because this
-   * only applies to the very first synced event; reconnects use server state.
-   *
-   * forceLocalMigration=false (share-link recipients): server is source of truth.
-   */
-  const enableCollaboration = (canvasId: string, token: string, forceLocalMigration = false) => {
-    // Snapshot local IDB boxes NOW — before disableCollaboration or clearing
-    const localBoxes = [...boxes.value]
-    const localNextBoxId = nextBoxId.value
-    console.log(`[collab] enableCollaboration canvas=${canvasId} localBoxes=${localBoxes.length} forceLocal=${forceLocalMigration}`)
-
-    // Tear down any existing session first
-    disableCollaboration()
-
-    // Clear stale content immediately; Yjs will repopulate once synced
-    boxes.value = []
-
-    const s = createCollaborationSession(canvasId, token)
-    session.value = s
-
-    // Observe Yjs changes → keep boxes.value in sync
-    const syncFromYjs = () => {
-      const incoming = s.boxesArray.toArray().map(ymapToBox)
-      console.log(`[collab] syncFromYjs boxes=${incoming.length}`)
-      boxes.value = incoming
-      const nextId = s.canvasMap.get('nextBoxId') as number | undefined
-      if (nextId !== undefined) nextBoxId.value = nextId
-    }
-    s.boxesArray.observeDeep(syncFromYjs)
-    s.canvasMap.observe(syncFromYjs)
-    unobserveYjs = () => {
-      s.boxesArray.unobserveDeep(syncFromYjs)
-      s.canvasMap.unobserve(syncFromYjs)
-    }
-
-    // Track WebSocket connection status
-    s.provider.on('status', ({ status }: { status: string }) => {
-      console.log(`[collab] status=${status}`)
-      isHocuspocusConnected.value = status === 'connected'
-    })
-
-    s.provider.on('authenticationFailed', ({ reason }: { reason: string }) => {
-      console.error(`[collab] authenticationFailed: ${reason}`)
-      // Share token was revoked or expired — clear it so we don't keep retrying
-      clearShareToken(canvasId)
-      disableCollaboration()
-    })
-
-    // After initial sync: migrate or sync.
-    // syncedOnce guards against re-migration on WebSocket reconnects —
-    // reconnects just re-apply current Yjs state without touching localBoxes.
-    let syncedOnce = false
-    s.provider.on('synced', () => {
-      console.log(`[collab] synced yjsBoxes=${s.boxesArray.length} localBoxes=${localBoxes.length} syncedOnce=${syncedOnce}`)
-
-      if (syncedOnce) {
-        // Reconnect — Yjs already has the live state; just ensure boxes.value is current
-        syncFromYjs()
-        return
-      }
-      syncedOnce = true
-
-      // Only the owner (forceLocalMigration=true) ever pushes local IDB to Yjs.
-      // Share-link recipients always trust the server, even if it's empty.
-      const shouldMigrate = forceLocalMigration && localBoxes.length > 0
-      if (shouldMigrate) {
-        console.log(`[collab] migrating ${localBoxes.length} local boxes to Yjs (force=${forceLocalMigration})`)
-        s.doc.transact(() => {
-          // Clear any stale server data before pushing local state
-          if (s.boxesArray.length > 0) s.boxesArray.delete(0, s.boxesArray.length)
-          s.canvasMap.set('nextBoxId', localNextBoxId)
-          for (const box of localBoxes) {
-            s.boxesArray.push([boxToYmap(box)])
-          }
-        })
-      } else {
-        console.log(`[collab] syncing ${s.boxesArray.length} boxes from server`)
-        syncFromYjs()
-      }
-    })
-
-    // Awareness: track other users' cursors
-    if (s.awareness) {
-      const awareness = s.awareness
-      const handleAwarenessChange = () => {
-        const states = awareness.getStates()
-        const newMap = new Map<number, CursorState>()
-        states.forEach((state, clientId) => {
-          if (clientId === s.doc.clientID) return
-          const cursor = state.cursor as (Omit<CursorState, 'clientId'> | null | undefined)
-          if (cursor) newMap.set(clientId, { ...cursor, clientId })
-        })
-        remoteCursors.value = newMap
-      }
-      awareness.on('change', handleAwarenessChange)
-      unobserveAwareness = () => awareness.off('change', handleAwarenessChange)
-    }
-  }
-
-  const setLocalCursor = (x: number, y: number, name: string, color: string) => {
-    const awareness = session.value?.awareness
-    if (!awareness) return
-    awareness.setLocalStateField('cursor', { x, y, name, color })
+  const setLocalCursor = (x: number, y: number, _name: string, _color: string) => {
+    persistence.sendCursorMove(x, y)
   }
 
   const clearLocalCursor = () => {
-    session.value?.awareness?.setLocalStateField('cursor', null)
+    // No-op for WS (cursor removed when connection drops)
   }
 
   /**
-   * Disable collaborative mode and disconnect from Hocuspocus.
-   * Canvas data stays in PostgreSQL; local boxes.value is unchanged.
+   * Enable real-time sync for a canvas via WebSocket.
+   * Called when switching to a canvas in synced mode.
    */
-  const disableCollaboration = () => {
-    if (unobserveYjs) { unobserveYjs(); unobserveYjs = null }
-    if (unobserveAwareness) { unobserveAwareness(); unobserveAwareness = null }
-    if (session.value) {
-      destroyCollaborationSession(session.value)
-      session.value = null
-    }
-    isHocuspocusConnected.value = false
+  const enableSync = (canvasId: string) => {
+    if (!persistence.isSynced) return
+    persistence.connectToCanvas(canvasId)
+  }
+
+  /**
+   * Disable real-time sync.
+   */
+  const disableSync = () => {
+    persistence.disconnectFromCanvas()
+    isSyncConnected.value = false
     isReadOnly.value = false
     remoteCursors.value = new Map()
   }
 
   // Clean up on store dispose
   onScopeDispose(() => {
-    disableCollaboration()
+    persistence.dispose()
   })
 
   return {
@@ -1205,14 +1133,14 @@ export const useCanvasStore = defineStore('canvas', () => {
     redo,
     setCanvasRef,
 
-    // Collaboration
-    isCollaborative,
-    isHocuspocusConnected,
+    // Sync & collaboration
+    persistenceMode,
+    isSyncConnected,
     isReadOnly,
     remoteCursors,
     setLocalCursor,
     clearLocalCursor,
-    enableCollaboration,
-    disableCollaboration,
+    enableSync,
+    disableSync,
   }
 })

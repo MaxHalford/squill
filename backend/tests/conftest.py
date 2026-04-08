@@ -29,6 +29,11 @@ class MockSettings:
         "https://squill.dev",
     ]
     vip_emails = {"test@example.com"}
+    github_client_id = ""
+    github_client_secret = ""
+    microsoft_client_id = ""
+    microsoft_client_secret = ""
+    mcp_user_id = "test-user-id"
 
 
 # Patch get_settings at module level BEFORE any test files import main.py

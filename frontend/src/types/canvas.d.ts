@@ -64,6 +64,14 @@ export interface MultiCanvasIndex {
   canvases: CanvasMeta[]
 }
 
+export interface CursorState {
+  x: number
+  y: number
+  color: string
+  name: string
+  clientId: number
+}
+
 export interface ViewportBounds {
   left: number
   top: number

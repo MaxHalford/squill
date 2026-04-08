@@ -1,7 +1,16 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -100,7 +109,7 @@ class PostgresConnection(Base):
 
 
 class Canvas(Base):
-    """Canvas owned by a Pro user, persisted via Yjs binary state."""
+    """Canvas owned by a Pro user with server-first box state."""
 
     __tablename__ = "canvases"
 
@@ -111,8 +120,34 @@ class Canvas(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    # Raw Yjs encoded state as binary; null until the first sync from the client
+    # Per-canvas sequential box ID counter
+    next_box_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Optimistic concurrency version — incremented on every mutation
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Legacy: Yjs binary state (kept during migration, will be dropped later)
     yjs_state: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Box(Base):
+    """A box on a canvas. State stored as JSONB for schema flexibility."""
+
+    __tablename__ = "boxes"
+
+    canvas_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("canvases.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    box_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Full box state as JSON: {type, x, y, width, height, zIndex, query, name,
+    # dependencies, connectionId, editorHeight}
+    state: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -140,6 +175,8 @@ class CanvasShare(Base):
     permission: Mapped[str] = mapped_column(
         String(10), nullable=False
     )  # 'read' | 'write'
+    # Optional: restrict share to a specific email (Google Docs-style)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

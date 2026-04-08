@@ -10,6 +10,7 @@ export interface KeyboardShortcut {
 
 export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
   // General
+  { id: 'new-sql-box', name: 'New SQL box', keys: ['⌘', 'J'], category: 'General' },
   { id: 'run-query', name: 'Run query', keys: ['⌘', '⏎'], category: 'General' },
   { id: 'close-box', name: 'Close box', keys: ['Delete'], category: 'General' },
   { id: 'select-all', name: 'Select all boxes', keys: ['⌘', 'A'], category: 'General' },
