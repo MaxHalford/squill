@@ -4,6 +4,7 @@ import type { Box } from '../types/canvas'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 import { calculateBoundingBox } from '../utils/geometry'
+import { isTauri } from '../utils/tauri'
 import CursorOverlay from './CursorOverlay.vue'
 
 interface Point {
@@ -55,7 +56,11 @@ const isMetaHeld = ref(false)
 const isDraggingFile = ref(false)
 const dragCounter = ref(0)
 
-// Hybrid zoom state: smooth transform during zoom, crisp CSS zoom when idle
+// Hybrid zoom state: smooth transform during zoom, crisp CSS zoom when idle.
+// CSS zoom is disabled in Tauri (WKWebView) because WebKit returns zoomed values
+// from getBoundingClientRect() while clientX/clientY remain unzoomed, breaking
+// all coordinate-dependent interactions (CodeMirror selection, tooltips, etc.).
+const useCSSZoom = !isTauri()
 const isActivelyZooming = ref(false)
 const committedZoom = ref(1) // The zoom level applied via CSS zoom
 let zoomIdleTimer: ReturnType<typeof setTimeout> | null = null
@@ -73,6 +78,10 @@ provide('unregisterScrollPreserver', (id: number) => {
 
 // Mark zoom as active and schedule the idle transition
 const markZoomActive = () => {
+  if (!useCSSZoom) {
+    // No CSS zoom — nothing to commit, just keep committedZoom at 1
+    return
+  }
   isActivelyZooming.value = true
   if (zoomIdleTimer) clearTimeout(zoomIdleTimer)
   zoomIdleTimer = setTimeout(() => {
@@ -104,6 +113,13 @@ const viewportStyle = computed(() => {
   const currentZoom = zoom.value
   const baseZoom = committedZoom.value
 
+  if (!useCSSZoom) {
+    // Tauri/WKWebView: use transform-only zoom to avoid coordinate mismatch
+    return {
+      transform: `translate3d(${r4(pan.value.x)}px, ${r4(pan.value.y)}px, 0) scale(${r4(currentZoom)})`
+    }
+  }
+
   if (isActivelyZooming.value) {
     // During active zooming: use transform scale relative to committed CSS zoom
     const relativeScale = r4(currentZoom / baseZoom)
@@ -125,7 +141,7 @@ const viewportStyle = computed(() => {
 provide('canvasZoom', committedZoom)
 
 // LOD: disable expensive effects at very low zoom levels
-const isLowZoom = computed(() => committedZoom.value < 0.35)
+const isLowZoom = computed(() => (useCSSZoom ? committedZoom.value : zoom.value) < 0.35)
 
 const isAnimatingPan = ref(false)
 

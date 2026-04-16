@@ -4,6 +4,7 @@ import type { User } from '../types/user'
 import { createCheckoutSession, openPolarCheckout } from '../services/billing'
 import { UserSchema } from '../utils/storageSchemas'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
+import { isTauri } from '../utils/tauri'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
@@ -61,9 +62,10 @@ export const useUserStore = defineStore('user', () => {
     else deleteItem('session-token').catch(console.error)
   })
 
-  // Auto-fetch profile after hydration to sync plan status from backend
+  // Auto-fetch profile after hydration to sync plan status from backend.
+  // The desktop app is isolated — it never talks to the Squill server.
   ready.then(() => {
-    if (sessionToken.value) {
+    if (sessionToken.value && !isTauri()) {
       fetchProfile().catch(err => {
         console.error('Failed to fetch profile on init:', err)
       })

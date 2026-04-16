@@ -679,7 +679,7 @@ const selectBigQueryProject = async (projectId: string) => {
 const loadBigQueryProjects = async (connectionId: string) => {
   loadingDatasets.value[connectionId] = true
   try {
-    const fetchedProjects = await bigqueryStore.fetchProjectsWithAnyConnection()
+    const fetchedProjects = await bigqueryStore.anyBigQueryClient().listProjects()
     bigqueryProjectsByConnection.value[connectionId] = fetchedProjects
   } catch (err) {
     console.error('Failed to load BigQuery projects:', err)
@@ -833,8 +833,8 @@ const selectTable = async (tableId: string) => {
 const loadDatasets = async (projectId: string) => {
   loadingDatasets.value[projectId] = true
   try {
-    // Use the helper that works with any BigQuery connection
-    const fetchedDatasets = await bigqueryStore.fetchDatasetsWithAnyConnection(projectId)
+    // Use any BigQuery connection (active may be a different engine)
+    const fetchedDatasets = await bigqueryStore.anyBigQueryClient().listDatasets(projectId)
     datasets.value[projectId] = fetchedDatasets.map((ds: BigQueryDataset) => ({
       id: ds.datasetReference.datasetId,
       name: ds.datasetReference.datasetId,
@@ -854,8 +854,8 @@ const loadTables = async (datasetId: string) => {
 
   loadingTables.value[datasetId] = true
   try {
-    // Use the helper that works with any BigQuery connection
-    const fetchedTables = await bigqueryStore.fetchTablesWithAnyConnection(datasetId, bqProject)
+    // Use any BigQuery connection (active may be a different engine)
+    const fetchedTables = await bigqueryStore.anyBigQueryClient().listTables(bqProject, datasetId)
     tables.value[datasetId] = fetchedTables.map((t: BigQueryTable) => ({
       id: t.tableReference.tableId,
       name: t.tableReference.tableId,
@@ -1145,7 +1145,7 @@ const loadSchema = async (tableId: string, key: string) => {
 
     loadingSchema.value[tableId] = true
     try {
-      const result = await bigqueryStore.fetchTableSchemaWithAnyConnection(selectedDataset.value, tableId, selectedBigQueryProject.value)
+      const result = await bigqueryStore.anyBigQueryClient().getTableSchema(selectedBigQueryProject.value, selectedDataset.value, tableId)
       schemas.value[key] = result.fields
       tableMetadata.value[key] = result.metadata
 

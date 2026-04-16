@@ -70,6 +70,12 @@ const proFeatures: ProFeature[] = [
     description: 'Publish your analysis. Share with stakeholders.',
     longDescription: '',
     released: true
+  },
+  {
+    title: 'MCP server',
+    description: 'Control your canvases from Claude Code and other AI agents.',
+    longDescription: 'Squill exposes an MCP (Model Context Protocol) server that lets AI agents like Claude Code create canvases, add SQL boxes, execute queries, and browse your database schemas — all through your existing connections. Your AI assistant becomes a first-class canvas collaborator.',
+    released: true
   }
 ]
 
@@ -90,6 +96,10 @@ const faqs = [
   {
     question: 'Is my data safe?',
     answer: 'Yes. For client-side databases (DuckDB, BigQuery), your data never leaves your browser. For server-side databases (PostgreSQL, Snowflake), queries are proxied but results are streamed directly to you and never stored. Click on a database logo above to learn more.'
+  },
+  {
+    question: 'Can I run Squill fully offline / without any proxy?',
+    answer: 'Yes. Squill Desktop is a native app that runs the editor locally and shells out to CLI tools already on your machine (psql, bq, mysql, clickhouse-client, snowsql). Queries go directly from your laptop to your database — Squill never sees your credentials or results. Use this if your security policy forbids any third-party proxy.'
   },
   {
     question: 'Do I need to create an account?',
@@ -762,6 +772,58 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Desktop Section -->
+    <section class="section desktop">
+      <h2 class="section-title">
+        SQUILL DESKTOP
+      </h2>
+      <p class="desktop-subtitle">
+        A native app for when your data can't leave the building.
+      </p>
+
+      <div class="desktop-grid">
+        <div class="desktop-card">
+          <div class="desktop-card-header">
+            <span class="desktop-card-tag">WHY</span>
+            <h3>Nothing leaves your machine</h3>
+          </div>
+          <p>
+            The browser app proxies server-side databases (Postgres, Snowflake, etc.) through Squill's backend. That's fine for most people — but not for everyone. If your security team draws a hard line at "credentials never touch a third-party server", the desktop app is for you.
+          </p>
+          <p>
+            Queries run from your laptop, straight to your database. Squill sees nothing.
+          </p>
+        </div>
+
+        <div class="desktop-card">
+          <div class="desktop-card-header">
+            <span class="desktop-card-tag">HOW</span>
+            <h3>It uses the CLI tools you already have</h3>
+          </div>
+          <p>
+            Instead of bundling database drivers, Squill Desktop shells out to the command-line clients installed on your machine — <code>psql</code>, <code>bq</code>, <code>mysql</code>, <code>clickhouse-client</code>, <code>snowsql</code>.
+          </p>
+          <p>
+            Your existing auth (<code>gcloud</code> login, <code>.pgpass</code>, SSO, whatever your ops team set up) just works. No new credentials, no new attack surface.
+          </p>
+        </div>
+      </div>
+
+      <div class="desktop-terminal">
+        <div class="desktop-terminal-header">
+          <span>squill-desktop</span>
+        </div>
+        <div class="desktop-terminal-body">
+          <code><span class="term-dim">$</span> squill detects</code>
+          <code><span class="term-ok">✓</span> psql          <span class="term-dim">/opt/homebrew/bin/psql</span></code>
+          <code><span class="term-ok">✓</span> bq            <span class="term-dim">~/google-cloud-sdk/bin/bq</span></code>
+          <code><span class="term-ok">✓</span> mysql         <span class="term-dim">/usr/local/bin/mysql</span></code>
+          <code><span class="term-ok">✓</span> snowsql       <span class="term-dim">/usr/local/bin/snowsql</span></code>
+          <code><span class="term-dim">  credentials never sent anywhere.</span></code>
+        </div>
+      </div>
+    </section>
 
     <!-- Pro Section -->
     <section class="section section-inverted pro">
@@ -1681,6 +1743,136 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
 .modal-enter-from .database-modal,
 .modal-leave-to .database-modal {
   transform: scale(0.95);
+}
+
+/* ===== DESKTOP SECTION ===== */
+.desktop {
+  background: var(--surface-secondary);
+  max-width: none;
+}
+
+.desktop .section-title,
+.desktop-subtitle,
+.desktop-grid,
+.desktop-terminal {
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.desktop-subtitle {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-top: -32px;
+  margin-bottom: 48px;
+  font-size: var(--font-size-body);
+  max-width: 700px;
+}
+
+.desktop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+.desktop-card {
+  background: var(--surface-primary);
+  border: var(--border-width-thick) solid var(--border-primary);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-6);
+}
+
+.desktop-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.desktop-card-tag {
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  padding: 2px 8px;
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+}
+
+.desktop-card h3 {
+  margin: 0;
+  font-size: var(--font-size-h3, 18px);
+}
+
+.desktop-card p {
+  margin: 0 0 var(--space-3) 0;
+  color: var(--text-primary);
+  line-height: var(--line-height-relaxed, 1.6);
+}
+
+.desktop-card p:last-child {
+  margin-bottom: 0;
+}
+
+.desktop-card code {
+  font-family: var(--font-family-mono);
+  font-size: 0.9em;
+  background: var(--surface-secondary);
+  padding: 1px 5px;
+  border: 1px solid var(--border-tertiary);
+}
+
+/* Terminal visual */
+.desktop-terminal {
+  background: var(--surface-primary);
+  border: var(--border-width-thick) solid var(--border-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.desktop-terminal-header {
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  padding: 6px 12px;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.desktop-terminal-body {
+  padding: var(--space-4) var(--space-5);
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.desktop-terminal-body code {
+  display: block;
+  color: var(--text-primary);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.term-ok {
+  color: #2a8a3a;
+  font-weight: 700;
+  margin-right: 8px;
+}
+
+.term-dim {
+  color: var(--text-tertiary);
+}
+
+@media (max-width: 768px) {
+  .desktop-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-terminal-body {
+    font-size: 11px;
+  }
 }
 
 /* ===== PRO SECTION ===== */

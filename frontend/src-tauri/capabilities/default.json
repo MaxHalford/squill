@@ -1,0 +1,8 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for Squill desktop",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

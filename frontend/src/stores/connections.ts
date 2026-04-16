@@ -8,8 +8,11 @@ import {
 } from '../services/connections'
 import { clearSchemaCache } from '../utils/schemaAdapter'
 import { loadItem, saveItem } from '../utils/storage'
+import { isTauri } from '../utils/tauri'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+const GOOGLE_DESKTOP_CLIENT_ID = import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+const GOOGLE_DESKTOP_CLIENT_SECRET = import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_SECRET || ''
 
 /**
  * Convert backend ConnectionData to frontend Connection format.
@@ -130,13 +133,21 @@ export const useConnectionsStore = defineStore('connections', () => {
     return connection?.email || null
   }
 
-  // Refresh access token from backend
   const refreshAccessToken = async (connectionId: string): Promise<string> => {
     const email = getConnectionEmail(connectionId)
     if (!email) {
       throw new Error('No email found for connection')
     }
 
+    // Desktop: refresh directly against Google (no Squill backend)
+    if (isTauri()) {
+      const { refreshDesktopGoogleAccessToken } = await import('../services/oauth/desktopGoogle')
+      const { accessToken, expiresIn } = await refreshDesktopGoogleAccessToken(GOOGLE_DESKTOP_CLIENT_ID, GOOGLE_DESKTOP_CLIENT_SECRET, email)
+      setAccessToken(connectionId, accessToken, expiresIn)
+      return accessToken
+    }
+
+    // Web: refresh via the Squill backend (which holds the refresh token)
     const response = await fetch(`${BACKEND_URL}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -146,7 +157,6 @@ export const useConnectionsStore = defineStore('connections', () => {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       if (errorData.detail?.error === 'no_refresh_token') {
-        // Remove the connection - user needs to re-authenticate
         removeConnection(connectionId)
         throw new Error('Session expired. Please sign in again.')
       }

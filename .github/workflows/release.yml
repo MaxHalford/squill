@@ -1,0 +1,113 @@
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest    # Apple Silicon (arm64)
+          - platform: ubuntu-latest   # .deb, .rpm, .AppImage
+          - platform: windows-latest  # .msi, .exe
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history + tags for release-notes step
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './frontend/src-tauri -> target'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Compile release notes from changelog
+        id: notes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Find the previous tag (the one before the one being released).
+          # Fallback: empty means "no previous release — include everything".
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            PREV_DATE=$(git log -1 --format=%cs "$PREV_TAG")
+            echo "Previous tag: $PREV_TAG (committed $PREV_DATE)"
+          else
+            PREV_DATE="0000-00-00"
+            echo "No previous tag — including all changelog entries"
+          fi
+
+          CHANGELOG_DIR="frontend/src/data/changelog"
+          {
+            echo 'body<<RELEASE_BODY_EOF'
+            echo "## What's new"
+            echo
+            FOUND=0
+            # Files are named YYYY-MM-DD.md — lexicographic sort == chronological
+            for f in $(ls "$CHANGELOG_DIR"/*.md 2>/dev/null | sort); do
+              DATE=$(basename "$f" .md)
+              if [[ "$DATE" > "$PREV_DATE" ]]; then
+                echo "### $DATE"
+                echo
+                cat "$f"
+                echo
+                FOUND=1
+              fi
+            done
+            if [ "$FOUND" -eq 0 ]; then
+              echo "_No new changelog entries since \`$PREV_TAG\`. Add notes manually before publishing._"
+              echo
+            fi
+            echo '---'
+            echo
+            echo '## Install'
+            echo
+            echo '**macOS** — the `.dmg` is unsigned. On first launch, right-click the app → Open, then confirm. One-time step.'
+            echo
+            echo '**Windows** — the `.msi` is unsigned. SmartScreen may warn — click "More info" → "Run anyway".'
+            echo
+            echo '**Linux** — `.AppImage` is portable (chmod +x and run). `.deb` / `.rpm` for system install.'
+            echo 'RELEASE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: frontend
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Squill Desktop ${{ github.ref_name }}'
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          prerelease: false

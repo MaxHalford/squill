@@ -24,6 +24,10 @@ import PostgresConnectionModal from './PostgresConnectionModal.vue'
 import ClickHouseConnectionModal from './ClickHouseConnectionModal.vue'
 import MysqlConnectionModal from './MysqlConnectionModal.vue'
 import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
+import { isTauri } from '../utils/tauri'
+
+// Proxied engines need the Squill server; hide them in the desktop app.
+const showProxiedConnections = !isTauri()
 import SettingsPanel from './SettingsPanel.vue'
 import CopyButton from './CopyButton.vue'
 
@@ -332,10 +336,11 @@ const handleAddDatabase = async (databaseType: string) => {
   addDatabaseMenuOpen.value = false
   activeDropdown.value = null
 
-  // Require login for auth-requiring connection types
-  if (connectionRequiresAuth(databaseType as ConnectionType) && !userStore.isLoggedIn) {
+  // Require Squill login for server-proxied connection types (web only).
+  // In Tauri, BigQuery authenticates directly with Google — no Squill account needed.
+  if (!isTauri() && connectionRequiresAuth(databaseType as ConnectionType) && !userStore.isLoggedIn) {
     await userStore.loginWithGoogle()
-    if (!userStore.isLoggedIn) return // User cancelled login
+    if (!userStore.isLoggedIn) return
   }
 
   if (databaseType === 'bigquery') {
@@ -781,6 +786,7 @@ onUnmounted(() => {
                   {{ DATABASE_INFO.bigquery.name }}
                 </button>
                 <button
+                  v-if="showProxiedConnections"
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('postgres')"
                 >
@@ -792,6 +798,7 @@ onUnmounted(() => {
                   {{ DATABASE_INFO.postgres.name }}
                 </button>
                 <button
+                  v-if="showProxiedConnections"
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('clickhouse')"
                 >
@@ -803,6 +810,7 @@ onUnmounted(() => {
                   {{ DATABASE_INFO.clickhouse.name }}
                 </button>
                 <button
+                  v-if="showProxiedConnections"
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('mysql')"
                 >
@@ -814,6 +822,7 @@ onUnmounted(() => {
                   {{ DATABASE_INFO.mysql.name }}
                 </button>
                 <button
+                  v-if="showProxiedConnections"
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('snowflake')"
                 >
@@ -945,9 +954,9 @@ onUnmounted(() => {
       <!-- Pro Badge -->
       <span v-if="userStore.isPro" class="pro-badge menu-pro-badge">Pro</span>
 
-      <!-- User Menu -->
+      <!-- User Menu (web only — desktop has no Squill accounts) -->
       <div
-        v-if="userStore.isLoggedIn"
+        v-if="userStore.isLoggedIn && showProxiedConnections"
         class="menu-item user-menu-item"
       >
         <button
@@ -989,9 +998,9 @@ onUnmounted(() => {
         </Transition>
       </div>
 
-      <!-- Sign In Dropdown (when not logged in) -->
+      <!-- Sign In Dropdown (web only — desktop has no Squill accounts) -->
       <div
-        v-else
+        v-else-if="showProxiedConnections"
         class="menu-item sign-in-menu-item"
       >
         <button

@@ -859,6 +859,9 @@ onMounted(() => {
         }
       }),
       // Hover detection for SQLGlot error tooltips
+      // Prevent WKWebView (Tauri) from initiating native text drag on click-and-drag,
+      // which steals mouse events from CodeMirror's custom selection handling.
+      EditorView.contentAttributes.of({ draggable: 'false' }),
       EditorView.domEventHandlers({
         mousemove(event, view) {
           const target = event.target as HTMLElement
@@ -1205,6 +1208,12 @@ defineExpose({
   height: 100%;
   overflow: hidden;
   font-feature-settings: "liga" 0;
+  /* Prevent WKWebView native drag from hijacking click-and-drag text selection */
+  -webkit-user-drag: none;
+}
+
+.query-editor :deep(.cm-content) {
+  -webkit-user-drag: none;
 }
 
 .query-editor :deep(.cm-scroller) {

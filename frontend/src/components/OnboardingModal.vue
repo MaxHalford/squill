@@ -3,6 +3,10 @@ import { watch, onMounted, onUnmounted, computed } from 'vue'
 import { DATABASE_INFO } from '../types/database'
 import { useUserStore } from '../stores/user'
 import { useSettingsStore } from '../stores/settings'
+import { isTauri } from '../utils/tauri'
+
+// Proxied engines need the Squill server; hide them in the desktop app.
+const showProxiedConnections = !isTauri()
 
 const props = defineProps<{
   show: boolean
@@ -162,6 +166,7 @@ onUnmounted(() => {
 
             <!-- Snowflake Card -->
             <button
+              v-if="showProxiedConnections"
               :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
               aria-label="Connect to Snowflake"
               @click="handleSnowflakeClick"
@@ -180,6 +185,7 @@ onUnmounted(() => {
 
             <!-- ClickHouse Card -->
             <button
+              v-if="showProxiedConnections"
               :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
               aria-label="Connect to ClickHouse"
               @click="handleClickHouseClick"
@@ -198,6 +204,7 @@ onUnmounted(() => {
 
             <!-- MySQL Card -->
             <button
+              v-if="showProxiedConnections"
               :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
               aria-label="Connect to MySQL"
               @click="handleMysqlClick"
@@ -216,6 +223,7 @@ onUnmounted(() => {
 
             <!-- PostgreSQL Card -->
             <button
+              v-if="showProxiedConnections"
               :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
               aria-label="Connect to PostgreSQL database"
               @click="handlePostgresClick"

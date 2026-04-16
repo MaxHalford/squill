@@ -136,14 +136,19 @@ const selectedSqlBox = computed(() => {
   return sqlBoxRefs.value.has(box.id) ? box : null
 })
 
-// Handle BigQuery selection from onboarding
+// Handle BigQuery selection from onboarding.
+// Web: redirects to Google (flow continues in AuthCallback.vue — code below doesn't run).
+// Desktop: runs the full OAuth inline (code below runs on success).
 const handleSelectBigquery = async () => {
   try {
     await bigqueryStore.signInWithGoogle()
-    // Note: signInWithGoogle() redirects to Google OAuth, code below never runs
+    if (canvasStore.boxes.length === 0) {
+      createDefaultBoxes()
+    }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     console.error('BigQuery connection failed:', error)
-    alert('Failed to connect to BigQuery. Please try again.')
+    alert(`BigQuery connection failed:\n\n${message}`)
   }
 }
 
