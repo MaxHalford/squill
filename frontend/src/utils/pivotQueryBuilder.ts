@@ -67,27 +67,28 @@ const buildDateExpressionForGranularity = (
     case 'quarter':
       if (dialect === 'bigquery') return `CONCAT('Q', CAST(EXTRACT(QUARTER FROM ${col}) AS STRING), ' ', CAST(EXTRACT(YEAR FROM ${col}) AS STRING))`
       if (dialect === 'snowflake') return `'Q' || EXTRACT(QUARTER FROM ${col})::VARCHAR || ' ' || EXTRACT(YEAR FROM ${col})::VARCHAR`
-      if (dialect === 'postgres') return `'Q' || EXTRACT(QUARTER FROM ${col})::TEXT || ' ' || EXTRACT(YEAR FROM ${col})::TEXT`
+      if (dialect === 'clickhouse') return `concat('Q', toString(toQuarter(${col})), ' ', toString(toYear(${col})))`
       // DuckDB
       return `'Q' || CAST(QUARTER(${col}) AS VARCHAR) || ' ' || CAST(YEAR(${col}) AS VARCHAR)`
 
     case 'month':
       if (dialect === 'bigquery') return `FORMAT_TIMESTAMP('%Y-%m', ${col})`
       if (dialect === 'snowflake') return `TO_CHAR(${col}, 'YYYY-MM')`
-      if (dialect === 'postgres') return `TO_CHAR(${col}, 'YYYY-MM')`
+      if (dialect === 'clickhouse') return `formatDateTime(${col}, '%Y-%m')`
       // DuckDB
       return `STRFTIME('%Y-%m', ${col})`
 
     case 'week':
       if (dialect === 'bigquery') return `DATE_TRUNC(${col}, WEEK)`
       if (dialect === 'snowflake') return `DATE_TRUNC('WEEK', ${col})`
-      // DuckDB/Postgres: cast to VARCHAR so timestamps don't serialize as epoch ms
+      if (dialect === 'clickhouse') return `toStartOfWeek(${col})`
+      // DuckDB: cast to VARCHAR so timestamps don't serialize as epoch ms
       return `CAST(DATE_TRUNC('week', ${col}) AS VARCHAR)`
 
     case 'date':
       if (dialect === 'bigquery') return `FORMAT_TIMESTAMP('%Y-%m-%d', ${col})`
       if (dialect === 'snowflake') return `TO_CHAR(${col}, 'YYYY-MM-DD')`
-      if (dialect === 'postgres') return `TO_CHAR(${col}, 'YYYY-MM-DD')`
+      if (dialect === 'clickhouse') return `formatDateTime(${col}, '%Y-%m-%d')`
       // DuckDB
       return `STRFTIME('%Y-%m-%d', ${col})`
   }

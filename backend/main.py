@@ -16,18 +16,12 @@ from routers.canvas import router as canvas_router
 from routers.connections import router as connections_router
 from routers.hex_remover import router as hex_remover_router
 from routers.spell_caster import router as spell_caster_router
-from routers.postgres import router as postgres_router
-from routers.snowflake import router as snowflake_router
 from routers.clickhouse import router as clickhouse_router
-from routers.mysql import router as mysql_router
+from routers.snowflake import router as snowflake_router
 from routers.user import router as user_router
 from routers.wizard import router as wizard_router
 from routers.ws import router as ws_router
 from mcp_server import mcp
-from services.postgres_pool import PostgresPoolManager
-from services.snowflake_pool import SnowflakeConnectionManager
-from services.clickhouse_pool import ClickHouseConnectionManager
-from services.mysql_pool import MysqlConnectionManager
 
 # Build MCP sub-app once at module level (routes + middleware are set up here)
 _mcp_app = mcp.streamable_http_app()
@@ -64,11 +58,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down...")
-    await PostgresPoolManager.close_all()
-    await SnowflakeConnectionManager.close_all()
-    await ClickHouseConnectionManager.close_all()
-    await MysqlConnectionManager.close_all()
-    logger.info("All database connections closed")
 
 
 app = FastAPI(lifespan=lifespan, default_response_class=ORJSONResponse)
@@ -90,10 +79,8 @@ app.include_router(billing_router)
 app.include_router(hex_remover_router)
 app.include_router(spell_caster_router)
 app.include_router(connections_router)
-app.include_router(postgres_router)
-app.include_router(snowflake_router)
 app.include_router(clickhouse_router)
-app.include_router(mysql_router)
+app.include_router(snowflake_router)
 app.include_router(user_router)
 app.include_router(wizard_router)
 app.include_router(ws_router)

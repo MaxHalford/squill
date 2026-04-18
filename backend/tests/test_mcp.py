@@ -126,8 +126,6 @@ async def test_list_tools(mcp):
         "delete_box",
         "execute_query",
         "list_connections",
-        "list_tables",
-        "get_table_schema",
     }
     assert expected <= names, f"Missing tools: {expected - names}"
 

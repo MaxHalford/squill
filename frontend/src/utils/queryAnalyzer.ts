@@ -2,7 +2,7 @@
  * Query analyzer utility for detecting table references
  *
  * The engine selection logic:
- * 1. Each query box has an associated connection (BigQuery, DuckDB, Postgres, etc.)
+ * 1. Each query box has an associated connection (BigQuery, DuckDB, ClickHouse, etc.)
  * 2. The connection type determines the default execution engine
  * 3. If the query references a local DuckDB table, it overrides to DuckDB
  *    (since query results from all connections are stored in DuckDB)

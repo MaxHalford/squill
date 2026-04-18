@@ -11,10 +11,8 @@ import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useDuckDBStore } from '../stores/duckdb'
-import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useClickHouseStore } from '../stores/clickhouse'
-import { useMysqlStore } from '../stores/mysql'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import { useQueryResultsStore } from '../stores/queryResults'
@@ -41,10 +39,8 @@ const resultsRef = ref<InstanceType<typeof ResultsTable> | null>(null)
 
 const bigqueryStore = useBigQueryStore()
 const duckdbStore = useDuckDBStore()
-const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
 const clickhouseStore = useClickHouseStore()
-const mysqlStore = useMysqlStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
 const queryResultsStore = useQueryResultsStore()
@@ -216,7 +212,7 @@ const currentEngine = computed(() => {
 
 const currentDialect = computed((): 'bigquery' | 'duckdb' | 'postgres' => {
   const engine = currentEngine.value
-  if (engine === 'snowflake' || engine === 'clickhouse' || engine === 'mysql') return 'postgres'
+  if (engine === 'snowflake' || engine === 'clickhouse') return 'postgres'
   return engine
 })
 
@@ -283,10 +279,8 @@ watch(
 // ---------------------------------------------------------------------------
 
 const getOffsetStore = (engine: string) => {
-  if (engine === 'postgres') return postgresStore
   if (engine === 'snowflake') return snowflakeStore
   if (engine === 'clickhouse') return clickhouseStore
-  if (engine === 'mysql') return mysqlStore
   return null
 }
 
@@ -520,7 +514,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
       if (props.showAutofix) {
         suggestion.value = null
         const engine = currentEngine.value
-        const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = (engine === 'snowflake' || engine === 'clickhouse' || engine === 'mysql') ? 'postgres' : engine
+        const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = (engine === 'snowflake' || engine === 'clickhouse') ? 'postgres' : engine
         if (settingsStore.autofixEnabled && userStore.isPro && userStore.sessionToken && isFixableError(errorMessage, databaseDialect)) {
           isFetchingFix.value = true
           try {
@@ -569,12 +563,6 @@ const explainQuery = async (event: { clientX: number; clientY: number }) => {
       const row = result.rows[0]
       const raw = row?.explain_value ?? (row ? Object.values(row)[0] : null) ?? result.rows
       planData = typeof raw === 'string' ? JSON.parse(raw) : raw
-    } else if (engine === 'postgres') {
-      if (!connectionId) throw new Error('No Postgres connection')
-      const result = await postgresStore.runQuery(connectionId, `EXPLAIN (ANALYZE, FORMAT JSON) ${query}`)
-      // PG returns [{"QUERY PLAN": "<json string>"}] — unwrap the stringified plan
-      const raw = result.rows?.[0]?.['QUERY PLAN'] ?? result.rows
-      planData = typeof raw === 'string' ? JSON.parse(raw) : raw
     } else if (engine === 'snowflake') {
       if (!connectionId) throw new Error('No Snowflake connection')
       const result = await snowflakeStore.runQuery(connectionId, `EXPLAIN USING JSON ${query}`)
@@ -582,10 +570,6 @@ const explainQuery = async (event: { clientX: number; clientY: number }) => {
     } else if (engine === 'clickhouse') {
       if (!connectionId) throw new Error('No ClickHouse connection')
       const result = await clickhouseStore.runQuery(connectionId, `EXPLAIN JSON ${query}`)
-      planData = result.rows
-    } else if (engine === 'mysql') {
-      if (!connectionId) throw new Error('No MySQL connection')
-      const result = await mysqlStore.runQuery(connectionId, `EXPLAIN FORMAT=JSON ${query}`)
       planData = result.rows
     } else if (engine === 'bigquery') {
       if (!lastBigQueryJobRef.value) throw new Error('Run the query first to get its execution plan')
@@ -632,7 +616,7 @@ const handleCastSpell = async (instruction: string, selectedText: string) => {
   try {
     const query = editorRef.value?.getQuery() || queryText.value
     const engine = currentEngine.value
-    const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = (engine === 'snowflake' || engine === 'clickhouse' || engine === 'mysql') ? 'postgres' : engine
+    const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = (engine === 'snowflake' || engine === 'clickhouse') ? 'postgres' : engine
     const result = await castSpell({
       query,
       instruction,

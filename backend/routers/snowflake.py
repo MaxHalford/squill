@@ -1,8 +1,10 @@
-"""Snowflake connection and query endpoints."""
+"""Snowflake credential storage endpoints.
+
+Only CRUD for encrypted credentials — no query execution.
+Queries run client-side from the browser via Snowflake SQL REST API.
+"""
 
 import logging
-import time
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -13,30 +15,9 @@ from database import get_db
 from models import SnowflakeConnection, User
 from services.auth import get_current_user
 from services.encryption import get_encryption
-from services.snowflake_pool import SnowflakeConnectionManager
 
 router = APIRouter(prefix="/snowflake", tags=["snowflake"])
 logger = logging.getLogger(__name__)
-
-
-# Security helpers
-
-
-def quote_identifier(identifier: str) -> str:
-    """Quote a Snowflake identifier to prevent SQL injection.
-
-    Snowflake identifiers are quoted with double quotes, and embedded
-    double quotes are escaped by doubling them.
-    """
-    if not identifier or len(identifier) > 255:
-        raise ValueError(f"Invalid identifier: {identifier}")
-    if any(ord(c) < 32 for c in identifier):
-        raise ValueError("Invalid identifier: contains control characters")
-    escaped = identifier.replace('"', '""')
-    return f'"{escaped}"'
-
-
-# Request/Response Models
 
 
 class CreateConnectionRequest(BaseModel):
@@ -50,15 +31,8 @@ class CreateConnectionRequest(BaseModel):
     role: str | None = None
 
 
-class ConnectionResponse(BaseModel):
+class CreateConnectionResponse(BaseModel):
     id: str
-    name: str
-    account: str
-    username: str
-    warehouse: str | None
-    database: str | None
-    schema_name: str | None
-    role: str | None
 
 
 class CredentialsResponse(BaseModel):
@@ -71,212 +45,33 @@ class CredentialsResponse(BaseModel):
     role: str | None
 
 
-class QueryRequest(BaseModel):
-    connection_id: str
-    query: str
-
-
-class QueryResponse(BaseModel):
-    rows: list[dict[str, Any]]
-    stats: dict[str, Any]
-
-
-class TableInfo(BaseModel):
-    database_name: str
-    schema_name: str
-    name: str
-    type: str
-
-
-class TablesResponse(BaseModel):
-    tables: list[TableInfo]
-
-
-class ColumnInfo(BaseModel):
-    name: str
-    type: str
-    nullable: bool
-
-
-class TestConnectionRequest(BaseModel):
-    account: str
-    username: str
-    password: str
-    warehouse: str | None = None
-    database: str | None = None
-    schema_name: str | None = None
-    role: str | None = None
-
-
-class TestConnectionResponse(BaseModel):
-    success: bool
-    message: str
-
-
-class ColumnsResponse(BaseModel):
-    columns: list[ColumnInfo]
-
-
-class AllColumnsResponse(BaseModel):
-    columns: dict[str, list[ColumnInfo]]  # key: "database.schema.table"
-
-
-class PaginatedQueryRequest(BaseModel):
-    connection_id: str
-    query: str
-    batch_size: int = 9000
-    offset: int = 0
-    include_count: bool = True
-
-
-class PaginatedQueryResponse(BaseModel):
-    rows: list[dict[str, Any]]
-    columns: list[ColumnInfo]
-    total_rows: int | None
-    has_more: bool
-    next_offset: int
-    stats: dict[str, Any]
-
-
-class DatabaseInfo(BaseModel):
-    name: str
-
-
-class DatabasesResponse(BaseModel):
-    databases: list[DatabaseInfo]
-
-
-class SchemaInfo(BaseModel):
-    name: str
-
-
-class SchemasResponse(BaseModel):
-    schemas: list[SchemaInfo]
-
-
-# Helper Functions
-
-
-async def get_connection_credentials(
-    connection_id: str, db: AsyncSession, user_id: str
-) -> tuple[SnowflakeConnection, str]:
-    """Get connection and decrypt password. Verifies user ownership."""
-    result = await db.execute(
-        select(SnowflakeConnection).where(SnowflakeConnection.id == connection_id)
-    )
-    connection = result.scalar_one_or_none()
-
-    if not connection or connection.user_id != user_id:
-        raise HTTPException(status_code=404, detail="Connection not found")
-
-    try:
-        password = get_encryption().decrypt(
-            connection.password_encrypted, connection.encryption_iv
-        )
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to decrypt credentials")
-
-    return connection, password
-
-
-# Endpoints
-
-
-@router.post("/test-connection", response_model=TestConnectionResponse)
-async def test_connection(
-    request: TestConnectionRequest, user: User = Depends(get_current_user)
-):
-    """Test a Snowflake connection without saving it."""
-    try:
-        await SnowflakeConnectionManager.test_connection(
-            account=request.account,
-            username=request.username,
-            password=request.password,
-            warehouse=request.warehouse,
-            database=request.database,
-            schema=request.schema_name,
-            role=request.role,
-        )
-        return TestConnectionResponse(
-            success=True,
-            message="Connection successful",
-        )
-    except Exception as e:
-        error_message = str(e)
-        # Clean up common Snowflake error messages
-        if "incorrect username or password" in error_message.lower():
-            error_message = "Authentication failed: invalid username or password"
-        elif (
-            "account" in error_message.lower() and "not found" in error_message.lower()
-        ):
-            error_message = f"Account '{request.account}' not found"
-        elif "warehouse" in error_message.lower():
-            error_message = (
-                f"Warehouse '{request.warehouse}' not found or not accessible"
-            )
-
-        return TestConnectionResponse(
-            success=False,
-            message=error_message,
-        )
-
-
-@router.post("/connections", response_model=ConnectionResponse)
+@router.post("/connections", response_model=CreateConnectionResponse)
 async def create_connection(
     request: CreateConnectionRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new Snowflake connection with encrypted credentials."""
-    # Test the connection first
-    try:
-        await SnowflakeConnectionManager.test_connection(
-            account=request.account,
-            username=request.username,
-            password=request.password,
-            warehouse=request.warehouse,
-            database=request.database,
-            schema=request.schema_name,
-            role=request.role,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to connect to Snowflake: {e}",
-        )
+    """Create a Snowflake connection with encrypted credentials."""
+    encryption = get_encryption()
+    password_encrypted, iv = encryption.encrypt(request.password)
 
-    # Encrypt password
-    encrypted_password, iv = get_encryption().encrypt(request.password)
-
-    # Create connection
-    connection = SnowflakeConnection(
+    conn = SnowflakeConnection(
         user_id=user.id,
         name=request.name,
         account=request.account,
         username=request.username,
-        password_encrypted=encrypted_password,
+        password_encrypted=password_encrypted,
         encryption_iv=iv,
         warehouse=request.warehouse,
         database=request.database,
         schema_name=request.schema_name,
         role=request.role,
     )
-    db.add(connection)
+    db.add(conn)
     await db.commit()
-    await db.refresh(connection)
 
-    logger.info(f"Created Snowflake connection {connection.id} for user {user.id}")
-
-    return ConnectionResponse(
-        id=connection.id,
-        name=connection.name,
-        account=connection.account,
-        username=connection.username,
-        warehouse=connection.warehouse,
-        database=connection.database,
-        schema_name=connection.schema_name,
-        role=connection.role,
-    )
+    logger.info(f"Created Snowflake connection {conn.id} for user {user.id}")
+    return CreateConnectionResponse(id=conn.id)
 
 
 @router.get(
@@ -287,514 +82,28 @@ async def get_credentials(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get decrypted credentials for a connection (frontend caches in memory)."""
-    connection, password = await get_connection_credentials(connection_id, db, user.id)
+    """Fetch decrypted credentials for a connection. Password returned in memory only."""
+    result = await db.execute(
+        select(SnowflakeConnection).where(
+            SnowflakeConnection.id == connection_id,
+            SnowflakeConnection.user_id == user.id,
+        )
+    )
+    conn = result.scalar_one_or_none()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    encryption = get_encryption()
+    password = encryption.decrypt(conn.password_encrypted, conn.encryption_iv)
 
     return CredentialsResponse(
-        account=connection.account,
-        username=connection.username,
+        account=conn.account,
+        username=conn.username,
         password=password,
-        warehouse=connection.warehouse,
-        database=connection.database,
-        schema_name=connection.schema_name,
-        role=connection.role,
-    )
-
-
-@router.post("/query", response_model=QueryResponse)
-async def execute_query(
-    request: QueryRequest,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Execute a SQL query on a Snowflake connection."""
-    connection, password = await get_connection_credentials(
-        request.connection_id, db, user.id
-    )
-
-    try:
-        conn = await SnowflakeConnectionManager.get_connection(
-            connection_id=connection.id,
-            account=connection.account,
-            username=connection.username,
-            password=password,
-            warehouse=connection.warehouse,
-            database=connection.database,
-            schema=connection.schema_name,
-            role=connection.role,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to connect to Snowflake: {e}",
-        )
-
-    start_time = time.time()
-
-    try:
-        rows, _schema = await SnowflakeConnectionManager.execute_query(
-            conn, request.query
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Query execution failed: {e}",
-        )
-
-    execution_time_ms = (time.time() - start_time) * 1000
-
-    return QueryResponse(
-        rows=rows,
-        stats={
-            "executionTimeMs": round(execution_time_ms, 2),
-            "rowCount": len(rows),
-        },
-    )
-
-
-@router.post("/query/paginated", response_model=PaginatedQueryResponse)
-async def execute_paginated_query(
-    request: PaginatedQueryRequest,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Execute a SQL query with pagination support."""
-    connection, password = await get_connection_credentials(
-        request.connection_id, db, user.id
-    )
-
-    try:
-        conn = await SnowflakeConnectionManager.get_connection(
-            connection_id=connection.id,
-            account=connection.account,
-            username=connection.username,
-            password=password,
-            warehouse=connection.warehouse,
-            database=connection.database,
-            schema=connection.schema_name,
-            role=connection.role,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to connect to Snowflake: {e}",
-        )
-
-    start_time = time.time()
-
-    try:
-        (
-            rows,
-            schema,
-            total_rows,
-            has_more,
-            next_offset,
-        ) = await SnowflakeConnectionManager.execute_query_paginated(
-            conn,
-            request.query,
-            request.batch_size,
-            request.offset,
-            request.include_count,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Query execution failed: {e}",
-        )
-
-    execution_time_ms = (time.time() - start_time) * 1000
-
-    schema_info = [
-        ColumnInfo(name=name, type=type_, nullable=True) for name, type_ in schema
-    ]
-
-    return PaginatedQueryResponse(
-        rows=rows,
-        columns=schema_info,
-        total_rows=total_rows,
-        has_more=has_more,
-        next_offset=next_offset,
-        stats={
-            "executionTimeMs": round(execution_time_ms, 2),
-            "rowCount": len(rows),
-        },
-    )
-
-
-@router.get("/schema/{connection_id}/databases", response_model=DatabasesResponse)
-async def get_databases(
-    connection_id: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """List all databases accessible to the connection."""
-    connection, password = await get_connection_credentials(connection_id, db, user.id)
-
-    try:
-        conn = await SnowflakeConnectionManager.get_connection(
-            connection_id=connection.id,
-            account=connection.account,
-            username=connection.username,
-            password=password,
-            warehouse=connection.warehouse,
-            database=connection.database,
-            schema=connection.schema_name,
-            role=connection.role,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to connect to Snowflake: {e}",
-        )
-
-    try:
-        rows, _schema = await SnowflakeConnectionManager.execute_query(
-            conn, "SHOW DATABASES"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch databases: {e}",
-        )
-
-    databases = [
-        DatabaseInfo(name=row.get("name", "")) for row in rows if row.get("name")
-    ]
-
-    return DatabasesResponse(databases=databases)
-
-
-@router.get(
-    "/schema/{connection_id}/schemas/{database_name}", response_model=SchemasResponse
-)
-async def get_schemas(
-    connection_id: str,
-    database_name: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """List all schemas in a database."""
-    connection, password = await get_connection_credentials(connection_id, db, user.id)
-
-    try:
-        conn = await SnowflakeConnectionManager.get_connection(
-            connection_id=connection.id,
-            account=connection.account,
-            username=connection.username,
-            password=password,
-            warehouse=connection.warehouse,
-            database=connection.database,
-            schema=connection.schema_name,
-            role=connection.role,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to connect to Snowflake: {e}",
-        )
-
-    try:
-        safe_db = quote_identifier(database_name)
-        rows, _schema = await SnowflakeConnectionManager.execute_query(
-            conn, f"SHOW SCHEMAS IN DATABASE {safe_db}"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch schemas: {e}",
-        )
-
-    schemas = [SchemaInfo(name=row.get("name", "")) for row in rows if row.get("name")]
-
-    return SchemasResponse(schemas=schemas)
-
-
-@router.get("/schema/{connection_id}/tables", response_model=TablesResponse)
-async def get_tables(
-    connection_id: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """List all tables and views in the current database/schema context."""
-    connection, password = await get_connection_credentials(connection_id, db, user.id)
-
-    try:
-        conn = await SnowflakeConnectionManager.get_connection(
-            connection_id=connection.id,
-            account=connection.account,
-            username=connection.username,
-            password=password,
-            warehouse=connection.warehouse,
-            database=connection.database,
-            schema=connection.schema_name,
-            role=connection.role,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to connect to Snowflake: {e}",
-        )
-
-    tables: list[TableInfo] = []
-
-    try:
-        # First, get all databases
-        db_rows, _schema = await SnowflakeConnectionManager.execute_query(
-            conn, "SHOW DATABASES"
-        )
-        databases = [row.get("name", "") for row in db_rows if row.get("name")]
-
-        # For each database, get tables
-        for db_name in databases:
-            # Skip system databases
-            if db_name.upper() in ("SNOWFLAKE", "SNOWFLAKE_SAMPLE_DATA"):
-                continue
-
-            try:
-                # Get tables in this database (safely quoted)
-                safe_db = quote_identifier(db_name)
-                table_rows, _schema = await SnowflakeConnectionManager.execute_query(
-                    conn, f"SHOW TABLES IN DATABASE {safe_db}"
-                )
-                for row in table_rows:
-                    if row.get("name"):
-                        tables.append(
-                            TableInfo(
-                                database_name=row.get("database_name", db_name),
-                                schema_name=row.get("schema_name", ""),
-                                name=row.get("name", ""),
-                                type="table",
-                            )
-                        )
-            except Exception:
-                # Skip databases we can't access
-                continue
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch tables: {e}",
-        )
-
-    return TablesResponse(tables=tables)
-
-
-@router.get(
-    "/schema/{connection_id}/columns/{database_name}/{schema_name}/{table_name}",
-    response_model=ColumnsResponse,
-)
-async def get_columns(
-    connection_id: str,
-    database_name: str,
-    schema_name: str,
-    table_name: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """List all columns for a specific table."""
-    connection, password = await get_connection_credentials(connection_id, db, user.id)
-
-    try:
-        conn = await SnowflakeConnectionManager.get_connection(
-            connection_id=connection.id,
-            account=connection.account,
-            username=connection.username,
-            password=password,
-            warehouse=connection.warehouse,
-            database=connection.database,
-            schema=connection.schema_name,
-            role=connection.role,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to connect to Snowflake: {e}",
-        )
-
-    try:
-        # Use quoted identifier for database name in FROM clause,
-        # and parameterized query for WHERE clause values
-        safe_db = quote_identifier(database_name)
-        query = f"""
-            SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
-            FROM {safe_db}.INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
-            ORDER BY ORDINAL_POSITION
-        """
-        rows, _schema = await SnowflakeConnectionManager.execute_query_with_params(
-            conn, query, (schema_name, table_name)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch columns: {e}",
-        )
-
-    columns = [
-        ColumnInfo(
-            name=row.get("COLUMN_NAME", row.get("column_name", "")),
-            type=row.get("DATA_TYPE", row.get("data_type", "")),
-            nullable=row.get("IS_NULLABLE", row.get("is_nullable", "YES")) == "YES",
-        )
-        for row in rows
-    ]
-
-    return ColumnsResponse(columns=columns)
-
-
-@router.get("/schema/{connection_id}/all-columns", response_model=AllColumnsResponse)
-async def get_all_columns(
-    connection_id: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Fetch all columns for all tables across all accessible databases."""
-    connection, password = await get_connection_credentials(connection_id, db, user.id)
-
-    try:
-        conn = await SnowflakeConnectionManager.get_connection(
-            connection_id=connection.id,
-            account=connection.account,
-            username=connection.username,
-            password=password,
-            warehouse=connection.warehouse,
-            database=connection.database,
-            schema=connection.schema_name,
-            role=connection.role,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to connect to Snowflake: {e}",
-        )
-
-    columns_by_table: dict[str, list[ColumnInfo]] = {}
-
-    try:
-        # First, get all databases
-        db_rows, _schema = await SnowflakeConnectionManager.execute_query(
-            conn, "SHOW DATABASES"
-        )
-        databases = [row.get("name", "") for row in db_rows if row.get("name")]
-
-        # For each database, query INFORMATION_SCHEMA.COLUMNS
-        for db_name in databases:
-            # Skip system databases
-            if db_name.upper() in ("SNOWFLAKE", "SNOWFLAKE_SAMPLE_DATA"):
-                continue
-
-            try:
-                safe_db = quote_identifier(db_name)
-                query = f"""
-                    SELECT
-                        TABLE_CATALOG as database_name,
-                        TABLE_SCHEMA as schema_name,
-                        TABLE_NAME as table_name,
-                        COLUMN_NAME as column_name,
-                        DATA_TYPE as data_type,
-                        IS_NULLABLE as is_nullable
-                    FROM {safe_db}.INFORMATION_SCHEMA.COLUMNS
-                    WHERE TABLE_SCHEMA NOT IN ('INFORMATION_SCHEMA')
-                    ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
-                """
-                rows, _schema = await SnowflakeConnectionManager.execute_query(
-                    conn, query
-                )
-
-                for row in rows:
-                    row_db = row.get("DATABASE_NAME", row.get("database_name", db_name))
-                    sch_name = row.get("SCHEMA_NAME", row.get("schema_name", ""))
-                    tbl_name = row.get("TABLE_NAME", row.get("table_name", ""))
-                    key = f"{row_db}.{sch_name}.{tbl_name}"
-
-                    if key not in columns_by_table:
-                        columns_by_table[key] = []
-
-                    columns_by_table[key].append(
-                        ColumnInfo(
-                            name=row.get("COLUMN_NAME", row.get("column_name", "")),
-                            type=row.get("DATA_TYPE", row.get("data_type", "")),
-                            nullable=row.get(
-                                "IS_NULLABLE", row.get("is_nullable", "YES")
-                            )
-                            == "YES",
-                        )
-                    )
-            except Exception:
-                # Skip databases we can't access
-                continue
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch columns: {e}",
-        )
-
-    return AllColumnsResponse(columns=columns_by_table)
-
-
-class TableMetadataResponse(BaseModel):
-    row_count: int | None = None
-    size_bytes: int | None = None
-    table_type: str | None = None
-
-
-@router.get(
-    "/schema/{connection_id}/table-metadata/{database_name}/{schema_name}/{table_name}",
-    response_model=TableMetadataResponse,
-)
-async def get_table_metadata(
-    connection_id: str,
-    database_name: str,
-    schema_name: str,
-    table_name: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get metadata (row count, size) for a specific table."""
-    connection, password = await get_connection_credentials(connection_id, db, user.id)
-
-    try:
-        conn = await SnowflakeConnectionManager.get_connection(
-            connection_id=connection.id,
-            account=connection.account,
-            username=connection.username,
-            password=password,
-            warehouse=connection.warehouse,
-            database=connection.database,
-            schema=connection.schema_name,
-            role=connection.role,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to connect to Snowflake: {e}",
-        )
-
-    try:
-        safe_db = quote_identifier(database_name)
-        query = f"""
-            SELECT ROW_COUNT, BYTES, TABLE_TYPE
-            FROM {safe_db}.INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
-        """
-        rows, _schema = await SnowflakeConnectionManager.execute_query_with_params(
-            conn, query, (schema_name, table_name)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch table metadata: {e}",
-        )
-
-    if not rows:
-        return TableMetadataResponse()
-
-    row = rows[0]
-    return TableMetadataResponse(
-        row_count=row.get("ROW_COUNT", row.get("row_count")),
-        size_bytes=row.get("BYTES", row.get("bytes")),
-        table_type=row.get("TABLE_TYPE", row.get("table_type")),
+        warehouse=conn.warehouse,
+        database=conn.database,
+        schema_name=conn.schema_name,
+        role=conn.role,
     )
 
 
@@ -806,19 +115,17 @@ async def delete_connection(
 ):
     """Delete a Snowflake connection."""
     result = await db.execute(
-        select(SnowflakeConnection).where(SnowflakeConnection.id == connection_id)
+        select(SnowflakeConnection).where(
+            SnowflakeConnection.id == connection_id,
+            SnowflakeConnection.user_id == user.id,
+        )
     )
-    connection = result.scalar_one_or_none()
-
-    if not connection or connection.user_id != user.id:
+    conn = result.scalar_one_or_none()
+    if not conn:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    # Close any active connection
-    await SnowflakeConnectionManager.close_connection(connection_id)
-
-    await db.delete(connection)
+    await db.delete(conn)
     await db.commit()
 
     logger.info(f"Deleted Snowflake connection {connection_id} for user {user.id}")
-
-    return {"status": "ok"}
+    return {"status": "deleted"}

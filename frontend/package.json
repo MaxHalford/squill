@@ -11,7 +11,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.0",
@@ -21,6 +23,7 @@
     "@hocuspocus/provider": "^3.4.4",
     "@polar-sh/checkout": "^0.2.0",
     "@tanstack/vue-virtual": "^3.13.19",
+    "@tauri-apps/api": "^2.10.1",
     "codemirror": "^6.0.2",
     "dexie": "^4.3.0",
     "marked": "^17.0.1",
@@ -33,6 +36,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2.10.1",
     "@types/node": "^22.19.3",
     "@unhead/vue": "^2.1.1",
     "@vitejs/plugin-vue": "^6.0.1",

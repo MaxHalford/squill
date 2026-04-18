@@ -5,7 +5,6 @@ import PivotConfig from './PivotConfig.vue'
 import ResultsTable from './ResultsTable.vue'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useBigQueryStore } from '../stores/bigquery'
-import { usePostgresStore } from '../stores/postgres'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useConnectionsStore } from '../stores/connections'
 import { useQueryResultsStore } from '../stores/queryResults'
@@ -35,7 +34,6 @@ const emit = defineEmits([
 
 const duckdbStore = useDuckDBStore()
 const bigqueryStore = useBigQueryStore()
-const postgresStore = usePostgresStore()
 const snowflakeStore = useSnowflakeStore()
 const queryResultsStore = useQueryResultsStore()
 const settingsStore = useSettingsStore()
@@ -195,7 +193,7 @@ const enrichColumnTypes = async () => {
 // Determine which engine to query
 const getDialect = (): DatabaseEngine => {
   const { sourceEngine } = pivotConfig.value
-  if (sourceEngine === 'bigquery' || sourceEngine === 'postgres' || sourceEngine === 'snowflake') {
+  if (sourceEngine === 'bigquery' || sourceEngine === 'snowflake') {
     return sourceEngine
   }
   return 'duckdb'
@@ -204,7 +202,7 @@ const getDialect = (): DatabaseEngine => {
 const useSourceAnalytics = (): boolean => {
   const { sourceEngine, originalQuery, connectionId } = pivotConfig.value
   return !!(
-    (sourceEngine === 'bigquery' || sourceEngine === 'postgres' || sourceEngine === 'snowflake') &&
+    (sourceEngine === 'bigquery' || sourceEngine === 'snowflake') &&
     originalQuery && connectionId
   )
 }
@@ -302,23 +300,6 @@ const runAggregationOnSource = async (query: string, storageTableName: string): 
       totalBytesProcessed: result.stats?.totalBytesProcessed,
       cacheHit: result.stats?.cacheHit,
     }
-  } else if (sourceEngine === 'postgres') {
-    const result = await postgresStore.runQueryPaginated(
-      connectionId, query, batchSize, 0, true
-    )
-    await duckdbStore.storeResults(
-      storageTableName, result.rows as Record<string, unknown>[], props.boxId, result.columns
-    )
-    queryResultsStore.initQueryResult(props.boxId, 'postgres', {
-      totalRows: result.totalRows,
-      fetchedRows: result.rows.length,
-      hasMoreRows: result.hasMore,
-      nextOffset: result.nextOffset,
-      originalQuery: query,
-      connectionId,
-      schema: result.columns,
-    })
-    return { engine: 'postgres' }
   } else if (sourceEngine === 'snowflake') {
     const result = await snowflakeStore.runQueryPaginated(
       connectionId, query, batchSize, 0, true
@@ -363,11 +344,6 @@ const handleRequestMoreData = async (_neededRows: number) => {
       const result = await bigqueryStore.runQueryPaginated(query, batchSize, pageToken, null, connectionId)
       await duckdbStore.appendResults(tableName, result.rows as Record<string, unknown>[], schema)
       queryResultsStore.updateFetchProgress(props.boxId, fetchState.fetchedRows + result.rows.length, result.hasMore, result.pageToken)
-    } else if (engine === 'postgres') {
-      const offset = fetchState.nextOffset ?? fetchState.fetchedRows
-      const result = await postgresStore.runQueryPaginated(connectionId, query, batchSize, offset, false)
-      await duckdbStore.appendResults(tableName, result.rows as Record<string, unknown>[], schema)
-      queryResultsStore.updateFetchProgress(props.boxId, fetchState.fetchedRows + result.rows.length, result.hasMore, undefined, result.nextOffset)
     } else if (engine === 'snowflake') {
       const offset = fetchState.nextOffset ?? fetchState.fetchedRows
       const result = await snowflakeStore.runQueryPaginated(connectionId, query, batchSize, offset, false)

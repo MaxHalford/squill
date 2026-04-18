@@ -9,12 +9,12 @@
  * Supported database engines.
  * Used for query execution, SQL dialect selection, and connection types.
  */
-export type DatabaseEngine = 'duckdb' | 'bigquery' | 'clickhouse' | 'mysql' | 'postgres' | 'snowflake'
+export type DatabaseEngine = 'duckdb' | 'bigquery' | 'clickhouse' | 'snowflake'
 
 /**
  * Array of all supported engines (useful for iteration/validation)
  */
-export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['duckdb', 'bigquery', 'clickhouse', 'mysql', 'postgres', 'snowflake'] as const
+export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['duckdb', 'bigquery', 'clickhouse', 'snowflake'] as const
 
 /**
  * Connection type - how queries are executed
@@ -71,34 +71,6 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     authMethod: 'OAuth with Google account',
     dataPrivacy: 'Queries run directly against BigQuery from your browser. Only OAuth tokens are stored (encrypted). Query results stay in your browser.'
   },
-  mysql: {
-    id: 'mysql',
-    name: 'MySQL',
-    shortName: 'MY',
-    logo: '/logos/mysql.svg',
-    color: '#00758F',
-    textColor: '#FFFFFF',
-    connectionType: 'server',
-    badge: 'Requires credentials',
-    shortDescription: 'Popular open-source relational database for web applications',
-    longDescription: 'MySQL connections require a backend server to proxy queries. The Squill backend executes your query and streams results to your browser without storing them.',
-    authMethod: 'Database credentials (host, port, user, password)',
-    dataPrivacy: 'Queries are proxied through the Squill backend but results are not stored. Connection credentials are encrypted at rest.'
-  },
-  postgres: {
-    id: 'postgres',
-    name: 'PostgreSQL',
-    shortName: 'PG',
-    logo: '/logos/postgresql.svg',
-    color: '#336791',
-    textColor: '#FFFFFF',
-    connectionType: 'server',
-    badge: 'Requires credentials',
-    shortDescription: 'Connect to PostgreSQL databases for powerful relational queries',
-    longDescription: 'PostgreSQL connections require a backend server to proxy queries. The Squill backend executes your query and streams results to your browser without storing them.',
-    authMethod: 'Database credentials (host, port, user, password)',
-    dataPrivacy: 'Queries are proxied through the Squill backend but results are not stored. Connection credentials are encrypted at rest.'
-  },
   clickhouse: {
     id: 'clickhouse',
     name: 'ClickHouse',
@@ -106,12 +78,12 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     logo: '/logos/clickhouse.svg',
     color: '#161616',
     textColor: '#FFFFFF',
-    connectionType: 'server',
+    connectionType: 'client',
     badge: 'Requires credentials',
     shortDescription: 'Fast open-source columnar database for real-time analytics',
-    longDescription: 'ClickHouse connections require a backend server to proxy queries. The Squill backend executes your query and streams results to your browser without storing them.',
+    longDescription: 'Queries are sent directly from your browser to ClickHouse via its HTTP API. Your credentials and data never pass through Squill servers.',
     authMethod: 'Database credentials (host, port, user, password)',
-    dataPrivacy: 'Queries are proxied through the Squill backend but results are not stored. Connection credentials are encrypted at rest.'
+    dataPrivacy: 'Queries run directly from your browser to ClickHouse. Credentials are stored locally in your browser. No data passes through Squill servers.'
   },
   snowflake: {
     id: 'snowflake',
@@ -120,12 +92,12 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     logo: '/logos/snowflake.svg',
     color: '#29B5E8',
     textColor: '#FFFFFF',
-    connectionType: 'server',
+    connectionType: 'client',
     badge: 'Requires credentials',
     shortDescription: 'Cloud data platform for analytics and data warehousing',
-    longDescription: 'Snowflake connections require a backend server to proxy queries. The Squill backend executes your query and streams results to your browser without storing them.',
+    longDescription: 'Queries are sent directly from your browser to Snowflake via its SQL REST API. Your credentials and data never pass through Squill servers.',
     authMethod: 'Snowflake credentials (account, user, password, warehouse)',
-    dataPrivacy: 'Queries are proxied through the Squill backend but results are not stored. Connection credentials are encrypted at rest.'
+    dataPrivacy: 'Queries run directly from your browser to Snowflake. Credentials are stored locally in your browser. No data passes through Squill servers.'
   }
 }
 

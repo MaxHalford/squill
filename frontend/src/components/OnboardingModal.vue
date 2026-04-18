@@ -3,6 +3,10 @@ import { watch, onMounted, onUnmounted, computed } from 'vue'
 import { DATABASE_INFO } from '../types/database'
 import { useUserStore } from '../stores/user'
 import { useSettingsStore } from '../stores/settings'
+import { isTauri } from '../utils/tauri'
+
+// Proxied engines need the Squill server; hide them in the desktop app.
+const showProxiedConnections = !isTauri()
 
 const props = defineProps<{
   show: boolean
@@ -23,10 +27,8 @@ const emit = defineEmits<{
   selectBigquery: []
   selectDuckdb: []
   selectCsv: []
-  selectPostgres: []
   selectSnowflake: []
   selectClickhouse: []
-  selectMysql: []
 }>()
 
 // Prevent body scroll when modal is open
@@ -54,25 +56,9 @@ const handleSnowflakeClick = () => {
   }
 }
 
-const handlePostgresClick = () => {
-  if (userStore.isLoggedIn) {
-    emit('selectPostgres')
-  } else {
-    userStore.loginWithGoogle()
-  }
-}
-
 const handleClickHouseClick = () => {
   if (userStore.isLoggedIn) {
     emit('selectClickhouse')
-  } else {
-    userStore.loginWithGoogle()
-  }
-}
-
-const handleMysqlClick = () => {
-  if (userStore.isLoggedIn) {
-    emit('selectMysql')
   } else {
     userStore.loginWithGoogle()
   }
@@ -162,6 +148,7 @@ onUnmounted(() => {
 
             <!-- Snowflake Card -->
             <button
+              v-if="showProxiedConnections"
               :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
               aria-label="Connect to Snowflake"
               @click="handleSnowflakeClick"
@@ -180,6 +167,7 @@ onUnmounted(() => {
 
             <!-- ClickHouse Card -->
             <button
+              v-if="showProxiedConnections"
               :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
               aria-label="Connect to ClickHouse"
               @click="handleClickHouseClick"
@@ -196,41 +184,6 @@ onUnmounted(() => {
               </span>
             </button>
 
-            <!-- MySQL Card -->
-            <button
-              :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
-              aria-label="Connect to MySQL"
-              @click="handleMysqlClick"
-            >
-              <img
-                :src="DATABASE_INFO.mysql.logo"
-                :alt="DATABASE_INFO.mysql.name"
-                :class="['option-icon', { 'option-icon-disabled': !userStore.isLoggedIn }]"
-              >
-              <h2>{{ DATABASE_INFO.mysql.name }}</h2>
-              <p>Queries proxied through our server, credentials encrypted</p>
-              <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
-                {{ userStore.isLoggedIn ? DATABASE_INFO.mysql.badge : 'Sign in required' }}
-              </span>
-            </button>
-
-            <!-- PostgreSQL Card -->
-            <button
-              :class="['option-card', { 'option-card-disabled': !userStore.isLoggedIn }]"
-              aria-label="Connect to PostgreSQL database"
-              @click="handlePostgresClick"
-            >
-              <img
-                :src="DATABASE_INFO.postgres.logo"
-                :alt="DATABASE_INFO.postgres.name"
-                :class="['option-icon', { 'option-icon-disabled': !userStore.isLoggedIn }]"
-              >
-              <h2>{{ DATABASE_INFO.postgres.name }}</h2>
-              <p>Queries proxied through our server, credentials encrypted</p>
-              <span :class="['option-badge', { 'option-badge-soon': !userStore.isLoggedIn }]">
-                {{ userStore.isLoggedIn ? DATABASE_INFO.postgres.badge : 'Sign in required' }}
-              </span>
-            </button>
           </div>
 
           <!-- Footer -->

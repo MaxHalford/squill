@@ -160,7 +160,7 @@ describe('Full pivot pipeline', () => {
       originalQuery: 'SELECT * FROM raw_orders WHERE year = 2025',
     })
 
-    const phase1 = buildAggregationQuery(c, 'postgres')
+    const phase1 = buildAggregationQuery(c, 'clickhouse')
     expect(phase1).toContain('FROM (SELECT * FROM raw_orders WHERE year = 2025) AS source_data')
     expect(phase1).toContain('"status"')
     expect(phase1).toContain('"region"')
@@ -172,7 +172,7 @@ describe('Full pivot pipeline', () => {
 // ---------------------------------------------------------------------------
 
 describe('Cross-dialect consistency', () => {
-  const dialects: DatabaseEngine[] = ['duckdb', 'postgres', 'bigquery', 'snowflake']
+  const dialects: DatabaseEngine[] = ['duckdb', 'clickhouse', 'bigquery', 'snowflake']
 
   it('all dialects produce structurally valid aggregation queries', () => {
     const c = config({
@@ -199,7 +199,7 @@ describe('Cross-dialect consistency', () => {
       expect(sql, `${dialect}: missing metric_value`).toContain('metric_value')
 
       // Date expression should be present (dialect-specific)
-      expect(sql, `${dialect}: missing date expression`).toMatch(/STRFTIME|TO_CHAR|FORMAT_TIMESTAMP|DATE_TRUNC/)
+      expect(sql, `${dialect}: missing date expression`).toMatch(/STRFTIME|TO_CHAR|FORMAT_TIMESTAMP|DATE_TRUNC|formatDateTime/)
     }
   })
 

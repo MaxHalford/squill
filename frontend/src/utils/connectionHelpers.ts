@@ -30,16 +30,6 @@ export const CONNECTION_METADATA: Record<ConnectionType, {
     requiresAuth: true,
     hasProjects: false
   },
-  mysql: {
-    displayName: DATABASE_INFO.mysql.name,
-    requiresAuth: true,
-    hasProjects: false
-  },
-  postgres: {
-    displayName: DATABASE_INFO.postgres.name,
-    requiresAuth: true,
-    hasProjects: false
-  },
   snowflake: {
     displayName: DATABASE_INFO.snowflake.name,
     requiresAuth: true,
@@ -72,8 +62,6 @@ export function getDialectForConnection(type: ConnectionType | undefined): 'bigq
     case 'bigquery':
       return 'bigquery'
     case 'clickhouse':
-    case 'mysql':
-    case 'postgres':
     case 'snowflake':
       return 'postgres'
     case 'duckdb':
@@ -121,7 +109,7 @@ export function getConnectionDisplayName(connection: Connection | null | undefin
     return `${typeName} (local)`
   }
 
-  if (connection.type === 'clickhouse' || connection.type === 'mysql' || connection.type === 'postgres' || connection.type === 'snowflake') {
+  if (connection.type === 'clickhouse' || connection.type === 'snowflake') {
     return `${typeName} · ${connection.name || connection.database || 'unknown'}`
   }
 

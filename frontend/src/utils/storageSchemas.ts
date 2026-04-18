@@ -91,7 +91,7 @@ export type MultiCanvasIndexData = z.infer<typeof MultiCanvasIndexSchema>
 // ============================================
 // Connection Schema
 // ============================================
-const ConnectionTypeSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'mysql', 'postgres', 'snowflake'])
+const ConnectionTypeSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'snowflake'])
 
 const ConnectionSchema = z.object({
   id: z.string(),
@@ -101,7 +101,18 @@ const ConnectionSchema = z.object({
   email: z.string().optional(),
   projectId: z.string().optional(),
   schemaProjectIds: z.array(z.string()).optional(),
-  database: z.string().optional()
+  database: z.string().optional(),
+  // ClickHouse non-secret metadata (passwords never in IndexedDB)
+  clickhouseHost: z.string().optional(),
+  clickhousePort: z.number().optional(),
+  clickhouseUsername: z.string().optional(),
+  clickhouseSecure: z.boolean().optional(),
+  // Snowflake non-secret metadata (passwords never in IndexedDB)
+  snowflakeAccount: z.string().optional(),
+  snowflakeUsername: z.string().optional(),
+  snowflakeWarehouse: z.string().optional(),
+  snowflakeSchema: z.string().optional(),
+  snowflakeRole: z.string().optional(),
 })
 
 export const ConnectionsStateSchema = z.object({
@@ -135,7 +146,7 @@ export type UserData = z.infer<typeof UserSchema>
 // ============================================
 // Query history schema
 // ============================================
-const DatabaseEngineSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'mysql', 'postgres', 'snowflake'])
+const DatabaseEngineSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'snowflake'])
 
 export const QueryHistoryEntrySchema = z.object({
   id: z.string(),

@@ -1,7 +1,6 @@
 // Web Worker for SQLGlot validation and formatting via Pyodide WASM.
 // Runs Python in the browser without blocking the main thread.
 
-/* eslint-disable no-restricted-globals */
 declare function importScripts(...urls: string[]): void
 declare function loadPyodide(config?: Record<string, unknown>): Promise<PyodideInterface>
 

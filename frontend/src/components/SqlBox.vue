@@ -67,9 +67,9 @@ const { connection: boxConnection, isConnectionMissing } = useBoxConnection(toRe
 
 const missingConnectionType = computed((): string | undefined => {
   if (!props.connectionId) return undefined
-  if (props.connectionId.startsWith('postgres')) return DATABASE_INFO.postgres.name
   if (props.connectionId.startsWith('bigquery')) return DATABASE_INFO.bigquery.name
   if (props.connectionId.startsWith('snowflake')) return DATABASE_INFO.snowflake.name
+  if (props.connectionId.startsWith('clickhouse')) return DATABASE_INFO.clickhouse.name
   return 'database'
 })
 
@@ -283,7 +283,7 @@ const handleNavigateToTable = (ref: TableReferenceWithPosition) => {
     navigationInfo.databaseName = ref.parts[0]
     navigationInfo.schemaName = ref.parts[1]
     navigationInfo.tableName = ref.parts[2]
-  } else if ((connectionType === 'postgres' || connectionType === 'snowflake') && ref.parts.length === 2) {
+  } else if ((connectionType === 'clickhouse' || connectionType === 'snowflake') && ref.parts.length === 2) {
     navigationInfo.schemaName = ref.parts[0]
     navigationInfo.tableName = ref.parts[1]
   }

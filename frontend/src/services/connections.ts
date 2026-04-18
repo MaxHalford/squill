@@ -1,13 +1,14 @@
 /**
  * API service for fetching connections from backend (Pro/VIP users only).
- * Connections are derived from BigQueryConnection and PostgresConnection tables.
+ * Only BigQuery connections are stored server-side (OAuth refresh tokens).
+ * All other connection types (DuckDB, ClickHouse, Snowflake) are local-only.
  */
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 export interface ConnectionData {
   id: string
-  flavor: string  // bigquery, duckdb, postgres
+  flavor: string  // always 'bigquery' (only backend-stored connection type)
   name: string
   email?: string | null
   project_id?: string | null
@@ -20,7 +21,7 @@ interface ConnectionListResponse {
 
 /**
  * Fetch all connections for the current user from the backend.
- * Returns connections derived from BigQueryConnection and PostgresConnection tables.
+ * Returns BigQuery connections stored on the backend.
  */
 export async function fetchConnections(sessionToken: string): Promise<ConnectionData[]> {
   const response = await fetch(`${BACKEND_URL}/connections`, {

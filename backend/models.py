@@ -81,33 +81,6 @@ class BigQueryConnection(Base):
     )
 
 
-class PostgresConnection(Base):
-    """PostgreSQL connection with encrypted credentials."""
-
-    __tablename__ = "postgres_connections"
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid4())
-    )
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    host: Mapped[str] = mapped_column(String(255), nullable=False)
-    port: Mapped[int] = mapped_column(Integer, nullable=False, default=5432)
-    database: Mapped[str] = mapped_column(String(255), nullable=False)
-    username: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    encryption_iv: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    ssl_mode: Mapped[str] = mapped_column(String(50), nullable=False, default="prefer")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-
 class Canvas(Base):
     """Canvas owned by a Pro user with server-first box state."""
 
@@ -185,8 +158,43 @@ class CanvasShare(Base):
     )
 
 
+class ClickHouseConnection(Base):
+    """ClickHouse connection with encrypted credentials.
+
+    Password is stored encrypted (AES-256-GCM). The browser fetches credentials
+    on-demand for client-side query execution — passwords never persist in the browser.
+    """
+
+    __tablename__ = "clickhouse_connections"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(Integer, nullable=False, default=8443)
+    database: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    username: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encryption_iv: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    secure: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class SnowflakeConnection(Base):
-    """Snowflake connection with encrypted credentials."""
+    """Snowflake connection with encrypted credentials.
+
+    Password is stored encrypted (AES-256-GCM). The browser fetches credentials
+    on-demand for client-side query execution — passwords never persist in the browser.
+    """
 
     __tablename__ = "snowflake_connections"
 
@@ -205,60 +213,6 @@ class SnowflakeConnection(Base):
     database: Mapped[str | None] = mapped_column(String(255), nullable=True)
     schema_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-
-class MysqlConnection(Base):
-    """MySQL connection with encrypted credentials."""
-
-    __tablename__ = "mysql_connections"
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid4())
-    )
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    host: Mapped[str] = mapped_column(String(255), nullable=False)
-    port: Mapped[int] = mapped_column(Integer, nullable=False, default=3306)
-    database: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    username: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    encryption_iv: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    ssl: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-
-class ClickHouseConnection(Base):
-    """ClickHouse connection with encrypted credentials."""
-
-    __tablename__ = "clickhouse_connections"
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid4())
-    )
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    host: Mapped[str] = mapped_column(String(255), nullable=False)
-    port: Mapped[int] = mapped_column(Integer, nullable=False, default=8443)
-    database: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    username: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    encryption_iv: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    secure: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

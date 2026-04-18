@@ -1,60 +1,34 @@
 /**
- * ClickHouse store for connection management, query execution, and schema operations.
- * Credentials are kept in memory only and fetched on-demand from the backend.
+ * ClickHouse store — manages connections, queries, and schema browsing.
+ *
+ * Queries run client-side via ClickHouse HTTP API.
+ * Passwords are NEVER stored in IndexedDB:
+ *   - Web: stored encrypted on Squill backend, fetched on-demand
+ *   - Desktop: stored in OS keychain (macOS Keychain / Windows Credential Manager)
  */
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useConnectionsStore } from './connections'
-import { useUserStore } from './user'
+import {
+  createClickHouseHttpClient,
+  type ClickHouseCredentials,
+  type ClickHouseQueryResult,
+  type ClickHousePaginatedQueryResult,
+  type ClickHouseDatabaseInfo,
+  type ClickHouseTableInfo,
+  type ClickHouseColumnInfo,
+} from '../services/clickhouse/httpClient'
 import type { TableMetadataInfo } from '../types/database'
+import { isTauri } from '../utils/tauri'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
-
-export interface ClickHouseCredentials {
-  host: string
-  port: number
-  username: string
-  password: string
-  database: string | null
-  secure: boolean
-}
-
-export interface ClickHouseQueryResult {
-  rows: Record<string, unknown>[]
-  schema?: { name: string; type: string }[]
-  stats: {
-    executionTimeMs: number
-    rowCount: number
-  }
-}
-
-export interface ClickHousePaginatedQueryResult {
-  rows: Record<string, unknown>[]
-  columns: { name: string; type: string }[]
-  totalRows: number | null
-  hasMore: boolean
-  nextOffset: number
-  stats: {
-    executionTimeMs: number
-    rowCount: number
-  }
-}
-
-export interface ClickHouseDatabaseInfo {
-  name: string
-}
-
-export interface ClickHouseTableInfo {
-  databaseName: string
-  name: string
-  type: 'table' | 'view'
-}
-
-export interface ClickHouseColumnInfo {
-  name: string
-  type: string
-  nullable: boolean
+export type {
+  ClickHouseCredentials,
+  ClickHouseQueryResult,
+  ClickHousePaginatedQueryResult,
+  ClickHouseDatabaseInfo,
+  ClickHouseTableInfo,
+  ClickHouseColumnInfo,
 }
 
 export interface TestConnectionResult {
@@ -62,11 +36,12 @@ export interface TestConnectionResult {
   message: string
 }
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+
 export const useClickHouseStore = defineStore('clickhouse', () => {
   const connectionsStore = useConnectionsStore()
-  const userStore = useUserStore()
 
-  // In-memory credentials cache (NOT persisted)
+  // In-memory credentials cache (passwords live here only, never in IndexedDB)
   const credentialsCache = ref<Map<string, ClickHouseCredentials>>(new Map())
 
   // Schema caches
@@ -80,11 +55,69 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
   const isExecutingQuery = ref(false)
   const isTesting = ref(false)
 
-  // Track in-flight fetchAllColumns requests to prevent duplicates
+  // Track in-flight fetchAllColumns
   const allColumnsLoading = new Map<string, Promise<void>>()
 
   /**
-   * Test a ClickHouse connection without saving it.
+   * Get auth headers for backend API calls (web only).
+   */
+  async function getAuthHeaders(): Promise<Record<string, string>> {
+    const { useUserStore } = await import('./user')
+    return useUserStore().getAuthHeaders()
+  }
+
+  /**
+   * Get credentials for a connection.
+   * Checks in-memory cache first, then fetches from backend (web) or keychain (desktop).
+   */
+  async function getCredentials(connectionId: string): Promise<ClickHouseCredentials> {
+    const cached = credentialsCache.value.get(connectionId)
+    if (cached) return cached
+
+    const conn = connectionsStore.connections.find(c => c.id === connectionId)
+    if (!conn || conn.type !== 'clickhouse') {
+      throw new Error('ClickHouse connection not found')
+    }
+
+    let password: string
+
+    if (isTauri()) {
+      // Desktop: load password from OS keychain
+      const { loadSecret } = await import('../services/secureStore')
+      password = (await loadSecret(`conn:clickhouse:${connectionId}`)) ?? ''
+    } else {
+      // Web: fetch password from backend
+      const response = await fetch(
+        `${BACKEND_URL}/clickhouse/connections/${connectionId}/credentials`,
+        { headers: await getAuthHeaders() },
+      )
+      if (!response.ok) throw new Error('Failed to fetch credentials')
+      const data = await response.json()
+      password = data.password
+    }
+
+    const credentials: ClickHouseCredentials = {
+      host: conn.clickhouseHost!,
+      port: conn.clickhousePort ?? 8443,
+      username: conn.clickhouseUsername ?? '',
+      password,
+      database: conn.database ?? null,
+      secure: conn.clickhouseSecure ?? true,
+    }
+
+    credentialsCache.value.set(connectionId, credentials)
+    return credentials
+  }
+
+  /**
+   * Get an HTTP client for a connection.
+   */
+  async function clientFor(connectionId: string) {
+    return createClickHouseHttpClient(await getCredentials(connectionId))
+  }
+
+  /**
+   * Test a connection (client-side — never touches the backend).
    */
   const testConnection = async (
     host: string,
@@ -92,50 +125,22 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
     username: string,
     password: string,
     database: string | null,
-    secure: boolean
+    secure: boolean,
   ): Promise<TestConnectionResult> => {
     isTesting.value = true
-
     try {
-      const response = await fetch(`${BACKEND_URL}/clickhouse/test-connection`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
-        body: JSON.stringify({
-          host,
-          port,
-          username,
-          password,
-          database: database || undefined,
-          secure
-        })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        return {
-          success: false,
-          message: error.detail || 'Failed to test connection'
-        }
-      }
-
-      const data = await response.json()
-      return {
-        success: data.success,
-        message: data.message
-      }
-    } catch (err) {
-      return {
-        success: false,
-        message: err instanceof Error ? err.message : 'Connection test failed'
-      }
+      const client = createClickHouseHttpClient({ host, port, username, password, database, secure })
+      return await client.testConnection()
     } finally {
       isTesting.value = false
     }
   }
 
   /**
-   * Create a new ClickHouse connection.
-   * Tests the connection, encrypts credentials, and stores in backend.
+   * Create a new connection.
+   * Web: stores encrypted password on backend.
+   * Desktop: stores password in OS keychain.
+   * Both: stores non-secret metadata in IndexedDB.
    */
   const createConnection = async (
     name: string,
@@ -144,334 +149,142 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
     username: string,
     password: string,
     database: string | null,
-    secure: boolean
+    secure: boolean,
   ): Promise<string> => {
     isConnecting.value = true
-
     try {
-      const response = await fetch(`${BACKEND_URL}/clickhouse/connections`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
-        body: JSON.stringify({
-          name,
-          host,
-          port,
-          username,
-          password,
-          database: database || undefined,
-          secure
-        })
-      })
+      let id: string
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Failed to create connection')
+      if (isTauri()) {
+        // Desktop: generate ID locally, store password in OS keychain
+        id = `clickhouse-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const { saveSecret } = await import('../services/secureStore')
+        await saveSecret(`conn:clickhouse:${id}`, password)
+      } else {
+        // Web: POST to backend, get back server-generated ID
+        const response = await fetch(`${BACKEND_URL}/clickhouse/connections`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
+          body: JSON.stringify({ name, host, port, username, password, database: database || undefined, secure }),
+        })
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.detail || 'Failed to create connection')
+        }
+        const data = await response.json()
+        id = data.id
       }
 
-      const data = await response.json()
-
-      // Cache credentials in memory
-      credentialsCache.value.set(data.id, {
-        host,
-        port,
-        username,
-        password,
-        database,
-        secure
-      })
-
-      // Add to connections store
+      // Store non-secret metadata in IndexedDB (NO password)
       connectionsStore.upsertConnection({
-        id: data.id,
+        id,
         type: 'clickhouse',
         name,
         database: database || undefined,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        clickhouseHost: host,
+        clickhousePort: port,
+        clickhouseUsername: username,
+        clickhouseSecure: secure,
       })
 
-      return data.id
+      // Cache credentials in memory for immediate use
+      credentialsCache.value.set(id, { host, port, username, password, database, secure })
+
+      return id
     } finally {
       isConnecting.value = false
     }
   }
 
-  /**
-   * Get credentials for a connection.
-   * Returns from cache if available, otherwise fetches from backend.
-   */
-  const getCredentials = async (connectionId: string): Promise<ClickHouseCredentials> => {
-    // Check cache first
-    const cached = credentialsCache.value.get(connectionId)
-    if (cached) {
-      return cached
-    }
-
-    // Fetch from backend
-    const response = await fetch(
-      `${BACKEND_URL}/clickhouse/connections/${connectionId}/credentials`,
-      { headers: userStore.getAuthHeaders() }
-    )
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch credentials')
-    }
-
-    const data = await response.json()
-    const credentials: ClickHouseCredentials = {
-      host: data.host,
-      port: data.port,
-      username: data.username,
-      password: data.password,
-      database: data.database,
-      secure: data.secure
-    }
-
-    // Cache in memory
-    credentialsCache.value.set(connectionId, credentials)
-    return credentials
-  }
-
-  /**
-   * Execute a SQL query on a ClickHouse connection.
-   */
   const runQuery = async (
     connectionId: string,
     query: string,
-    signal?: AbortSignal | null
+    signal?: AbortSignal | null,
   ): Promise<ClickHouseQueryResult> => {
     isExecutingQuery.value = true
-
     try {
-      const response = await fetch(`${BACKEND_URL}/clickhouse/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
-        body: JSON.stringify({
-          connection_id: connectionId,
-          query
-        }),
-        signal: signal || undefined
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Query execution failed')
-      }
-
-      const data = await response.json()
-      return {
-        rows: data.rows,
-        stats: {
-          executionTimeMs: data.stats.executionTimeMs,
-          rowCount: data.stats.rowCount
-        }
-      }
+      return await (await clientFor(connectionId)).runQuery(query, signal)
     } finally {
       isExecutingQuery.value = false
     }
   }
 
-  /**
-   * Execute a SQL query with pagination support.
-   */
   const runQueryPaginated = async (
     connectionId: string,
     query: string,
     batchSize: number = 5000,
     offset: number = 0,
     includeCount: boolean = true,
-    signal?: AbortSignal | null
+    signal?: AbortSignal | null,
   ): Promise<ClickHousePaginatedQueryResult> => {
     isExecutingQuery.value = true
-
     try {
-      const response = await fetch(`${BACKEND_URL}/clickhouse/query/paginated`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...userStore.getAuthHeaders() },
-        body: JSON.stringify({
-          connection_id: connectionId,
-          query,
-          batch_size: batchSize,
-          offset,
-          include_count: includeCount
-        }),
-        signal: signal || undefined
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Query execution failed')
-      }
-
-      const data = await response.json()
-      return {
-        rows: data.rows,
-        columns: data.columns.map((col: { name: string; type: string }) => ({
-          name: col.name,
-          type: col.type
-        })),
-        totalRows: data.total_rows,
-        hasMore: data.has_more,
-        nextOffset: data.next_offset,
-        stats: {
-          executionTimeMs: data.stats.executionTimeMs,
-          rowCount: data.stats.rowCount
-        }
-      }
+      return await (await clientFor(connectionId)).runQueryPaginated(query, batchSize, offset, includeCount, signal)
     } finally {
       isExecutingQuery.value = false
     }
   }
 
-  /**
-   * Fetch all databases for a connection.
-   */
   const fetchDatabases = async (connectionId: string, force = false): Promise<ClickHouseDatabaseInfo[]> => {
     if (!force) {
       const cached = databasesCache.value.get(connectionId)
-      if (cached) {
-        return cached
-      }
+      if (cached) return cached
     }
-
-    const response = await fetch(
-      `${BACKEND_URL}/clickhouse/schema/${connectionId}/databases`,
-      { headers: userStore.getAuthHeaders() }
-    )
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch databases')
-    }
-
-    const data = await response.json()
-    const databases: ClickHouseDatabaseInfo[] = data.databases.map((d: { name: string }) => ({
-      name: d.name
-    }))
-
+    const databases = await (await clientFor(connectionId)).fetchDatabases()
     databasesCache.value.set(connectionId, databases)
     return databases
   }
 
-  /**
-   * Fetch all tables for a connection.
-   */
   const fetchTables = async (connectionId: string, force = false): Promise<ClickHouseTableInfo[]> => {
     if (!force) {
       const cached = tablesCache.value.get(connectionId)
-      if (cached) {
-        return cached
-      }
+      if (cached) return cached
     }
-
-    const response = await fetch(
-      `${BACKEND_URL}/clickhouse/schema/${connectionId}/tables`,
-      { headers: userStore.getAuthHeaders() }
-    )
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch tables')
-    }
-
-    const data = await response.json()
-    const tables: ClickHouseTableInfo[] = data.tables.map((t: {
-      database_name: string
-      name: string
-      type: string
-    }) => ({
-      databaseName: t.database_name,
-      name: t.name,
-      type: t.type as 'table' | 'view'
-    }))
-
+    const tables = await (await clientFor(connectionId)).fetchTables()
     tablesCache.value.set(connectionId, tables)
     return tables
   }
 
-  /**
-   * Fetch tables for a specific database.
-   */
   const fetchTablesForDatabase = async (
     connectionId: string,
     databaseName: string,
-    force = false
+    force = false,
   ): Promise<ClickHouseTableInfo[]> => {
     const cacheKey = `${connectionId}:${databaseName}`
-
     if (!force) {
       const cached = tablesCache.value.get(cacheKey)
-      if (cached) {
-        return cached
-      }
+      if (cached) return cached
     }
-
-    // Get all tables and filter by database
     const allTables = await fetchTables(connectionId, force)
-    const filteredTables = allTables.filter(t => t.databaseName === databaseName)
-
-    tablesCache.value.set(cacheKey, filteredTables)
-    return filteredTables
+    const filtered = allTables.filter(t => t.databaseName === databaseName)
+    tablesCache.value.set(cacheKey, filtered)
+    return filtered
   }
 
-  /**
-   * Fetch columns for a specific table.
-   */
   const fetchColumns = async (
     connectionId: string,
     databaseName: string,
-    tableName: string
+    tableName: string,
   ): Promise<ClickHouseColumnInfo[]> => {
     const cacheKey = `${connectionId}:${databaseName}.${tableName}`
-
     const cached = columnsCache.value.get(cacheKey)
-    if (cached) {
-      return cached
-    }
-
-    const response = await fetch(
-      `${BACKEND_URL}/clickhouse/schema/${connectionId}/columns/${encodeURIComponent(databaseName)}/${encodeURIComponent(tableName)}`,
-      { headers: userStore.getAuthHeaders() }
-    )
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch columns')
-    }
-
-    const data = await response.json()
-    const columns: ClickHouseColumnInfo[] = data.columns
-
+    if (cached) return cached
+    const columns = await (await clientFor(connectionId)).fetchColumns(databaseName, tableName)
     columnsCache.value.set(cacheKey, columns)
     return columns
   }
 
-  /**
-   * Fetch columns for all tables in a connection.
-   * Used to populate autocompletion data.
-   */
   const fetchAllColumns = async (connectionId: string): Promise<void> => {
-    // Return existing promise if already loading
     const existing = allColumnsLoading.get(connectionId)
-    if (existing) {
-      return existing
-    }
+    if (existing) return existing
 
     const promise = (async () => {
-      const response = await fetch(
-        `${BACKEND_URL}/clickhouse/schema/${connectionId}/all-columns`,
-        { headers: userStore.getAuthHeaders() }
-      )
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch all columns')
-      }
-
-      const data = await response.json()
-      const columnsByTable: Record<string, ClickHouseColumnInfo[]> = data.columns
-
-      // Convert to SchemaRow[] and write to DuckDB _schemas table
+      const columnsByTable = await (await clientFor(connectionId)).fetchAllColumns()
       const { useDuckDBStore } = await import('./duckdb')
       const duckdbStore = useDuckDBStore()
 
       const schemaRows = Object.entries(columnsByTable).flatMap(([tableKey, columns]) => {
-        // tableKey is "database.table"
         const parts = tableKey.split('.')
         const dbName = parts[0]
         const tableName = parts.slice(1).join('.')
@@ -491,119 +304,77 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
     })()
 
     allColumnsLoading.set(connectionId, promise)
-
-    try {
-      await promise
-    } finally {
-      allColumnsLoading.delete(connectionId)
-    }
+    try { await promise } finally { allColumnsLoading.delete(connectionId) }
   }
 
-  /**
-   * Delete a ClickHouse connection.
-   */
-  const deleteConnection = async (connectionId: string): Promise<void> => {
-    const response = await fetch(
-      `${BACKEND_URL}/clickhouse/connections/${connectionId}`,
-      { method: 'DELETE', headers: userStore.getAuthHeaders() }
-    )
-
-    if (!response.ok) {
-      throw new Error('Failed to delete connection')
-    }
-
-    // Clear from caches
-    clearConnectionCache(connectionId)
-
-    // Remove from connections store
-    connectionsStore.removeConnection(connectionId)
-  }
-
-  /**
-   * Fetch table metadata (row count, size) for a specific table.
-   */
   const fetchTableMetadata = async (
     connectionId: string,
     databaseName: string,
-    tableName: string
+    tableName: string,
   ): Promise<TableMetadataInfo> => {
     const cacheKey = `${connectionId}:${databaseName}.${tableName}`
     const cached = metadataCache.value.get(cacheKey)
     if (cached) return cached
-
-    const response = await fetch(
-      `${BACKEND_URL}/clickhouse/schema/${connectionId}/table-metadata/${encodeURIComponent(databaseName)}/${encodeURIComponent(tableName)}`,
-      { headers: userStore.getAuthHeaders() }
-    )
-
-    if (!response.ok) throw new Error('Failed to fetch table metadata')
-
-    const data = await response.json()
+    const raw = await (await clientFor(connectionId)).fetchTableMetadata(databaseName, tableName)
     const metadata: TableMetadataInfo = {
-      rowCount: data.row_count,
-      sizeBytes: data.size_bytes,
-      tableType: data.engine || data.table_type,
+      rowCount: raw.rowCount,
+      sizeBytes: raw.sizeBytes,
+      tableType: raw.engine,
       engine: 'clickhouse',
     }
-
     metadataCache.value.set(cacheKey, metadata)
     return metadata
   }
 
-  /**
-   * Clear cached data for a connection.
-   */
+  const deleteConnection = async (connectionId: string): Promise<void> => {
+    clearConnectionCache(connectionId)
+
+    if (isTauri()) {
+      const { deleteSecret } = await import('../services/secureStore')
+      await deleteSecret(`conn:clickhouse:${connectionId}`)
+    } else {
+      // Web: delete from backend (ignore errors if connection doesn't exist there)
+      try {
+        await fetch(`${BACKEND_URL}/clickhouse/connections/${connectionId}`, {
+          method: 'DELETE',
+          headers: await getAuthHeaders(),
+        })
+      } catch { /* best-effort */ }
+    }
+
+    connectionsStore.removeConnection(connectionId)
+  }
+
   const clearConnectionCache = (connectionId: string): void => {
     credentialsCache.value.delete(connectionId)
     databasesCache.value.delete(connectionId)
-
-    // Clean both top-level and per-database table cache entries
     tablesCache.value.delete(connectionId)
     for (const key of tablesCache.value.keys()) {
-      if (key.startsWith(`${connectionId}:`)) {
-        tablesCache.value.delete(key)
-      }
+      if (key.startsWith(`${connectionId}:`)) tablesCache.value.delete(key)
     }
     for (const key of columnsCache.value.keys()) {
-      if (key.startsWith(`${connectionId}:`)) {
-        columnsCache.value.delete(key)
-      }
+      if (key.startsWith(`${connectionId}:`)) columnsCache.value.delete(key)
     }
     for (const key of metadataCache.value.keys()) {
-      if (key.startsWith(`${connectionId}:`)) {
-        metadataCache.value.delete(key)
-      }
+      if (key.startsWith(`${connectionId}:`)) metadataCache.value.delete(key)
     }
   }
 
-  /**
-   * Check if credentials are cached for a connection.
-   */
-  const hasCredentials = (connectionId: string): boolean => {
-    return credentialsCache.value.has(connectionId)
-  }
-
-  /**
-   * Refresh schemas for a connection by clearing cache and re-fetching tables.
-   */
   const refreshSchemas = async (connectionId: string): Promise<void> => {
     for (const key of columnsCache.value.keys()) {
-      if (key.startsWith(`${connectionId}:`)) {
-        columnsCache.value.delete(key)
-      }
+      if (key.startsWith(`${connectionId}:`)) columnsCache.value.delete(key)
     }
     await fetchTables(connectionId, true)
   }
 
   return {
-    // State
+    credentialsCache,
     databasesCache,
     tablesCache,
     columnsCache,
     isConnecting,
     isExecutingQuery,
     isTesting,
-    // Methods
     testConnection,
     createConnection,
     getCredentials,
@@ -617,7 +388,6 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
     fetchTableMetadata,
     deleteConnection,
     clearConnectionCache,
-    hasCredentials,
-    refreshSchemas
+    refreshSchemas,
   }
 })

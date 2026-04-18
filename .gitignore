@@ -28,3 +28,7 @@ dist-ssr
 *.db
 .ruff_cache
 /*.jpeg
+
+# Tauri
+frontend/src-tauri/target/
+frontend/src-tauri/gen/

@@ -1,6 +1,4 @@
 <script lang="ts">
-let _nextScrollPreserverId = 0
-
 // Types for error suggestions
 export interface LineSuggestion {
   line: number // 1-indexed line number
@@ -12,7 +10,7 @@ export interface LineSuggestion {
 </script>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, inject, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { Compartment, StateField, StateEffect, RangeSet, EditorState } from '@codemirror/state'
@@ -69,11 +67,6 @@ const userStore = useUserStore()
 
 const editorRef = ref<HTMLElement | null>(null)
 const editorView = ref<EditorView | null>(null)
-
-// Scroll preservation across CSS zoom commits
-const scrollPreserverId = _nextScrollPreserverId++
-const registerScrollPreserver = inject<((id: number, fns: { save: () => unknown; restore: (saved: unknown) => void }) => void) | null>('registerScrollPreserver', null)
-const unregisterScrollPreserver = inject<((id: number) => void) | null>('unregisterScrollPreserver', null)
 
 // Spell input state
 const showSpellInput = ref(false)
@@ -901,12 +894,6 @@ onMounted(() => {
   editorRef.value?.addEventListener('suggestion-accept', () => emit('accept-suggestion'))
   editorRef.value?.addEventListener('suggestion-dismiss', () => emit('dismiss-suggestion'))
 
-  // Register scroll preserver for CSS zoom commit stability
-  registerScrollPreserver?.(scrollPreserverId, {
-    save: () => editorView.value?.scrollSnapshot(),
-    restore: (snapshot) => editorView.value?.dispatch({ effects: snapshot as StateEffect<unknown> }),
-  })
-
   // Signal that editor is ready
   emit('ready')
 
@@ -915,7 +902,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  unregisterScrollPreserver?.(scrollPreserverId)
   editorView.value?.destroy()
   if (dryRunDebounceTimer) clearTimeout(dryRunDebounceTimer)
   if (validateTimer) clearTimeout(validateTimer)
@@ -1192,7 +1178,7 @@ defineExpose({
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
-  /* Strong containment: isolate from parent selection changes */
+  /* Containment: prevent layout/paint leaking to parent */
   contain: layout style paint;
 }
 

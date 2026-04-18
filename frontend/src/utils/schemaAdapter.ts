@@ -10,7 +10,7 @@
 import { useDuckDBStore } from '../stores/duckdb'
 import type { SchemaItem, ScoredSchemaItem } from './textSimilarity'
 
-export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'mysql' | 'postgres' | 'snowflake'
+export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'snowflake'
 
 interface SchemaCacheEntry {
   items: SchemaItem[]
@@ -125,7 +125,7 @@ async function doCollectSchema(
     return items
   }
 
-  // BQ, Postgres, Snowflake — query from DuckDB _schemas table
+  // BQ, Snowflake, ClickHouse — query from DuckDB _schemas table
   return duckdbStore.getSchemaItems(connectionType, connectionId)
 }
 
@@ -145,10 +145,6 @@ export function formatSchemaForLLM(
       return formatBigQuerySchema(schema, projectId)
     case 'clickhouse':
       return formatClickHouseSchema(schema)
-    case 'mysql':
-      return formatClickHouseSchema(schema)
-    case 'postgres':
-      return formatPostgresSchema(schema)
     case 'snowflake':
       return formatSnowflakeSchema(schema)
     case 'duckdb':
@@ -197,39 +193,6 @@ function formatBigQuerySchema(schema: ScoredSchemaItem[], projectId?: string): s
     for (const [dataset, tables] of datasets) {
       lines.push(`${dataset}: ${tables.join(', ')}`)
     }
-  }
-
-  return lines.join('\n')
-}
-
-/**
- * Format PostgreSQL schema grouped by schema name
- * Output: Tables:
- *         public: users(id, email), orders(id, user_id)
- */
-function formatPostgresSchema(schema: ScoredSchemaItem[]): string {
-  // Group tables by schema
-  const grouped = new Map<string, string[]>()
-
-  for (const item of schema) {
-    // Parse "schema.table" format
-    const parts = item.tableName.split('.')
-    const schemaName = parts.length === 2 ? parts[0] : 'public'
-    const tableName = parts.length === 2 ? parts[1] : parts[0]
-
-    const colNames = item.columns.map((c) => c.name).join(', ')
-
-    if (!grouped.has(schemaName)) {
-      grouped.set(schemaName, [])
-    }
-    grouped.get(schemaName)!.push(`${tableName}(${colNames})`)
-  }
-
-  // Format output
-  const lines: string[] = ['Tables:']
-
-  for (const [schemaName, tables] of grouped) {
-    lines.push(`${schemaName}: ${tables.join(', ')}`)
   }
 
   return lines.join('\n')
