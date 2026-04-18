@@ -124,7 +124,7 @@ const faqs = [
 ]
 
 // Desktop download
-const DESKTOP_VERSION = '0.1.0'
+const DESKTOP_VERSION = '0.1.1'
 const RELEASE_BASE = 'https://github.com/MaxHalford/squill/releases/latest/download'
 const RELEASES_PAGE = 'https://github.com/MaxHalford/squill/releases/latest'
 
