@@ -26,41 +26,10 @@ FROM characters`,
   bigquery: `SELECT *
 FROM bigquery-public-data.chicago_taxi_trips.taxi_trips`,
 
-  postgres: `WITH authors (id, name) AS (
-    VALUES
-        (1, 'Rudyard Kipling'),
-        (2, 'Robert Frost'),
-        (3, 'Emily Dickinson'),
-        (4, 'William Shakespeare'),
-        (5, 'Edgar Allan Poe'),
-        (6, 'Maya Angelou')
-),
-poems (title, author_id, year_published) AS (
-    VALUES
-        ('If', 1, 1910),
-        ('The Road Not Taken', 2, 1916),
-        ('Hope is the Thing with Feathers', 3, 1861),
-        ('Sonnet 18', 4, 1609),
-        ('The Raven', 5, 1845),
-        ('Still I Rise', 6, 1978)
-)
-SELECT
-    p.title,
-    a.name AS author,
-    p.year_published
-FROM poems p
-JOIN authors a ON p.author_id = a.id
-ORDER BY p.year_published`,
-
   clickhouse: `SELECT
     currentDatabase() AS database,
     currentUser() AS user,
     version() AS version`,
-
-  mysql: `SELECT
-    DATABASE() AS current_database,
-    USER() AS current_user,
-    VERSION() AS version`,
 
   snowflake: `SELECT
     CURRENT_WAREHOUSE() AS warehouse,

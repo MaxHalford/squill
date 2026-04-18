@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import BigQueryConnection, PostgresConnection, User
+from models import BigQueryConnection, ClickHouseConnection, SnowflakeConnection, User
 from routers.billing import cancel_polar_subscription
 from services.auth import get_current_user
 
@@ -52,19 +52,10 @@ async def delete_current_user(
         logger.info(f"Canceling subscription for deleted user {user.email}")
         await cancel_polar_subscription(user.polar_subscription_id)
 
-    # Delete all BigQuery connections for this user
-    bq_result = await db.execute(
-        select(BigQueryConnection).where(BigQueryConnection.user_id == user.id)
-    )
-    for conn in bq_result.scalars().all():
-        await db.delete(conn)
-
-    # Delete all PostgreSQL connections for this user
-    pg_result = await db.execute(
-        select(PostgresConnection).where(PostgresConnection.user_id == user.id)
-    )
-    for conn in pg_result.scalars().all():
-        await db.delete(conn)
+    for model in (BigQueryConnection, ClickHouseConnection, SnowflakeConnection):
+        result = await db.execute(select(model).where(model.user_id == user.id))
+        for conn in result.scalars().all():
+            await db.delete(conn)
 
     # Delete user
     await db.delete(user)

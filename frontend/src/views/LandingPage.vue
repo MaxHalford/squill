@@ -44,7 +44,7 @@ const proFeatures: ProFeature[] = [
   {
     title: 'Hex remover',
     description: 'Broken query? An LLM will lift the curse.',
-    longDescription: 'When a query fails, Squill sends the error message and your SQL to an LLM, which analyzes the issue and suggests a corrected query. It understands your schema context and common SQL pitfalls across BigQuery, PostgreSQL, DuckDB, and Snowflake. One click to apply the fix.',
+    longDescription: 'When a query fails, Squill sends the error message and your SQL to an LLM, which analyzes the issue and suggests a corrected query. It understands your schema context and common SQL pitfalls across DuckDB, BigQuery, ClickHouse, and Snowflake. One click to apply the fix.',
     released: true
   },
   {
@@ -95,15 +95,15 @@ const closeProFeatureModal = () => {
 const faqs = [
   {
     question: 'Is my data safe?',
-    answer: 'Yes. For client-side databases (DuckDB, BigQuery), your data never leaves your browser. For server-side databases (PostgreSQL, Snowflake), queries are proxied but results are streamed directly to you and never stored. Click on a database logo above to learn more.'
+    answer: 'Yes. All queries run client-side — directly from your browser to the database API. Your data and results never pass through Squill servers. The web app stores credentials in browser storage (IndexedDB). For stronger security, Squill Desktop stores credentials in your OS keychain (macOS Keychain / Windows Credential Manager), which is encrypted at rest and protected by your OS login.'
   },
   {
-    question: 'Can I run Squill fully offline / without any proxy?',
-    answer: 'Yes. Squill Desktop is a native app that runs the editor locally and shells out to CLI tools already on your machine (psql, bq, mysql, clickhouse-client, snowsql). Queries go directly from your laptop to your database — Squill never sees your credentials or results. Use this if your security policy forbids any third-party proxy.'
+    question: 'Why would I want Squill Desktop?',
+    answer: 'Squill Desktop stores credentials in your OS keychain instead of browser storage — the same approach used by DataGrip and DBeaver. You also get native performance, lower memory usage, and no browser tab to manage.'
   },
   {
     question: 'Do I need to create an account?',
-    answer: 'Yes, because secrets have to be stored for some databases (like PostgreSQL passwords or BigQuery refresh tokens). Creating an account also allows you to upgrade to Squill Pro when you\'re ready. You do not need an account to process CSV files and play with DuckDB.'
+    answer: 'No, you can start querying right away without an account. Creating an account lets you upgrade to Squill Pro for cloud saves, collaboration, and AI features. You do not need an account to process CSV files and play with DuckDB.'
   },
   {
     question: 'Can I query CSV files with SQL?',
@@ -111,7 +111,7 @@ const faqs = [
   },
   {
     question: 'What databases does Squill support?',
-    answer: 'Squill supports DuckDB (runs in your browser), PostgreSQL, BigQuery, and Snowflake. You can connect to multiple databases at the same time and switch between them freely.'
+    answer: 'Squill supports DuckDB, BigQuery, ClickHouse (beta), and Snowflake (beta). All databases run directly in your browser — no server proxy. You can connect to multiple databases at the same time and switch between them freely.'
   },
   {
     question: 'Is Squill open source?',
@@ -140,7 +140,7 @@ const webApplicationSchema = {
   '@type': 'WebApplication',
   name: 'Squill',
   url: 'https://squill.dev',
-  description: 'Open source SQL canvas in the browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. Infinite canvas, drag-and-drop CSV, AI query fixer. No install needed.',
+  description: 'Open source SQL canvas in the browser. Query CSV files with DuckDB, connect to BigQuery, ClickHouse, and Snowflake. All queries run client-side. Infinite canvas, drag-and-drop CSV, AI query fixer. No install needed.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Any',
   browserRequirements: 'Requires JavaScript, WebAssembly support',
@@ -168,8 +168,9 @@ const webApplicationSchema = {
     'Infinite canvas for SQL queries',
     'DuckDB WebAssembly support',
     'BigQuery integration',
-    'PostgreSQL integration',
+    'ClickHouse integration',
     'Snowflake integration',
+    'All queries run client-side',
     'Drag and drop CSV file analysis',
     'Schema browser',
     'Go to definition (Cmd+click)',
@@ -193,15 +194,15 @@ const faqSchema = {
 
 // SEO Meta Tags
 useHead({
-  title: 'Squill - Open Source SQL Canvas | DuckDB, PostgreSQL, BigQuery, Snowflake',
+  title: 'Squill - Open Source SQL Canvas | DuckDB, BigQuery, ClickHouse, Snowflake',
   meta: [
     {
       name: 'description',
-      content: 'Open source SQL editor that runs in your browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. Infinite canvas, drag-and-drop CSV, schema browser, AI query fixer. No install needed.'
+      content: 'Open source SQL editor that runs in your browser. Query CSV files with DuckDB, connect to BigQuery, ClickHouse, and Snowflake. All queries run client-side. Infinite canvas, drag-and-drop CSV, schema browser, AI query fixer. No install needed.'
     },
     // Open Graph
     { property: 'og:title', content: 'Squill - Open Source SQL Canvas' },
-    { property: 'og:description', content: 'Open source SQL editor in the browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. No install needed.' },
+    { property: 'og:description', content: 'Open source SQL editor in the browser. Query CSV files with DuckDB, connect to BigQuery, ClickHouse, and Snowflake. All queries run client-side. No install needed.' },
     { property: 'og:url', content: 'https://squill.dev/' },
     { property: 'og:type', content: 'website' },
     { property: 'og:site_name', content: 'Squill' },
@@ -213,7 +214,7 @@ useHead({
     // Twitter
     { name: 'twitter:card', content: 'summary_large_image' },
     { name: 'twitter:title', content: 'Squill - Open Source SQL Canvas' },
-    { name: 'twitter:description', content: 'Open source SQL editor in the browser. Query CSV files with DuckDB, connect to PostgreSQL, BigQuery, and Snowflake. No install needed.' },
+    { name: 'twitter:description', content: 'Open source SQL editor in the browser. Query CSV files with DuckDB, connect to BigQuery, ClickHouse, and Snowflake. All queries run client-side. No install needed.' },
     { name: 'twitter:image', content: 'https://squill.dev/og-image.png' },
     { name: 'twitter:image:alt', content: 'Squill - Open Source SQL Canvas' },
   ],
@@ -429,7 +430,7 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
         WHAT YOU GET
       </h2>
       <p class="features-subtitle">
-        An open source SQL canvas. No download, no install — just open your browser and start querying DuckDB, PostgreSQL, BigQuery, and Snowflake.
+        An open source SQL canvas. No download, no install — just open your browser and start querying DuckDB, BigQuery, ClickHouse, and Snowflake. All queries run directly from your browser.
       </p>
       <div class="features-grid">
         <div class="feature-card">
@@ -662,12 +663,15 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
             :alt="DATABASE_INFO[engine].name"
             class="database-logo"
           >
-          <span class="database-name">{{ DATABASE_INFO[engine].name }}</span>
-          <span
-            class="database-badge"
-            :class="DATABASE_INFO[engine].connectionType"
-          >
-            {{ DATABASE_INFO[engine].connectionType === 'client' ? 'Client-side' : 'Server-side' }}
+          <span class="database-name">
+            {{ DATABASE_INFO[engine].name }}
+            <span
+              v-if="engine === 'clickhouse' || engine === 'snowflake'"
+              class="beta-tag"
+            >Beta</span>
+          </span>
+          <span class="database-badge client">
+            Client-side
           </span>
         </button>
       </div>
@@ -696,12 +700,15 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
                 class="modal-logo"
               >
               <div class="modal-title-group">
-                <h3>{{ selectedDatabase.name }}</h3>
-                <span
-                  class="modal-badge"
-                  :class="selectedDatabase.connectionType"
-                >
-                  {{ selectedDatabase.connectionType === 'client' ? 'Client-side' : 'Server-side' }}
+                <h3>
+                  {{ selectedDatabase.name }}
+                  <span
+                    v-if="selectedDatabase.id === 'clickhouse' || selectedDatabase.id === 'snowflake'"
+                    class="beta-tag"
+                  >Beta</span>
+                </h3>
+                <span class="modal-badge client">
+                  Client-side
                 </span>
               </div>
             </div>
@@ -778,50 +785,14 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
       <h2 class="section-title">
         SQUILL DESKTOP
       </h2>
-      <p class="desktop-subtitle">
-        A native app for when your data can't leave the building.
-      </p>
 
-      <div class="desktop-grid">
-        <div class="desktop-card">
-          <div class="desktop-card-header">
-            <span class="desktop-card-tag">WHY</span>
-            <h3>Nothing leaves your machine</h3>
-          </div>
-          <p>
-            The browser app proxies server-side databases (Postgres, Snowflake, etc.) through Squill's backend. That's fine for most people — but not for everyone. If your security team draws a hard line at "credentials never touch a third-party server", the desktop app is for you.
-          </p>
-          <p>
-            Queries run from your laptop, straight to your database. Squill sees nothing.
-          </p>
-        </div>
-
-        <div class="desktop-card">
-          <div class="desktop-card-header">
-            <span class="desktop-card-tag">HOW</span>
-            <h3>It uses the CLI tools you already have</h3>
-          </div>
-          <p>
-            Instead of bundling database drivers, Squill Desktop shells out to the command-line clients installed on your machine — <code>psql</code>, <code>bq</code>, <code>mysql</code>, <code>clickhouse-client</code>, <code>snowsql</code>.
-          </p>
-          <p>
-            Your existing auth (<code>gcloud</code> login, <code>.pgpass</code>, SSO, whatever your ops team set up) just works. No new credentials, no new attack surface.
-          </p>
-        </div>
-      </div>
-
-      <div class="desktop-terminal">
-        <div class="desktop-terminal-header">
-          <span>squill-desktop</span>
-        </div>
-        <div class="desktop-terminal-body">
-          <code><span class="term-dim">$</span> squill detects</code>
-          <code><span class="term-ok">✓</span> psql          <span class="term-dim">/opt/homebrew/bin/psql</span></code>
-          <code><span class="term-ok">✓</span> bq            <span class="term-dim">~/google-cloud-sdk/bin/bq</span></code>
-          <code><span class="term-ok">✓</span> mysql         <span class="term-dim">/usr/local/bin/mysql</span></code>
-          <code><span class="term-ok">✓</span> snowsql       <span class="term-dim">/usr/local/bin/snowsql</span></code>
-          <code><span class="term-dim">  credentials never sent anywhere.</span></code>
-        </div>
+      <div class="desktop-body">
+        <p class="desktop-text">
+          The desktop app stores your database credentials in your operating system's keychain&nbsp;— not on our server. There is no interaction with Squill's infrastructure&nbsp;at&nbsp;all.
+        </p>
+        <p class="desktop-text">
+          The tradeoff: without a server, there's no collaboration. No shared canvases, no cloud saves, no syncing across devices. Everything stays on&nbsp;your&nbsp;machine.
+        </p>
       </div>
     </section>
 
@@ -1597,6 +1568,22 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
   color: var(--color-info-dark, #004085);
 }
 
+.beta-tag {
+  display: inline-block;
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  background: var(--color-warning-light, #fff3cd);
+  color: var(--color-warning-dark, #856404);
+  border: 1px solid var(--color-warning-dark, #856404);
+  vertical-align: middle;
+  margin-left: 4px;
+  line-height: 1.2;
+}
+
 /* ===== DATABASE MODAL ===== */
 .modal-overlay {
   position: fixed;
@@ -1751,128 +1738,27 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
   max-width: none;
 }
 
-.desktop .section-title,
-.desktop-subtitle,
-.desktop-grid,
-.desktop-terminal {
-  max-width: 1000px;
+.desktop .section-title {
+  max-width: 700px;
   margin-left: auto;
   margin-right: auto;
 }
 
-.desktop-subtitle {
+.desktop-body {
+  max-width: 600px;
+  margin: 0 auto;
   text-align: center;
-  color: var(--text-secondary);
-  margin-top: -32px;
-  margin-bottom: 48px;
-  font-size: var(--font-size-body);
-  max-width: 700px;
 }
 
-.desktop-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-6);
-  margin-bottom: var(--space-6);
-}
-
-.desktop-card {
-  background: var(--surface-primary);
-  border: var(--border-width-thick) solid var(--border-primary);
-  box-shadow: var(--shadow-md);
-  padding: var(--space-6);
-}
-
-.desktop-card-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.desktop-card-tag {
-  font-family: var(--font-family-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  padding: 2px 8px;
-  background: var(--surface-inverse);
-  color: var(--text-inverse);
-}
-
-.desktop-card h3 {
-  margin: 0;
-  font-size: var(--font-size-h3, 18px);
-}
-
-.desktop-card p {
-  margin: 0 0 var(--space-3) 0;
-  color: var(--text-primary);
+.desktop-text {
+  font-size: var(--font-size-body-lg);
   line-height: var(--line-height-relaxed, 1.6);
-}
-
-.desktop-card p:last-child {
-  margin-bottom: 0;
-}
-
-.desktop-card code {
-  font-family: var(--font-family-mono);
-  font-size: 0.9em;
-  background: var(--surface-secondary);
-  padding: 1px 5px;
-  border: 1px solid var(--border-tertiary);
-}
-
-/* Terminal visual */
-.desktop-terminal {
-  background: var(--surface-primary);
-  border: var(--border-width-thick) solid var(--border-primary);
-  box-shadow: var(--shadow-md);
-}
-
-.desktop-terminal-header {
-  background: var(--surface-inverse);
-  color: var(--text-inverse);
-  padding: 6px 12px;
-  font-family: var(--font-family-mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-}
-
-.desktop-terminal-body {
-  padding: var(--space-4) var(--space-5);
-  font-family: var(--font-family-mono);
-  font-size: 13px;
-  line-height: 1.8;
-}
-
-.desktop-terminal-body code {
-  display: block;
   color: var(--text-primary);
-  white-space: pre;
-  overflow-x: auto;
+  margin: 0 0 var(--space-4) 0;
 }
 
-.term-ok {
-  color: #2a8a3a;
-  font-weight: 700;
-  margin-right: 8px;
-}
-
-.term-dim {
-  color: var(--text-tertiary);
-}
-
-@media (max-width: 768px) {
-  .desktop-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .desktop-terminal-body {
-    font-size: 11px;
-  }
+.desktop-text:last-child {
+  margin-bottom: 0;
 }
 
 /* ===== PRO SECTION ===== */

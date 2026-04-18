@@ -4,7 +4,6 @@ import type { Box } from '../types/canvas'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 import { calculateBoundingBox } from '../utils/geometry'
-import { isTauri } from '../utils/tauri'
 import CursorOverlay from './CursorOverlay.vue'
 
 interface Point {
@@ -56,92 +55,34 @@ const isMetaHeld = ref(false)
 const isDraggingFile = ref(false)
 const dragCounter = ref(0)
 
-// Hybrid zoom state: smooth transform during zoom, crisp CSS zoom when idle.
-// CSS zoom is disabled in Tauri (WKWebView) because WebKit returns zoomed values
-// from getBoundingClientRect() while clientX/clientY remain unzoomed, breaking
-// all coordinate-dependent interactions (CodeMirror selection, tooltips, etc.).
-const useCSSZoom = !isTauri()
-const isActivelyZooming = ref(false)
-const committedZoom = ref(1) // The zoom level applied via CSS zoom
+// Zoom uses transform: scale() exclusively (no CSS zoom).
+// CSS zoom was removed because WebKit (Tauri/WKWebView) returns zoomed values from
+// getBoundingClientRect() while clientX/clientY remain unzoomed, breaking coordinate-
+// dependent interactions (CodeMirror selection, tooltips, etc.). A single transform-
+// based approach works identically across all browsers and platforms.
+const isZooming = ref(false)
 let zoomIdleTimer: ReturnType<typeof setTimeout> | null = null
-const ZOOM_IDLE_DELAY = 80 // ms to wait before committing CSS zoom
+const ZOOM_IDLE_MS = 150
 
-// Scroll preserver registry — lets child components (e.g. CodeMirror editors)
-// save/restore scroll state across CSS zoom commits that trigger reflows
-const scrollPreservers = new Map<number, { save: () => unknown; restore: (saved: unknown) => void }>()
-provide('registerScrollPreserver', (id: number, fns: { save: () => unknown; restore: (saved: unknown) => void }) => {
-  scrollPreservers.set(id, fns)
-})
-provide('unregisterScrollPreserver', (id: number) => {
-  scrollPreservers.delete(id)
-})
-
-// Mark zoom as active and schedule the idle transition
+// Set during wheel events, cleared after ZOOM_IDLE_MS — drives hit-test blocker
 const markZoomActive = () => {
-  if (!useCSSZoom) {
-    // No CSS zoom — nothing to commit, just keep committedZoom at 1
-    return
-  }
-  isActivelyZooming.value = true
+  isZooming.value = true
   if (zoomIdleTimer) clearTimeout(zoomIdleTimer)
-  zoomIdleTimer = setTimeout(() => {
-    // Save scroll positions before CSS zoom commit
-    const savedScrolls = new Map<number, unknown>()
-    for (const [id, { save }] of scrollPreservers) {
-      savedScrolls.set(id, save())
-    }
-
-    // Commit the current zoom to CSS zoom for crisp rendering
-    committedZoom.value = zoom.value
-    isActivelyZooming.value = false
-
-    // Restore scroll positions after the browser reflows
-    requestAnimationFrame(() => {
-      for (const [id, saved] of savedScrolls) {
-        const preserver = scrollPreservers.get(id)
-        if (preserver && saved) preserver.restore(saved)
-      }
-    })
-  }, ZOOM_IDLE_DELAY)
+  zoomIdleTimer = setTimeout(() => { isZooming.value = false }, ZOOM_IDLE_MS)
 }
 
 // Precision rounding — keeps CSS transform strings short, avoids sub-pixel jitter
 const r4 = (v: number) => Math.round(v * 1e4) / 1e4
 
-// Hybrid zoom: transform during active zoom (smooth), CSS zoom when idle (crisp)
-const viewportStyle = computed(() => {
-  const currentZoom = zoom.value
-  const baseZoom = committedZoom.value
+const viewportStyle = computed(() => ({
+  transform: `translate3d(${r4(pan.value.x)}px, ${r4(pan.value.y)}px, 0) scale(${r4(zoom.value)})`
+}))
 
-  if (!useCSSZoom) {
-    // Tauri/WKWebView: use transform-only zoom to avoid coordinate mismatch
-    return {
-      transform: `translate3d(${r4(pan.value.x)}px, ${r4(pan.value.y)}px, 0) scale(${r4(currentZoom)})`
-    }
-  }
-
-  if (isActivelyZooming.value) {
-    // During active zooming: use transform scale relative to committed CSS zoom
-    const relativeScale = r4(currentZoom / baseZoom)
-    return {
-      zoom: baseZoom,
-      transform: `translate3d(${r4(pan.value.x / baseZoom)}px, ${r4(pan.value.y / baseZoom)}px, 0) scale(${relativeScale})`
-    }
-  } else {
-    // Idle: use CSS zoom for crisp text, transform only for panning
-    return {
-      zoom: currentZoom,
-      transform: `translate3d(${r4(pan.value.x / currentZoom)}px, ${r4(pan.value.y / currentZoom)}px, 0)`
-    }
-  }
-})
-
-// Provide frozen zoom to dependents — only updates when zoom settles,
-// preventing all consumers from recomputing on every wheel tick
-provide('canvasZoom', committedZoom)
+// Provide live zoom to children (used for coordinate correction in drag/resize)
+provide('canvasZoom', zoom)
 
 // LOD: disable expensive effects at very low zoom levels
-const isLowZoom = computed(() => (useCSSZoom ? committedZoom.value : zoom.value) < 0.35)
+const isLowZoom = computed(() => zoom.value < 0.35)
 
 const isAnimatingPan = ref(false)
 
@@ -168,7 +109,6 @@ const animateTo = (
     }
     if (targets.zoom !== undefined) {
       zoom.value = startZoom + (targets.zoom - startZoom) * eased
-      markZoomActive()
     }
     if (progress < 1) {
       animationFrameId = requestAnimationFrame(animate)
@@ -193,7 +133,7 @@ const fitToBounds = (targetBoxes: { x: number; y: number; width: number; height:
 
   const zoomX = (rect.width - PADDING * 2) / contentWidth
   const zoomY = (rect.height - PADDING * 2) / contentHeight
-  const targetZoom = Math.min(Math.max(Math.min(zoomX, zoomY, 1), 0.1), 5)
+  const targetZoom = Math.min(Math.max(Math.min(zoomX, zoomY, 1), 0.15), 3)
 
   const contentCenterX = (minX + maxX) / 2
   const contentCenterY = (minY + maxY) / 2
@@ -289,7 +229,7 @@ const handleWheel = (e: WheelEvent) => {
   const mouseXInCanvas = (mouseX - pan.value.x) / zoom.value
   const mouseYInCanvas = (mouseY - pan.value.y) / zoom.value
 
-  const newZoom = Math.min(Math.max(zoom.value * (1 - e.deltaY * 0.001), 0.1), 5)
+  const newZoom = Math.min(Math.max(zoom.value * (1 - e.deltaY * 0.001), 0.15), 3)
 
   pan.value = {
     x: mouseX - mouseXInCanvas * newZoom,
@@ -550,8 +490,6 @@ onUnmounted(() => {
     clearTimeout(zoomIdleTimer)
     zoomIdleTimer = null
   }
-
-
 })
 </script>
 
@@ -570,7 +508,6 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="viewport"
-      :class="{ 'viewport--zooming': isActivelyZooming }"
       :style="viewportStyle"
     >
       <slot />
@@ -595,7 +532,7 @@ onUnmounted(() => {
 
     <!-- Hit-test blocker: single overlay at max z-index blocks all pointer events
          during camera movement, avoiding per-element style recalculation -->
-    <div v-show="isPanning || isRectangleSelecting || isActivelyZooming || isAnimatingPan" class="hit-test-blocker" />
+    <div v-show="isPanning || isRectangleSelecting || isZooming || isAnimatingPan" class="hit-test-blocker" />
   </div>
 </template>
 
@@ -640,12 +577,7 @@ onUnmounted(() => {
   position: relative;
   /* Contain layout recalcs to this element */
   contain: layout style;
-}
-
-/* Promote to GPU layer only during active zoom gestures for smooth transform scaling.
-   At idle (CSS zoom committed, scale=1), we drop the hint so the browser doesn't keep a
-   pre-rasterized texture that gets interpolated on the next gesture → no jitter. */
-.viewport--zooming {
+  /* Permanent GPU layer — viewport always uses transform: scale() */
   will-change: transform;
 }
 
@@ -660,6 +592,10 @@ onUnmounted(() => {
 /* Disable expensive effects at very low zoom levels */
 .infinite-canvas.low-zoom :deep(.resizable-box) {
   box-shadow: none !important;
+  border-color: var(--border-secondary) !important;
+}
+.infinite-canvas.low-zoom :deep(.dependency-arrows) {
+  shape-rendering: auto;
 }
 
 .selection-rectangle {

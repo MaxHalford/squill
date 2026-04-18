@@ -241,7 +241,7 @@ export class SyncedPersistence implements CanvasPersistence {
   // --- Box-level mutations (fire-and-forget API calls after optimistic local update) ---
 
   onBoxAdded(canvasId: string, box: Box) {
-    const { id, ...state } = box
+    const { id: _id, ...state } = box
     apiCreateBox(canvasId, state as Record<string, unknown>, this.token).catch(
       (err) => console.error('Failed to create box:', err),
     )
@@ -292,7 +292,7 @@ export class SyncedPersistence implements CanvasPersistence {
 
   onBoxesReplaced(canvasId: string, _removedId: number, newBoxes: Box[]) {
     const states = newBoxes.map((b) => {
-      const { id, ...state } = b
+      const { id: _id, ...state } = b
       return state as Record<string, unknown>
     })
     apiCreateBoxesBatch(canvasId, states, this.token).catch((err) =>

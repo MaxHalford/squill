@@ -1,19 +1,14 @@
 /**
- * Local storage for OAuth refresh tokens (desktop-only).
+ * Secure storage for OAuth refresh tokens (desktop-only).
  *
- * Refresh tokens live in IndexedDB (same persistence layer as the rest of
- * the desktop app's state). In Tauri the webview is sandboxed to the app's
- * origin, so IndexedDB is not accessible to arbitrary sites — an acceptable
- * starting point. A future hardening step is moving to the OS keychain via
- * a Tauri plugin.
+ * Refresh tokens are stored in the OS keychain via the secureStore abstraction
+ * (macOS Keychain, Windows Credential Manager, Linux Secret Service).
  */
 
-import { loadItem, saveItem, deleteItem } from '../../utils/storage'
-
-const KEY_PREFIX = 'desktop-oauth-refresh:'
+import { saveSecret, loadSecret, deleteSecret } from '../secureStore'
 
 function key(provider: string, identifier: string): string {
-  return `${KEY_PREFIX}${provider}:${identifier}`
+  return `oauth-refresh:${provider}:${identifier}`
 }
 
 export async function saveRefreshToken(
@@ -21,19 +16,19 @@ export async function saveRefreshToken(
   identifier: string,
   refreshToken: string,
 ): Promise<void> {
-  await saveItem(key(provider, identifier), refreshToken)
+  await saveSecret(key(provider, identifier), refreshToken)
 }
 
 export async function loadRefreshToken(
   provider: string,
   identifier: string,
 ): Promise<string | null> {
-  return (await loadItem<string>(key(provider, identifier))) ?? null
+  return loadSecret(key(provider, identifier))
 }
 
 export async function deleteRefreshToken(
   provider: string,
   identifier: string,
 ): Promise<void> {
-  await deleteItem(key(provider, identifier))
+  await deleteSecret(key(provider, identifier))
 }

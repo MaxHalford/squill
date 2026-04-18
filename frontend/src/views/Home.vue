@@ -20,10 +20,8 @@ const ChatBox = defineAsyncComponent(() => import('../components/ChatBox.vue'))
 const ExplainBox = defineAsyncComponent(() => import('../components/ExplainBox.vue'))
 
 // Lazy-load modals - only loaded when opened
-const PostgresConnectionModal = defineAsyncComponent(() => import('../components/PostgresConnectionModal.vue'))
 const SnowflakeConnectionModal = defineAsyncComponent(() => import('../components/SnowflakeConnectionModal.vue'))
 const ClickHouseConnectionModal = defineAsyncComponent(() => import('../components/ClickHouseConnectionModal.vue'))
-const MysqlConnectionModal = defineAsyncComponent(() => import('../components/MysqlConnectionModal.vue'))
 const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/KeyboardShortcutsModal.vue'))
 const WhatsNewModal = defineAsyncComponent(() => import('../components/WhatsNewModal.vue'))
 import { useCanvasStore } from '../stores/canvas'
@@ -57,10 +55,8 @@ const copiedBoxIds = ref<number[]>([])
 const csvFileInputRef = ref<HTMLInputElement | null>(null)
 const isStoresReady = ref(false)
 const onboardingDismissed = ref(false)
-const showPostgresModal = ref(false)
 const showSnowflakeModal = ref(false)
 const showClickHouseModal = ref(false)
-const showMysqlModal = ref(false)
 const showShortcutsModal = ref(false)
 const showWhatsNewModal = ref(false)
 const whatsNewEntries = ref<ChangelogEntry[]>([])
@@ -175,11 +171,6 @@ const handleSelectCsv = () => {
   csvFileInputRef.value?.click()
 }
 
-// Handle PostgreSQL selection from onboarding - show credentials modal
-const handleSelectPostgres = () => {
-  showPostgresModal.value = true
-}
-
 // Handle Snowflake selection from onboarding - show credentials modal
 const handleSelectSnowflake = () => {
   showSnowflakeModal.value = true
@@ -188,11 +179,6 @@ const handleSelectSnowflake = () => {
 // Handle ClickHouse selection from onboarding - show credentials modal
 const handleSelectClickHouse = () => {
   showClickHouseModal.value = true
-}
-
-// Handle MySQL selection from onboarding - show credentials modal
-const handleSelectMysql = () => {
-  showMysqlModal.value = true
 }
 
 // Handle successful ClickHouse connection
@@ -205,30 +191,9 @@ const handleClickHouseConnected = (connectionId: string) => {
   }
 }
 
-// Handle successful MySQL connection
-const handleMysqlConnected = (connectionId: string) => {
-  console.log('MySQL connected:', connectionId)
-
-  // Create default boxes if canvas is empty
-  if (canvasStore.boxes.length === 0) {
-    createDefaultBoxes()
-  }
-}
-
 // Handle successful Snowflake connection from onboarding
 const handleSnowflakeConnected = (connectionId: string) => {
   console.log('Snowflake connected:', connectionId)
-
-  // Create default boxes if canvas is empty
-  if (canvasStore.boxes.length === 0) {
-    createDefaultBoxes()
-  }
-}
-
-// Handle successful PostgreSQL connection
-const handlePostgresConnected = (connectionId: string) => {
-  // Modal auto-closes, connection is added to store
-  console.log('PostgreSQL connected:', connectionId)
 
   // Create default boxes if canvas is empty
   if (canvasStore.boxes.length === 0) {
@@ -443,7 +408,7 @@ const handleRestoreQuery = async (data: { query: string; connectionId: string; c
   }
 
   // Create new SQL box with the query
-  const engine = data.connectionType as 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
+  const engine = data.connectionType as 'bigquery' | 'duckdb' | 'snowflake'
   const boxId = canvasStore.addBox('sql', position, engine, data.connectionId)
   canvasStore.updateBoxQuery(boxId, data.query)
 
@@ -612,7 +577,7 @@ const handleImportFiles = async (files: File[]) => {
 const handleQueryTableFromSchema = async (data: {
   tableName: string,
   boxName?: string,
-  engine: 'bigquery' | 'clickhouse' | 'duckdb' | 'mysql' | 'postgres' | 'snowflake',
+  engine: 'bigquery' | 'clickhouse' | 'duckdb' | 'snowflake',
   connectionId?: string
 }) => {
   try {
@@ -638,12 +603,10 @@ const handleQueryTableFromSchema = async (data: {
     // Get connection ID based on engine
     let connectionId: string | undefined
     if (data.connectionId) {
-      // Use provided connection ID (for postgres)
+      // Use provided connection ID
       connectionId = data.connectionId
     } else if (data.engine === 'duckdb') {
       connectionId = 'duckdb-local'
-    } else if (data.engine === 'postgres') {
-      connectionId = connectionsStore.getConnectionsByType('postgres')[0]?.id
     } else {
       connectionId = connectionsStore.getConnectionsByType('bigquery')[0]?.id
     }
@@ -1323,17 +1286,8 @@ onUnmounted(() => {
       @select-bigquery="handleSelectBigquery"
       @select-duckdb="handleSelectDuckdb"
       @select-csv="handleSelectCsv"
-      @select-postgres="handleSelectPostgres"
       @select-snowflake="handleSelectSnowflake"
       @select-clickhouse="handleSelectClickHouse"
-      @select-mysql="handleSelectMysql"
-    />
-
-    <!-- PostgreSQL Connection Modal -->
-    <PostgresConnectionModal
-      :show="showPostgresModal"
-      @close="showPostgresModal = false"
-      @connected="handlePostgresConnected"
     />
 
     <!-- Snowflake Connection Modal -->
@@ -1348,13 +1302,6 @@ onUnmounted(() => {
       :show="showClickHouseModal"
       @close="showClickHouseModal = false"
       @connected="handleClickHouseConnected"
-    />
-
-    <!-- MySQL Connection Modal -->
-    <MysqlConnectionModal
-      :show="showMysqlModal"
-      @close="showMysqlModal = false"
-      @connected="handleMysqlConnected"
     />
 
     <!-- Hidden file input for CSV picker -->

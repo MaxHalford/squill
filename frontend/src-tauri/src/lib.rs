@@ -1,7 +1,9 @@
 mod cli_executor;
 mod oauth;
+mod secure_store;
 
 use oauth::start_oauth_flow;
+use secure_store::{save_secret, load_secret, delete_secret};
 use tauri::Manager;
 
 /// JS injected before page scripts. Prevents keyboard zoom (Cmd+/-/0),
@@ -26,7 +28,12 @@ const WEBVIEW_INIT_SCRIPT: &str = r#"
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![start_oauth_flow])
+        .invoke_handler(tauri::generate_handler![
+            start_oauth_flow,
+            save_secret,
+            load_secret,
+            delete_secret,
+        ])
         .setup(|app| {
             let window = app.get_webview_window("main")
                 .expect("main window not found");

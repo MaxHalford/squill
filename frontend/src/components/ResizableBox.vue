@@ -69,7 +69,7 @@ watch(() => props.initialY, (v) => { if (v !== undefined) position.value.y = v }
 watchEffect(() => {
   const el = boxRef.value
   if (!el) return
-  el.style.transform = `translate3d(${r4(position.value.x)}px, ${r4(position.value.y)}px, 0)`
+  el.style.transform = `translate(${r4(position.value.x)}px, ${r4(position.value.y)}px)`
   el.style.width = `${r4(size.value.width)}px`
   el.style.height = `${r4(size.value.height)}px`
   el.style.zIndex = String(zIndex.value)
@@ -337,8 +337,9 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   cursor: auto;
-  /* Strong containment: isolate content from parent selection/border changes */
-  contain: layout style paint;
+  /* Browser-native viewport culling: skip rendering for off-screen boxes */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
 }
 
 /* Resize Handles */

@@ -7,9 +7,7 @@ import { useCanvasStore } from '../stores/canvas'
 const ShareDialog = defineAsyncComponent(() => import('./ShareDialog.vue'))
 import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
-import { usePostgresStore } from '../stores/postgres'
 import { useClickHouseStore } from '../stores/clickhouse'
-import { useMysqlStore } from '../stores/mysql'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useUserStore } from '../stores/user'
 import type { BoxType } from '../types/canvas'
@@ -20,14 +18,12 @@ import {
   connectionRequiresAuth
 } from '../utils/connectionHelpers'
 import { refreshSchemaCache } from '../utils/schemaAdapter'
-import PostgresConnectionModal from './PostgresConnectionModal.vue'
 import ClickHouseConnectionModal from './ClickHouseConnectionModal.vue'
-import MysqlConnectionModal from './MysqlConnectionModal.vue'
 import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
 import { isTauri } from '../utils/tauri'
 
-// Proxied engines need the Squill server; hide them in the desktop app.
-const showProxiedConnections = !isTauri()
+// Web-only features (accounts, billing) are hidden in the desktop app.
+const isWebApp = !isTauri()
 import SettingsPanel from './SettingsPanel.vue'
 import CopyButton from './CopyButton.vue'
 
@@ -52,28 +48,20 @@ const filteredProjects = computed(() => {
 const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const duckdbStore = useDuckDBStore()
-const postgresStore = usePostgresStore()
 const clickhouseStore = useClickHouseStore()
-const mysqlStore = useMysqlStore()
 const snowflakeStore = useSnowflakeStore()
 const userStore = useUserStore()
 
 // Emits for parent component to handle
 const emit = defineEmits<{
   'box-created': [boxId: number]
-  'connection-added': [type: 'bigquery' | 'clickhouse' | 'mysql' | 'postgres' | 'snowflake', connectionId: string]
+  'connection-added': [type: 'bigquery' | 'clickhouse' | 'snowflake', connectionId: string]
   'show-shortcuts': []
   'import-files': [files: File[]]
 }>()
 
-// PostgreSQL modal state
-const showPostgresModal = ref(false)
-
 // ClickHouse modal state
 const showClickHouseModal = ref(false)
-
-// MySQL modal state
-const showMysqlModal = ref(false)
 
 // Snowflake modal state
 const showSnowflakeModal = ref(false)
@@ -91,6 +79,12 @@ const delayedExpiredConnections = ref<Set<string>>(new Set())
 const shouldShowExpired = (connectionId: string): boolean => {
   return delayedExpiredConnections.value.has(connectionId)
 }
+
+// Show warning icon on the Connection menu button when active connection has issues
+const activeConnectionHasIssue = computed(() => {
+  if (!connectionsStore.activeConnectionId) return false
+  return shouldShowExpired(connectionsStore.activeConnectionId)
+})
 
 // Watch for changes in connection expired states and apply delay
 watch(
@@ -244,18 +238,10 @@ const handleConnectionSelect = async (connectionId: string) => {
     if (connection.projectId) {
       bigqueryStore.setProjectId(connection.projectId)
     }
-  } else if (connection.type === 'postgres') {
-    // Prefetch PostgreSQL schema for autocompletion
-    bigqueryStore.setProjectId(null)
-    await postgresStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load PostgreSQL schema:', err))
   } else if (connection.type === 'clickhouse') {
     // Prefetch ClickHouse schema for autocompletion
     bigqueryStore.setProjectId(null)
     await clickhouseStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load ClickHouse schema:', err))
-  } else if (connection.type === 'mysql') {
-    // Prefetch MySQL schema for autocompletion
-    bigqueryStore.setProjectId(null)
-    await mysqlStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load MySQL schema:', err))
   } else if (connection.type === 'snowflake') {
     // Prefetch Snowflake schema for autocompletion
     bigqueryStore.setProjectId(null)
@@ -367,35 +353,15 @@ const handleAddDatabase = async (databaseType: string) => {
     }
   } else if (databaseType === 'clickhouse') {
     showClickHouseModal.value = true
-  } else if (databaseType === 'mysql') {
-    showMysqlModal.value = true
-  } else if (databaseType === 'postgres') {
-    showPostgresModal.value = true
   } else if (databaseType === 'snowflake') {
     showSnowflakeModal.value = true
   }
-}
-
-// Handle successful PostgreSQL connection
-const handlePostgresConnected = (connectionId: string) => {
-  console.log('PostgreSQL connected:', connectionId)
-  emit('connection-added', 'postgres', connectionId)
-  // Re-open dropdown to show the new connection
-  activeDropdown.value = 'connection'
 }
 
 // Handle successful ClickHouse connection
 const handleClickHouseConnected = (connectionId: string) => {
   console.log('ClickHouse connected:', connectionId)
   emit('connection-added', 'clickhouse', connectionId)
-  // Re-open dropdown to show the new connection
-  activeDropdown.value = 'connection'
-}
-
-// Handle successful MySQL connection
-const handleMysqlConnected = (connectionId: string) => {
-  console.log('MySQL connected:', connectionId)
-  emit('connection-added', 'mysql', connectionId)
   // Re-open dropdown to show the new connection
   activeDropdown.value = 'connection'
 }
@@ -465,8 +431,6 @@ const handleRefreshSchemas = async () => {
     // Offset-based engines (identical pattern)
     const offsetEngines = [
       { type: 'clickhouse' as const, label: 'ClickHouse', store: clickhouseStore },
-      { type: 'mysql' as const, label: 'MySQL', store: mysqlStore },
-      { type: 'postgres' as const, label: 'PostgreSQL', store: postgresStore },
       { type: 'snowflake' as const, label: 'Snowflake', store: snowflakeStore },
     ]
     for (const { type, label, store } of offsetEngines) {
@@ -663,6 +627,13 @@ onUnmounted(() => {
           @click.stop="toggleDropdown('connection')"
         >
           <span class="menu-text">Connection</span>
+          <span v-if="activeConnectionHasIssue" class="connection-warning" v-tooltip="'Connection issue'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </span>
           <span class="menu-caret">&#x25BE;</span>
         </button>
 
@@ -786,19 +757,6 @@ onUnmounted(() => {
                   {{ DATABASE_INFO.bigquery.name }}
                 </button>
                 <button
-                  v-if="showProxiedConnections"
-                  class="dropdown-item flyout-item"
-                  @click="handleAddDatabase('postgres')"
-                >
-                  <img
-                    :src="DATABASE_INFO.postgres.logo"
-                    :alt="DATABASE_INFO.postgres.name"
-                    class="db-icon"
-                  >
-                  {{ DATABASE_INFO.postgres.name }}
-                </button>
-                <button
-                  v-if="showProxiedConnections"
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('clickhouse')"
                 >
@@ -810,19 +768,6 @@ onUnmounted(() => {
                   {{ DATABASE_INFO.clickhouse.name }}
                 </button>
                 <button
-                  v-if="showProxiedConnections"
-                  class="dropdown-item flyout-item"
-                  @click="handleAddDatabase('mysql')"
-                >
-                  <img
-                    :src="DATABASE_INFO.mysql.logo"
-                    :alt="DATABASE_INFO.mysql.name"
-                    class="db-icon"
-                  >
-                  {{ DATABASE_INFO.mysql.name }}
-                </button>
-                <button
-                  v-if="showProxiedConnections"
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('snowflake')"
                 >
@@ -956,7 +901,7 @@ onUnmounted(() => {
 
       <!-- User Menu (web only — desktop has no Squill accounts) -->
       <div
-        v-if="userStore.isLoggedIn && showProxiedConnections"
+        v-if="userStore.isLoggedIn && isWebApp"
         class="menu-item user-menu-item"
       >
         <button
@@ -1000,7 +945,7 @@ onUnmounted(() => {
 
       <!-- Sign In Dropdown (web only — desktop has no Squill accounts) -->
       <div
-        v-else-if="showProxiedConnections"
+        v-else-if="isWebApp"
         class="menu-item sign-in-menu-item"
       >
         <button
@@ -1045,25 +990,11 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <!-- PostgreSQL Connection Modal -->
-  <PostgresConnectionModal
-    :show="showPostgresModal"
-    @close="showPostgresModal = false"
-    @connected="handlePostgresConnected"
-  />
-
   <!-- ClickHouse Connection Modal -->
   <ClickHouseConnectionModal
     :show="showClickHouseModal"
     @close="showClickHouseModal = false"
     @connected="handleClickHouseConnected"
-  />
-
-  <!-- MySQL Connection Modal -->
-  <MysqlConnectionModal
-    :show="showMysqlModal"
-    @close="showMysqlModal = false"
-    @connected="handleMysqlConnected"
   />
 
   <!-- Snowflake Connection Modal -->
@@ -1477,6 +1408,12 @@ html.dark .provider-icon-invert {
 
 .menu-pro-badge {
   margin-right: var(--space-2);
+}
+
+.connection-warning {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
 }
 
 /* Connection dropdown specifics */

@@ -51,7 +51,7 @@ const dateField = (name = 'order_date', granularity?: DateGranularity): PivotFie
   dateGranularity: granularity,
 })
 
-const dialects: DatabaseEngine[] = ['duckdb', 'postgres', 'bigquery', 'snowflake']
+const dialects: DatabaseEngine[] = ['duckdb', 'clickhouse', 'bigquery', 'snowflake']
 
 // ---------------------------------------------------------------------------
 // quoteIdentifier
@@ -64,7 +64,7 @@ describe('quoteIdentifier', () => {
 
   it('uses double quotes for other dialects', () => {
     expect(quoteIdentifier('col', 'duckdb')).toBe('"col"')
-    expect(quoteIdentifier('col', 'postgres')).toBe('"col"')
+    expect(quoteIdentifier('col', 'clickhouse')).toBe('"col"')
     expect(quoteIdentifier('col', 'snowflake')).toBe('"col"')
   })
 })
@@ -80,7 +80,7 @@ describe('quoteAlias', () => {
 
   it('returns unquoted for others', () => {
     expect(quoteAlias('metric_value', 'duckdb')).toBe('metric_value')
-    expect(quoteAlias('metric_value', 'postgres')).toBe('metric_value')
+    expect(quoteAlias('metric_value', 'clickhouse')).toBe('metric_value')
   })
 })
 
@@ -126,21 +126,21 @@ describe('buildDateExpression', () => {
     })
   })
 
-  describe('Postgres', () => {
+  describe('ClickHouse', () => {
     it('quarter formats as QX YYYY', () => {
-      const [expr] = buildDateExpression(dateField('d', 'quarter'), 'postgres')
-      expect(expr).toContain('EXTRACT(QUARTER')
-      expect(expr).toContain('EXTRACT(YEAR')
+      const [expr] = buildDateExpression(dateField('d', 'quarter'), 'clickhouse')
+      expect(expr).toContain('toQuarter')
+      expect(expr).toContain('toYear')
     })
 
-    it('month uses TO_CHAR', () => {
-      const [expr] = buildDateExpression(dateField('d', 'month'), 'postgres')
-      expect(expr).toBe("TO_CHAR(\"d\", 'YYYY-MM')")
+    it('month uses formatDateTime', () => {
+      const [expr] = buildDateExpression(dateField('d', 'month'), 'clickhouse')
+      expect(expr).toBe("formatDateTime(\"d\", '%Y-%m')")
     })
 
-    it('date uses TO_CHAR', () => {
-      const [expr] = buildDateExpression(dateField('d', 'date'), 'postgres')
-      expect(expr).toBe("TO_CHAR(\"d\", 'YYYY-MM-DD')")
+    it('date uses formatDateTime', () => {
+      const [expr] = buildDateExpression(dateField('d', 'date'), 'clickhouse')
+      expect(expr).toBe("formatDateTime(\"d\", '%Y-%m-%d')")
     })
   })
 

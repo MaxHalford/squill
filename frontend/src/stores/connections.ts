@@ -57,14 +57,10 @@ export const useConnectionsStore = defineStore('connections', () => {
   const isActiveTokenExpired = computed(() => {
     if (!activeConnection.value) return false
 
-    // DuckDB and other local connections don't have tokens
+    // Local connections and credential-based connections don't use OAuth tokens
     if (activeConnection.value.type === 'duckdb') return false
-
-    // PostgreSQL uses backend proxy - no frontend tokens needed
-    if (activeConnection.value.type === 'postgres') return false
-
-    // ClickHouse uses backend proxy - no frontend tokens needed
     if (activeConnection.value.type === 'clickhouse') return false
+    if (activeConnection.value.type === 'snowflake') return false
 
     const tokenEntry = accessTokens.value.get(activeConnection.value.id)
     if (!tokenEntry) return true // No token = expired
@@ -252,7 +248,7 @@ export const useConnectionsStore = defineStore('connections', () => {
     const connType = connection.type
     if (connType === 'bigquery') {
       clearSchemaCache('bigquery')
-    } else if (connType === 'postgres' || connType === 'snowflake' || connType === 'clickhouse') {
+    } else if (connType === 'snowflake' || connType === 'clickhouse') {
       clearSchemaCache(connType, connectionId)
     }
 
@@ -329,16 +325,9 @@ export const useConnectionsStore = defineStore('connections', () => {
     const connection = connections.value.find(c => c.id === connectionId)
     if (!connection) return false
 
-    // DuckDB doesn't need tokens
+    // Local and credential-based connections are always "valid"
     if (connection.type === 'duckdb') return true
-
-    // PostgreSQL uses backend proxy - always "valid" from token perspective
-    if (connection.type === 'postgres') return true
-
-    // Snowflake uses backend proxy - always "valid" from token perspective
     if (connection.type === 'snowflake') return true
-
-    // ClickHouse uses backend proxy - always "valid" from token perspective
     if (connection.type === 'clickhouse') return true
 
     const tokenEntry = accessTokens.value.get(connectionId)
@@ -352,16 +341,9 @@ export const useConnectionsStore = defineStore('connections', () => {
     const connection = connections.value.find(c => c.id === connectionId)
     if (!connection) return false
 
-    // DuckDB and other local connections don't have tokens
+    // Local and credential-based connections don't expire
     if (connection.type === 'duckdb') return false
-
-    // PostgreSQL uses backend proxy - never "expired" from token perspective
-    if (connection.type === 'postgres') return false
-
-    // Snowflake uses backend proxy - never "expired" from token perspective
     if (connection.type === 'snowflake') return false
-
-    // ClickHouse uses backend proxy - never "expired" from token perspective
     if (connection.type === 'clickhouse') return false
 
     return !hasValidToken(connectionId)
@@ -382,7 +364,8 @@ export const useConnectionsStore = defineStore('connections', () => {
   /**
    * Fetch connections from backend and merge with local state.
    * Called on login for Pro/VIP users.
-   * Backend connections (BigQuery, Postgres) are merged with local connections (DuckDB).
+   * Backend connections (BigQuery, ClickHouse, Snowflake) are merged with
+   * local-only connections (DuckDB).
    */
   const syncFromBackend = async (): Promise<void> => {
     try {
@@ -391,23 +374,23 @@ export const useConnectionsStore = defineStore('connections', () => {
 
       const backendConnections = await apiFetchConnections(userStore.sessionToken)
 
-      // Keep DuckDB connections from local state (they're local-only)
-      const localDuckDBConnections = connections.value.filter(c => c.type === 'duckdb')
+      // Keep local-only connections (DuckDB is browser-only)
+      const localConnections = connections.value.filter(c => c.type === 'duckdb')
 
       // Convert backend connections to frontend format
       const remoteConnections = backendConnections.map(fromConnectionData)
 
       // Merge: backend connections + local DuckDB connections
-      const mergedConnections = [...remoteConnections, ...localDuckDBConnections]
-      connections.value = mergedConnections
+      const mergedConnections = [...remoteConnections, ...localConnections]
+      connections.value = deduplicateConnections(mergedConnections)
 
       // Set active connection to first one if current is not in list or if none is selected
-      if (!activeConnectionId.value || !mergedConnections.find(c => c.id === activeConnectionId.value)) {
-        activeConnectionId.value = mergedConnections.length > 0 ? mergedConnections[0].id : null
+      if (!activeConnectionId.value || !connections.value.find(c => c.id === activeConnectionId.value)) {
+        activeConnectionId.value = connections.value.length > 0 ? connections.value[0].id : null
       }
 
       saveState()
-      console.log(`Synced ${remoteConnections.length} connections from backend (+ ${localDuckDBConnections.length} local)`)
+      console.log(`Synced ${remoteConnections.length} connections from backend (+ ${localConnections.length} local)`)
     } catch (error) {
       console.warn('Failed to sync connections from backend:', error)
       // Don't throw - local state still works

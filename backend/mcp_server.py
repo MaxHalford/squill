@@ -401,60 +401,18 @@ async def execute_query(connection_id: str, query: str, limit: int = 100) -> str
         query: The SQL query to execute.
         limit: Maximum rows to return (default 100).
 
-    Supports PostgreSQL, BigQuery, Snowflake, ClickHouse, and MySQL connections.
-    Returns JSON with columns and rows.
+    Not yet implemented — queries currently run client-side in the browser.
     """
     _, error = await _require_pro_user()
     if error:
         return error
 
-    # Import query execution services lazily to avoid circular imports
-    from models import PostgresConnection
-    from services.encryption import get_encryption
-
-    session_maker = get_session_maker()
-    async with session_maker() as db:
-        # Try PostgreSQL
-        result = await db.execute(
-            select(PostgresConnection).where(PostgresConnection.id == connection_id)
-        )
-        conn = result.scalar_one_or_none()
-        if conn:
-            from services.postgres_pool import PostgresPoolManager
-
-            encryption = get_encryption()
-            password = encryption.decrypt(conn.password_encrypted, conn.encryption_iv)
-            pool = await PostgresPoolManager.get_pool(
-                connection_id=conn.id,
-                host=conn.host,
-                port=conn.port,
-                database=conn.database,
-                username=conn.username,
-                password=password,
-                ssl_mode=conn.ssl_mode,
-            )
-            async with pool.acquire() as pg_conn:
-                rows = await pg_conn.fetch(query)
-                data = [dict(r) for r in rows[:limit]]
-                columns = list(data[0].keys()) if data else []
-                # Convert non-serializable types
-                for row in data:
-                    for k, v in row.items():
-                        if not isinstance(
-                            v, (str, int, float, bool, type(None), list, dict)
-                        ):
-                            row[k] = str(v)
-                return json.dumps(
-                    {"columns": columns, "rows": data, "row_count": len(data)},
-                    indent=2,
-                    default=str,
-                )
-
-        return json.dumps(
-            {
-                "error": f"Connection {connection_id} not found. Only PostgreSQL is supported via MCP for now."
-            }
-        )
+    return json.dumps(
+        {
+            "error": "Server-side query execution is not yet supported. "
+            "Queries run client-side in the browser for ClickHouse and Snowflake."
+        }
+    )
 
 
 @mcp.tool()
@@ -466,8 +424,6 @@ async def list_connections() -> str:
     from models import (
         BigQueryConnection,
         ClickHouseConnection,
-        MysqlConnection,
-        PostgresConnection,
         SnowflakeConnection,
     )
 
@@ -479,15 +435,6 @@ async def list_connections() -> str:
     session_maker = get_session_maker()
     async with session_maker() as db:
         connections: list[dict[str, Any]] = []
-
-        # PostgreSQL
-        result = await db.execute(
-            select(PostgresConnection).where(PostgresConnection.user_id == user_id)
-        )
-        for c in result.scalars().all():
-            connections.append(
-                {"id": c.id, "type": "postgres", "name": c.name, "database": c.database}
-            )
 
         # BigQuery
         result = await db.execute(
@@ -526,139 +473,7 @@ async def list_connections() -> str:
                 }
             )
 
-        # MySQL
-        result = await db.execute(
-            select(MysqlConnection).where(MysqlConnection.user_id == user_id)
-        )
-        for c in result.scalars().all():
-            connections.append(
-                {"id": c.id, "type": "mysql", "name": c.name, "database": c.database}
-            )
-
         return json.dumps(connections, indent=2)
-
-
-@mcp.tool()
-async def list_tables(connection_id: str) -> str:
-    """List tables and views for a PostgreSQL connection.
-
-    Args:
-        connection_id: The UUID of the database connection.
-
-    Returns a JSON array of table objects with schema, name, and type.
-    """
-    _, error = await _require_pro_user()
-    if error:
-        return error
-
-    from models import PostgresConnection
-    from services.encryption import get_encryption
-    from services.postgres_pool import PostgresPoolManager
-
-    session_maker = get_session_maker()
-    async with session_maker() as db:
-        result = await db.execute(
-            select(PostgresConnection).where(PostgresConnection.id == connection_id)
-        )
-        conn = result.scalar_one_or_none()
-        if not conn:
-            return json.dumps({"error": f"Connection {connection_id} not found"})
-
-        encryption = get_encryption()
-        password = encryption.decrypt(conn.password_encrypted, conn.encryption_iv)
-        pool = await PostgresPoolManager.get_pool(
-            connection_id=conn.id,
-            host=conn.host,
-            port=conn.port,
-            database=conn.database,
-            username=conn.username,
-            password=password,
-            ssl_mode=conn.ssl_mode,
-        )
-        async with pool.acquire() as pg_conn:
-            rows = await pg_conn.fetch("""
-                SELECT table_schema, table_name, table_type
-                FROM information_schema.tables
-                WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-                ORDER BY table_schema, table_name
-            """)
-            return json.dumps(
-                [
-                    {
-                        "schema": r["table_schema"],
-                        "name": r["table_name"],
-                        "type": r["table_type"],
-                    }
-                    for r in rows
-                ],
-                indent=2,
-            )
-
-
-@mcp.tool()
-async def get_table_schema(
-    connection_id: str, schema_name: str, table_name: str
-) -> str:
-    """Get column definitions for a specific table.
-
-    Args:
-        connection_id: The UUID of the database connection.
-        schema_name: The schema containing the table (e.g. 'public').
-        table_name: The table name.
-
-    Returns a JSON array of column objects with name, type, and nullable.
-    """
-    _, error = await _require_pro_user()
-    if error:
-        return error
-
-    from models import PostgresConnection
-    from services.encryption import get_encryption
-    from services.postgres_pool import PostgresPoolManager
-
-    session_maker = get_session_maker()
-    async with session_maker() as db:
-        result = await db.execute(
-            select(PostgresConnection).where(PostgresConnection.id == connection_id)
-        )
-        conn = result.scalar_one_or_none()
-        if not conn:
-            return json.dumps({"error": f"Connection {connection_id} not found"})
-
-        encryption = get_encryption()
-        password = encryption.decrypt(conn.password_encrypted, conn.encryption_iv)
-        pool = await PostgresPoolManager.get_pool(
-            connection_id=conn.id,
-            host=conn.host,
-            port=conn.port,
-            database=conn.database,
-            username=conn.username,
-            password=password,
-            ssl_mode=conn.ssl_mode,
-        )
-        async with pool.acquire() as pg_conn:
-            rows = await pg_conn.fetch(
-                """
-                SELECT column_name, data_type, is_nullable, column_default
-                FROM information_schema.columns
-                WHERE table_schema = $1 AND table_name = $2
-                ORDER BY ordinal_position
-                """,
-                schema_name,
-                table_name,
-            )
-            return json.dumps(
-                [
-                    {
-                        "name": r["column_name"],
-                        "type": r["data_type"],
-                        "nullable": r["is_nullable"] == "YES",
-                        "default": r["column_default"],
-                    }
-                    for r in rows
-                ],
-                indent=2,
-            )
 
 
 # ---------------------------------------------------------------------------

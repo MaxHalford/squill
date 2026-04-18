@@ -45,7 +45,7 @@ export function useChatTools(connectionId: Ref<string | undefined>, options: Cha
         schemas.add(parts[1])
       } else if (connectionType.value === 'snowflake' && parts.length === 3) {
         schemas.add(`${parts[0]}.${parts[1]}`)
-      } else if ((connectionType.value === 'postgres') && parts.length === 2) {
+      } else if (connectionType.value === 'clickhouse' && parts.length === 2) {
         schemas.add(parts[0])
       } else {
         schemas.add('default')
@@ -69,7 +69,7 @@ export function useChatTools(connectionId: Ref<string | undefined>, options: Cha
           return parts[1] === schemaName
         } else if (connectionType.value === 'snowflake' && parts.length === 3) {
           return `${parts[0]}.${parts[1]}` === schemaName
-        } else if (connectionType.value === 'postgres' && parts.length === 2) {
+        } else if (connectionType.value === 'clickhouse' && parts.length === 2) {
           return parts[0] === schemaName
         }
         return true
@@ -145,8 +145,8 @@ export function useChatTools(connectionId: Ref<string | undefined>, options: Cha
     const conn = connection.value
     if (!conn) return 'Local DuckDB'
     if (conn.type === 'bigquery') return `BigQuery (${conn.email || conn.projectId || 'connected'})`
-    if (conn.type === 'postgres') return `PostgreSQL (${conn.name || conn.database || 'connected'})`
     if (conn.type === 'snowflake') return `Snowflake (${conn.name || 'connected'})`
+    if (conn.type === 'clickhouse') return `ClickHouse (${conn.name || 'connected'})`
     return conn.name || conn.type
   })
 

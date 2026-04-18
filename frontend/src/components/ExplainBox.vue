@@ -163,8 +163,8 @@ const onWheel = (e: WheelEvent) => {
 
   if (!viewportEl.value) return
 
-  // getBoundingClientRect is affected by ancestor CSS zoom, but clientX/Y are not.
-  // Divide by canvasZoom to get correct mouse position relative to the viewport.
+  // getBoundingClientRect returns values scaled by ancestor transform: scale().
+  // Divide by canvasZoom to convert visual offset to logical coordinates.
   const cz = canvasZoom.value
   const rect = viewportEl.value.getBoundingClientRect()
   const mouseX = (e.clientX - rect.left) / cz

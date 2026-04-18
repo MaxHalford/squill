@@ -2,7 +2,7 @@
  * Supported database connection types
  * Add new database types here as they are implemented
  */
-export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'mysql' | 'postgres' | 'snowflake'
+export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'snowflake'
 
 /**
  * Database connection configuration
@@ -20,14 +20,26 @@ export interface Connection {
 
   // Context within the connection
   // For BigQuery: the billing/active project for query execution
-  // For Postgres/Snowflake: could be database/schema
   projectId?: string
 
   // BigQuery: additional projects whose schemas are loaded for autocomplete
   schemaProjectIds?: string[]
 
-  // PostgreSQL specific
+  // Database name (used by DuckDB attached databases, ClickHouse, Snowflake)
   database?: string
+
+  // ClickHouse non-secret metadata (passwords stored server-side or OS keychain)
+  clickhouseHost?: string
+  clickhousePort?: number
+  clickhouseUsername?: string
+  clickhouseSecure?: boolean
+
+  // Snowflake non-secret metadata (passwords stored server-side or OS keychain)
+  snowflakeAccount?: string
+  snowflakeUsername?: string
+  snowflakeWarehouse?: string
+  snowflakeSchema?: string
+  snowflakeRole?: string
 }
 
 /**
