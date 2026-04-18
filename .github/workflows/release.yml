@@ -81,7 +81,7 @@ jobs:
             echo
             FOUND=0
             # Files are named YYYY-MM-DD.md — lexicographic sort == chronological
-            for f in $(ls "$CHANGELOG_DIR"/*.md 2>/dev/null | sort); do
+            for f in $(ls "$CHANGELOG_DIR"/*.md 2>/dev/null | sort -r); do
               DATE=$(basename "$f" .md)
               if [[ "$DATE" > "$PREV_DATE" ]]; then
                 echo "### $DATE"
@@ -114,6 +114,9 @@ jobs:
           SCCACHE_GHA_ENABLED: "true"
           RUSTC_WRAPPER: sccache
           CARGO_INCREMENTAL: "0"
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET }}
         with:
           projectPath: frontend
           tagName: ${{ github.ref_name }}

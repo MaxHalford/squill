@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@unhead/vue'
 import { marked } from 'marked'
@@ -122,6 +122,34 @@ const faqs = [
     answer: 'The paid features involve compute costs: LLM tokens for fixing queries, storage costs for saving canvases, and server costs for collaboration. There are no vanity features.'
   }
 ]
+
+// Desktop download
+const DESKTOP_VERSION = '0.1.0'
+const RELEASE_BASE = 'https://github.com/MaxHalford/squill/releases/latest/download'
+const RELEASES_PAGE = 'https://github.com/MaxHalford/squill/releases/latest'
+
+const detectedOS = computed(() => {
+  if (typeof navigator === 'undefined') return 'unknown'
+  const ua = navigator.userAgent.toLowerCase()
+  if (ua.includes('mac')) return 'macos'
+  if (ua.includes('win')) return 'windows'
+  if (ua.includes('linux')) return 'linux'
+  return 'unknown'
+})
+
+const downloadInfo = computed(() => {
+  const v = DESKTOP_VERSION
+  switch (detectedOS.value) {
+    case 'macos':
+      return { label: 'Download for macOS', url: `${RELEASE_BASE}/Squill_${v}_aarch64.dmg` }
+    case 'windows':
+      return { label: 'Download for Windows', url: `${RELEASE_BASE}/Squill_${v}_x64-setup.exe` }
+    case 'linux':
+      return { label: 'Download for Linux', url: `${RELEASE_BASE}/Squill_${v}_amd64.AppImage` }
+    default:
+      return { label: 'Download', url: RELEASES_PAGE }
+  }
+})
 
 // JSON-LD Structured Data
 const organizationSchema = {
@@ -793,6 +821,22 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
         <p class="desktop-text">
           The tradeoff: without a server, there's no collaboration. No shared canvases, no cloud saves, no syncing across devices. Everything stays on&nbsp;your&nbsp;machine.
         </p>
+        <div class="desktop-download">
+          <a
+            :href="downloadInfo.url"
+            class="btn-primary"
+          >
+            {{ downloadInfo.label }}
+          </a>
+          <a
+            :href="RELEASES_PAGE"
+            class="desktop-all-platforms"
+            target="_blank"
+            rel="noopener"
+          >
+            All platforms
+          </a>
+        </div>
       </div>
     </section>
 
@@ -1759,6 +1803,26 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
 
 .desktop-text:last-child {
   margin-bottom: 0;
+}
+
+.desktop-download {
+  margin-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.desktop-all-platforms {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.desktop-all-platforms:hover {
+  color: var(--text-primary);
 }
 
 /* ===== PRO SECTION ===== */
