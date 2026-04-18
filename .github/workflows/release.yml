@@ -41,10 +41,14 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './frontend/src-tauri -> target'
+          cache-on-failure: true
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -107,6 +111,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: sccache
+          CARGO_INCREMENTAL: "0"
         with:
           projectPath: frontend
           tagName: ${{ github.ref_name }}
