@@ -19,6 +19,9 @@ jobs:
       - name: Install frontend dependencies
         run: cd frontend && bun install --frozen-lockfile
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Install prek
         run: uv tool install prek
 
