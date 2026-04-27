@@ -79,6 +79,36 @@ const proFeatures: ProFeature[] = [
   }
 ]
 
+// Desktop feature modal state
+interface DesktopFeature {
+  title: string
+  description: string
+  longDescription: string
+}
+
+const desktopFeatures: DesktopFeature[] = [
+  {
+    title: 'Keychain credentials',
+    description: 'Your database credentials stay on your machine.',
+    longDescription: 'The desktop app stores your database credentials in your operating system\'s native keychain — macOS Keychain, Windows Credential Manager, or the Linux secret service. Your secrets are encrypted at rest and protected by your OS login. There is no interaction with Squill\'s infrastructure at all.',
+  },
+  {
+    title: 'Native releases',
+    description: 'A stable app so you can focus on your work.',
+    longDescription: 'Squill Desktop ships as a native app for macOS, Windows, and Linux. You get lower memory usage, no browser tab to manage, and offline access to DuckDB. Each release is built and published on GitHub — download the .dmg, .exe, or .AppImage and you\'re set. The tradeoff: without a server, there\'s no collaboration, no cloud saves, and no syncing across devices. Everything stays on your machine.',
+  },
+]
+
+const selectedDesktopFeature = ref<DesktopFeature | null>(null)
+
+const openDesktopFeatureModal = (feature: DesktopFeature) => {
+  selectedDesktopFeature.value = feature
+}
+
+const closeDesktopFeatureModal = () => {
+  selectedDesktopFeature.value = null
+}
+
 const selectedProFeature = ref<ProFeature | null>(null)
 
 const openProFeatureModal = (feature: ProFeature) => {
@@ -814,31 +844,74 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
         SQUILL DESKTOP
       </h2>
 
-      <div class="desktop-body">
-        <p class="desktop-text">
-          The desktop app stores your database credentials in your operating system's keychain&nbsp;— not on our server. There is no interaction with Squill's infrastructure&nbsp;at&nbsp;all.
-        </p>
-        <p class="desktop-text">
-          The tradeoff: without a server, there's no collaboration. No shared canvases, no cloud saves, no syncing across devices. Everything stays on&nbsp;your&nbsp;machine.
-        </p>
-        <div class="desktop-download">
-          <a
-            :href="downloadInfo.url"
-            class="btn-primary"
-          >
-            {{ downloadInfo.label }}
-          </a>
-          <a
-            :href="RELEASES_PAGE"
-            class="desktop-all-platforms"
-            target="_blank"
-            rel="noopener"
-          >
-            All platforms
-          </a>
-        </div>
+      <div class="desktop-features">
+        <button
+          v-for="feature in desktopFeatures"
+          :key="feature.title"
+          class="desktop-feature"
+          @click="openDesktopFeatureModal(feature)"
+        >
+          <h3>{{ feature.title }}</h3>
+          <p>{{ feature.description }}</p>
+        </button>
+      </div>
+
+      <div class="desktop-download">
+        <a
+          :href="downloadInfo.url"
+          class="btn-primary"
+        >
+          {{ downloadInfo.label }}
+        </a>
+        <a
+          :href="RELEASES_PAGE"
+          class="desktop-all-platforms"
+          target="_blank"
+          rel="noopener"
+        >
+          All platforms
+        </a>
       </div>
     </section>
+
+    <!-- Desktop Feature Detail Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div
+          v-if="selectedDesktopFeature"
+          class="modal-overlay"
+          @click.self="closeDesktopFeatureModal"
+        >
+          <div class="database-modal">
+            <button
+              class="modal-close"
+              aria-label="Close"
+              @click="closeDesktopFeatureModal"
+            >
+              &times;
+            </button>
+            <div class="modal-header">
+              <div class="modal-title-group">
+                <h3>{{ selectedDesktopFeature.title }}</h3>
+              </div>
+            </div>
+            <div class="modal-body">
+              <p class="modal-description">
+                {{ selectedDesktopFeature.longDescription }}
+              </p>
+            </div>
+            <div class="modal-footer">
+              <button
+                class="btn-primary"
+                @click="closeDesktopFeatureModal"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Pro Section -->
     <section class="section section-inverted pro">
@@ -1788,25 +1861,54 @@ const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as
   margin-right: auto;
 }
 
-.desktop-body {
-  max-width: 600px;
+.desktop-features {
+  display: flex;
+  gap: var(--space-4);
+  max-width: 700px;
   margin: 0 auto;
-  text-align: center;
 }
 
-.desktop-text {
+.desktop-feature {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: var(--border-width-thick) solid var(--border-primary);
+  background: var(--surface-primary);
+  box-shadow: var(--shadow-md);
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.desktop-feature:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.desktop-feature:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.desktop-feature h3 {
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-body-lg);
-  line-height: var(--line-height-relaxed, 1.6);
-  color: var(--text-primary);
-  margin: 0 0 var(--space-4) 0;
+  margin: 0;
 }
 
-.desktop-text:last-child {
-  margin-bottom: 0;
+.desktop-feature p {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  color: var(--text-secondary);
 }
 
 .desktop-download {
-  margin-top: var(--space-6);
+  margin-top: var(--space-8);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2345,6 +2447,10 @@ button.pro-feature {
 
   .status-icon {
     display: none;
+  }
+
+  .desktop-features {
+    flex-direction: column;
   }
 }
 </style>

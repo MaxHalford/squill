@@ -210,6 +210,11 @@
 import { computed, ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { useToast } from '../composables/useToast'
+import { useDialog } from '../composables/useDialog'
+
+const { showToast } = useToast()
+const { confirm } = useDialog()
 
 const router = useRouter()
 const route = useRoute()
@@ -255,7 +260,7 @@ const handleUpgrade = async () => {
   try {
     await userStore.upgradeToProCheckout()
   } catch {
-    alert('Failed to start checkout. Please try again.')
+    showToast('Failed to start checkout. Please try again.')
   } finally {
     isUpgrading.value = false
   }
@@ -266,14 +271,14 @@ const handleResubscribe = async () => {
   try {
     await userStore.resubscribeAction()
   } catch {
-    alert('Failed to resubscribe. Please try again.')
+    showToast('Failed to resubscribe. Please try again.')
   } finally {
     isUpgrading.value = false
   }
 }
 
 const handleCancelSubscription = async () => {
-  const confirmed = window.confirm(
+  const confirmed = await confirm(
     'Are you sure you want to cancel your Pro subscription? You will keep access until the end of your billing period.'
   )
 
@@ -283,14 +288,14 @@ const handleCancelSubscription = async () => {
   try {
     await userStore.cancelSubscription()
   } catch {
-    alert('Failed to cancel subscription. Please try again.')
+    showToast('Failed to cancel subscription. Please try again.')
   } finally {
     isCanceling.value = false
   }
 }
 
 const handleDeleteAccount = async () => {
-  const confirmed = window.confirm(
+  const confirmed = await confirm(
     'Are you sure you want to delete your account? This will permanently remove all your data and cannot be undone.'
   )
 
@@ -306,7 +311,7 @@ const handleDeleteAccount = async () => {
     await deleteDatabase()
     router.push('/')
   } else {
-    alert('Failed to delete account. Please try again.')
+    showToast('Failed to delete account. Please try again.')
   }
 }
 

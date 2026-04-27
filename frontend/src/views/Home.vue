@@ -31,13 +31,15 @@ import { useDuckDBStore } from '../stores/duckdb'
 import { useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useSqlGlotStore } from '../stores/sqlglot'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
 import { sanitizeFileName } from '../utils/sqlSanitize'
 import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
 import { changelog, type ChangelogEntry } from '../data/changelog'
 import { loadItem, saveItem } from '../utils/storage'
+import { useToast } from '../composables/useToast'
+
+const { showToast } = useToast()
 
 const route = useRoute()
 const router = useRouter()
@@ -144,7 +146,7 @@ const handleSelectBigquery = async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error('BigQuery connection failed:', error)
-    alert(`BigQuery connection failed:\n\n${message}`)
+    showToast(`BigQuery connection failed:\n\n${message}`)
   }
 }
 
@@ -162,7 +164,7 @@ const handleSelectDuckdb = async () => {
     }
   } catch (error) {
     console.error('DuckDB initialization failed:', error)
-    alert('Failed to initialize DuckDB. Please try again.')
+    showToast('Failed to initialize DuckDB. Please try again.')
   }
 }
 
@@ -262,7 +264,7 @@ const handleCsvFileInput = async (event: Event) => {
   )
 
   if (csvFiles.length === 0) {
-    alert('Please select CSV files only')
+    showToast('Please select CSV files only')
     return
   }
 
@@ -434,7 +436,7 @@ const handleFileDrop = async ({ csvFiles, duckdbFiles, nonCsvFiles, position }: 
   // Show error for unsupported files
   if (nonCsvFiles.length > 0) {
     const fileNames = nonCsvFiles.map(f => f.name).join(', ')
-    alert(`Only CSV and DuckDB files are supported. Skipped: ${fileNames}`)
+    showToast(`Only CSV and DuckDB files are supported. Skipped: ${fileNames}`)
   }
 
   // If no CSV files, exit early
@@ -446,11 +448,11 @@ const handleFileDrop = async ({ csvFiles, duckdbFiles, nonCsvFiles, position }: 
   const MAX_SIZE = 50 * 1024 * 1024
   const validFiles = csvFiles.filter(file => {
     if (file.size > MAX_SIZE) {
-      alert(`File ${file.name} is too large (max 50MB)`)
+      showToast(`File ${file.name} is too large (max 50MB)`)
       return false
     }
     if (file.size === 0) {
-      alert(`File ${file.name} is empty`)
+      showToast(`File ${file.name} is empty`)
       return false
     }
     return true
@@ -505,7 +507,7 @@ const handleFileDrop = async ({ csvFiles, duckdbFiles, nonCsvFiles, position }: 
 
     } catch (err: unknown) {
       console.error(`Failed to load CSV ${file.name}:`, err)
-      alert(`Failed to load ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
+      showToast(`Failed to load ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -552,7 +554,7 @@ const handleImportDuckDBFiles = async (duckdbFiles: File[]) => {
       console.log(`Imported DuckDB: ${alias} with tables: ${tables.join(', ')}`)
     } catch (err: unknown) {
       console.error(`Failed to import DuckDB file ${file.name}:`, err)
-      alert(`Failed to import ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
+      showToast(`Failed to import ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 }
@@ -629,7 +631,7 @@ const handleQueryTableFromSchema = async (data: {
 
   } catch (error) {
     console.error('Failed to create query box:', error)
-    alert(`Failed to query table: ${(error as Error).message}`)
+    showToast(`Failed to query table: ${(error as Error).message}`)
   }
 }
 
@@ -658,7 +660,7 @@ const handleShowRowDetail = (data: {
 
   } catch (error) {
     console.error('Failed to create detail box:', error)
-    alert(`Failed to show row details: ${(error as Error).message}`)
+    showToast(`Failed to show row details: ${(error as Error).message}`)
   }
 }
 
@@ -714,7 +716,7 @@ const handleShowColumnAnalytics = (data: {
 
   } catch (error) {
     console.error('Failed to create analytics box:', error)
-    alert(`Failed to show column analytics: ${(error as Error).message}`)
+    showToast(`Failed to show column analytics: ${(error as Error).message}`)
   }
 }
 

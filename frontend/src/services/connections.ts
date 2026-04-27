@@ -4,7 +4,7 @@
  * All other connection types (DuckDB, ClickHouse, Snowflake) are local-only.
  */
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 
 export interface ConnectionData {
   id: string

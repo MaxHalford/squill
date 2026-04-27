@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useUserStore } from '../stores/user'
+import { BACKEND_URL } from '@/services/backend'
 
 const router = useRouter()
 const connectionsStore = useConnectionsStore()
@@ -12,8 +13,6 @@ const userStore = useUserStore()
 
 const status = ref<'loading' | 'error'>('loading')
 const errorMessage = ref('')
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 /**
  * Parse the OAuth state to extract CSRF token and flow type.

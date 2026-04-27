@@ -32,3 +32,8 @@ dist-ssr
 # Tauri
 frontend/src-tauri/target/
 frontend/src-tauri/gen/
+
+# Rust backend
+backend/target/
+*.db-shm
+*.db-wal

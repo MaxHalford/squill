@@ -26,8 +26,7 @@ import {
   deleteBoxesBatch as apiDeleteBoxesBatch,
   createServerCanvas,
 } from '../services/canvas'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 
 export interface CanvasPersistence {
   /** Load the multi-canvas index. */

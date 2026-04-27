@@ -2,8 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
 import { useUserStore } from '../stores/user'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 
 const canvasStore = useCanvasStore()
 const userStore = useUserStore()

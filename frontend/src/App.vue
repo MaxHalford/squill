@@ -2,6 +2,8 @@
 import { watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSettingsStore } from './stores/settings'
+import DialogHost from './components/DialogHost.vue'
+import ToastHost from './components/ToastHost.vue'
 
 const settingsStore = useSettingsStore()
 const route = useRoute()
@@ -44,6 +46,8 @@ watch(() => settingsStore.accentColor, () => {
 <template>
   <div class="app">
     <router-view />
+    <DialogHost />
+    <ToastHost />
   </div>
 </template>
 

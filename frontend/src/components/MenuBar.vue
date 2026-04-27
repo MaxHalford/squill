@@ -13,6 +13,9 @@ import { useUserStore } from '../stores/user'
 import type { BoxType } from '../types/canvas'
 import type { ConnectionType } from '../types/connection'
 import { DATABASE_INFO } from '../types/database'
+import { useDialog } from '../composables/useDialog'
+
+const { confirm, prompt: promptDialog } = useDialog()
 import {
   getConnectionDisplayName,
   connectionRequiresAuth
@@ -26,6 +29,7 @@ import { isTauri } from '../utils/tauri'
 const isWebApp = !isTauri()
 import SettingsPanel from './SettingsPanel.vue'
 import CopyButton from './CopyButton.vue'
+import { BACKEND_URL } from '@/services/backend'
 
 const router = useRouter()
 const bigqueryStore = useBigQueryStore()
@@ -130,7 +134,6 @@ const activeDropdown = ref<string | null>(null) // 'canvas', 'connection', 'new'
 const showShareDialog = ref(false)
 const showMcpModal = ref(false)
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 const mcpUrl = computed(() => `${BACKEND_URL}/mcp/`)
 const mcpCommand = computed(() => `claude mcp add --transport http squill ${mcpUrl.value}`)
 const mcpJson = computed(() => JSON.stringify({ mcpServers: { squill: { type: 'http', url: mcpUrl.value } } }, null, 2))
@@ -454,7 +457,8 @@ const handleRefreshSchemas = async () => {
 // Handle reset all data
 const handleResetAll = async () => {
   closeDropdown()
-  if (confirm('This will clear all data including connections, queries, and cached results. Are you sure?')) {
+  const confirmed = await confirm('This will clear all data including connections, queries, and cached results. Are you sure?')
+  if (confirmed) {
     const { deleteDatabase } = await import('../utils/db')
     await deleteDatabase()
     window.location.reload()
@@ -494,24 +498,21 @@ const handleDuplicateActive = async () => {
 
 // Handle delete active canvas
 const handleDeleteActive = async () => {
-  if (canvasList.value.length <= 1) return
-  const canvas = canvasList.value.find(c => c.id === canvasStore.activeCanvasId)
-  if (canvas && confirm(`Delete "${canvas.name}"? This cannot be undone.`)) {
-    await canvasStore.deleteCanvas(canvas.id)
-  }
+  if (canvasList.value.length <= 1 || !canvasStore.activeCanvasId) return
+  await canvasStore.deleteCanvas(canvasStore.activeCanvasId)
   closeDropdown()
 }
 
 // Handle rename active canvas (simple prompt for now)
-const handleRenameActive = () => {
+const handleRenameActive = async () => {
   if (!canvasStore.activeCanvasId) return
   const canvas = canvasList.value.find(c => c.id === canvasStore.activeCanvasId)
   if (!canvas) return
-  const newName = prompt('Rename canvas:', canvas.name)
-  if (newName && newName.trim()) {
-    canvasStore.renameCanvas(canvas.id, newName.trim())
-  }
   closeDropdown()
+  const newName = await promptDialog('Rename canvas:', canvas.name)
+  if (newName) {
+    canvasStore.renameCanvas(canvas.id, newName)
+  }
 }
 
 // Close dropdown when clicking outside
@@ -1029,6 +1030,7 @@ onUnmounted(() => {
                 <CopyButton :text="mcpCommand" size="sm" class="mcp-copy" />
               </div>
               <div class="mcp-hint">Run this in your terminal, then authenticate via the browser.</div>
+              <div class="mcp-hint mcp-hint-secondary">Already added? Use <code>claude mcp remove squill</code> first, then re-run the command above.</div>
             </div>
 
             <div class="mcp-section">
@@ -1771,6 +1773,16 @@ html.dark .provider-icon-invert {
   font-size: var(--font-size-caption);
   color: var(--text-secondary);
   margin-top: var(--space-1);
+}
+
+.mcp-hint-secondary {
+  opacity: 0.7;
+}
+
+.mcp-hint-secondary code {
+  font-family: var(--font-mono);
+  background: var(--bg-secondary);
+  padding: 1px 4px;
 }
 
 .mcp-tools {

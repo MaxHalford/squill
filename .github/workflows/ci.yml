@@ -13,17 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
-
-      - name: Set up Python
-        run: uv python install 3.14
-
-      - name: Install backend dependencies
-        run: cd backend && uv sync
 
       - name: Install frontend dependencies
         run: cd frontend && bun install --frozen-lockfile
@@ -33,24 +24,6 @@ jobs:
 
       - name: Run prek
         run: prek run --all-files
-
-  backend-tests:
-    name: Backend tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python
-        run: uv python install 3.14
-
-      - name: Install dependencies
-        run: cd backend && uv sync
-
-      - name: Run tests
-        run: cd backend && uv run pytest -v
 
   frontend-tests:
     name: Frontend tests
@@ -68,7 +41,7 @@ jobs:
         run: cd frontend && bun run test:run
 
   deploy:
-    needs: [lint, backend-tests, frontend-tests]
+    needs: [lint, frontend-tests]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     container: ghcr.io/railwayapp/cli:latest

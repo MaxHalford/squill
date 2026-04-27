@@ -6,8 +6,7 @@ import {
   type ConnectionType,
 } from '../utils/schemaAdapter'
 import { useQueryHistoryStore } from '../stores/queryHistory'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 
 // Default similarity threshold for schema filtering
 const DEFAULT_SCHEMA_THRESHOLD = 0.4

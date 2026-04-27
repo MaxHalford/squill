@@ -5,8 +5,7 @@ import { createCheckoutSession, openPolarCheckout } from '../services/billing'
 import { UserSchema } from '../utils/storageSchemas'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
 import { isTauri } from '../utils/tauri'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || ''
 const MICROSOFT_CLIENT_ID = import.meta.env.VITE_MICROSOFT_CLIENT_ID || ''
@@ -62,10 +61,30 @@ export const useUserStore = defineStore('user', () => {
     else deleteItem('session-token').catch(console.error)
   })
 
-  // Auto-fetch profile after hydration to sync plan status from backend.
-  // The desktop app is isolated — it never talks to the Squill server.
-  ready.then(() => {
-    if (sessionToken.value && !isTauri()) {
+  // Desktop auto-login: fetch a local JWT so the app uses SyncedPersistence
+  // and shares the same SQLite database as the MCP server.
+  ready.then(async () => {
+    if (isTauri()) {
+      try {
+        const res = await fetch(`${BACKEND_URL}/auth/desktop-token`)
+        if (res.ok) {
+          const data = await res.json()
+          sessionToken.value = data.session_token
+          user.value = {
+            id: '00000000-0000-0000-0000-000000000001',
+            email: 'local@squill.desktop',
+            firstName: 'Local',
+            lastName: 'User',
+            plan: 'pro',
+            isVip: true,
+            planExpiresAt: null,
+            subscriptionCancelAtPeriodEnd: false,
+          }
+        }
+      } catch (err) {
+        console.error('Failed to get desktop token:', err)
+      }
+    } else if (sessionToken.value) {
       fetchProfile().catch(err => {
         console.error('Failed to fetch profile on init:', err)
       })

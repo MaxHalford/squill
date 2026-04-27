@@ -1,6 +1,5 @@
 import { PolarEmbedCheckout } from '@polar-sh/checkout/embed'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 
 export interface CheckoutSessionResponse {
   checkout_url: string

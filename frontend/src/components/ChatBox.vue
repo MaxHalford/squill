@@ -6,8 +6,7 @@ import { useChat, type ChatMessage, type TokenUsage } from '../composables/useCh
 import { useChatTools } from '../composables/useChatTools'
 import { useUserStore } from '../stores/user'
 import { marked } from 'marked'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 
 const userStore = useUserStore()
 

@@ -21,6 +21,7 @@ import {
 } from '../services/clickhouse/httpClient'
 import type { TableMetadataInfo } from '../types/database'
 import { isTauri } from '../utils/tauri'
+import { BACKEND_URL } from '@/services/backend'
 
 export type {
   ClickHouseCredentials,
@@ -35,8 +36,6 @@ export interface TestConnectionResult {
   success: boolean
   message: string
 }
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 export const useClickHouseStore = defineStore('clickhouse', () => {
   const connectionsStore = useConnectionsStore()

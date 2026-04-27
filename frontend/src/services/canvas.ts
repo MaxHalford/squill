@@ -3,7 +3,7 @@
  * Follows existing patterns: native fetch, VITE_BACKEND_URL, Bearer auth.
  */
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 
 interface BoxResponse {
   box_id: number

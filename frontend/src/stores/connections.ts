@@ -9,8 +9,7 @@ import {
 import { clearSchemaCache } from '../utils/schemaAdapter'
 import { loadItem, saveItem } from '../utils/storage'
 import { isTauri } from '../utils/tauri'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+import { BACKEND_URL } from '@/services/backend'
 const GOOGLE_DESKTOP_CLIENT_ID = import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GOOGLE_DESKTOP_CLIENT_SECRET = import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_SECRET || ''
 

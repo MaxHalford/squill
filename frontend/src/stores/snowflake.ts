@@ -22,6 +22,7 @@ import {
 } from '../services/snowflake/restClient'
 import type { TableMetadataInfo } from '../types/database'
 import { isTauri } from '../utils/tauri'
+import { BACKEND_URL } from '@/services/backend'
 
 export type {
   SnowflakeCredentials,
@@ -37,8 +38,6 @@ export interface TestConnectionResult {
   success: boolean
   message: string
 }
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
 export const useSnowflakeStore = defineStore('snowflake', () => {
   const connectionsStore = useConnectionsStore()

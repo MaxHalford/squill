@@ -3,29 +3,24 @@
 ## Technology stack
 
 - Frontend: Vue.js with TypeScript, Vite, bun.js
-- Backend: Python 3.14, FastAPI, SQLAlchemy, Pydantic
-- Database: PostgreSQL (production), SQLite (local)
-- Pre-commit: prek with ruff + ty
+- Backend: Rust
+- Database: SQLite
+- Pre-commit: prek
 
 ## Project structure
 
-- `/src` - Vue frontend
-- `/backend` - FastAPI backend
-  - `/routers` - API endpoints
-  - `/services` - Business logic
-  - `/models.py` - SQLAlchemy models
-  - `/config.py` - Pydantic settings (reads from .env)
+- `/frontend` - Vue frontend
+- `/backend` - Rust backend
 
 ## Commands
 
 ```bash
 # Frontend
-bun install
-bun run dev
+cd frontend && bun install
+cd frontend && bun run dev
 
 # Backend
-cd backend && uv sync
-uv run uvicorn main:app --reload
+cd backend && cargo build
 
 # Code quality
 prek run --all-files

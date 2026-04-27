@@ -2,6 +2,9 @@
 import { ref, watch } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
+import { useDialog } from '../composables/useDialog'
+
+const { confirm } = useDialog()
 
 defineProps<{
   show: boolean
@@ -93,7 +96,8 @@ watch(() => settingsStore.editorFontSize, (newValue) => {
 
 // Handle reset all data
 const handleResetAll = async () => {
-  if (confirm('This will clear all data including connections, queries, and cached results. Are you sure?')) {
+  const confirmed = await confirm('This will clear all data including connections, queries, and cached results. Are you sure?')
+  if (confirmed) {
     const { deleteDatabase } = await import('../utils/db')
     await deleteDatabase()
     window.location.reload()
