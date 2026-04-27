@@ -30,7 +30,6 @@ import { type DatabaseEngine, type QueryCompleteEvent } from '../types/database'
 
 export type { QueryCompleteEvent }
 
-const boxVisible = inject('boxVisible', ref(true))
 const resultsRef = ref<InstanceType<typeof ResultsTable> | null>(null)
 
 // ---------------------------------------------------------------------------
@@ -146,24 +145,6 @@ let resizeObserver: ResizeObserver | null = null
 // Visibility — must be after resultTableName declaration (avoids TDZ)
 // ---------------------------------------------------------------------------
 
-// Hide results when off-screen (visibility culling)
-const shouldHideResults = computed(() =>
-  !!resultTableName.value && !boxVisible.value
-)
-
-// Trigger row reveal animation on any hide → show transition (RAF-debounced
-// so rapid IntersectionObserver fires during fitToView coalesce instead of
-// recreating <tbody> while Vue is mid-patch → "parentNode is null").
-let revealRAF: number | null = null
-watch(shouldHideResults, (hidden, wasHidden) => {
-  if (!hidden && wasHidden) {
-    if (revealRAF) cancelAnimationFrame(revealRAF)
-    revealRAF = requestAnimationFrame(() => {
-      resultsRef.value?.triggerReveal()
-      revealRAF = null
-    })
-  }
-})
 
 // ---------------------------------------------------------------------------
 // Sync v-model
@@ -700,7 +681,6 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', handleMouseUp)
   resizeObserver?.disconnect()
   if (schemaTimeout) clearTimeout(schemaTimeout)
-  if (revealRAF) cancelAnimationFrame(revealRAF)
 
   if (backgroundLoadController) {
     backgroundLoadController.abort()
@@ -785,7 +765,7 @@ defineExpose({
       @dblclick="handleSplitterDblClick"
     />
 
-    <div class="results-wrapper" :class="{ 'interaction-freeze': shouldHideResults }">
+    <div class="results-wrapper">
       <ResultsTable
         ref="resultsRef"
         :table-name="resultTableName"
@@ -850,18 +830,6 @@ defineExpose({
   min-width: 0;
 }
 
-.results-wrapper.interaction-freeze {
-  content-visibility: hidden;
-  contain-intrinsic-size: auto 300px;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    var(--surface-primary) 0px,
-    var(--surface-primary) 28px,
-    var(--table-row-stripe-bg) 28px,
-    var(--table-row-stripe-bg) 56px
-  );
-}
 
 /* Larger hit area for easier dragging */
 .splitter::before {
