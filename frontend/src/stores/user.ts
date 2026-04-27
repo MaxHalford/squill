@@ -46,24 +46,11 @@ export const useUserStore = defineStore('user', () => {
     } catch (err) {
       console.error('Failed to load user state:', err)
     }
-  }
 
-  const ready = loadState()
-
-  // Auto-save on changes
-  watch(user, (u) => {
-    if (u) saveItem('user', u).catch(console.error)
-    else deleteItem('user').catch(console.error)
-  }, { deep: true })
-
-  watch(sessionToken, (t) => {
-    if (t) saveItem('session-token', t).catch(console.error)
-    else deleteItem('session-token').catch(console.error)
-  })
-
-  // Desktop auto-login: fetch a local JWT so the app uses SyncedPersistence
-  // and shares the same SQLite database as the MCP server.
-  ready.then(async () => {
+    // Desktop auto-login: fetch a local JWT so the app uses SyncedPersistence
+    // and shares the same SQLite database as the MCP server.
+    // This must complete before `ready` resolves so that canvas initPersistence()
+    // sees isPro=true and picks SyncedPersistence (with WebSocket for MCP updates).
     if (isTauri()) {
       try {
         const res = await fetch(`${BACKEND_URL}/auth/desktop-token`)
@@ -89,6 +76,19 @@ export const useUserStore = defineStore('user', () => {
         console.error('Failed to fetch profile on init:', err)
       })
     }
+  }
+
+  const ready = loadState()
+
+  // Auto-save on changes
+  watch(user, (u) => {
+    if (u) saveItem('user', u).catch(console.error)
+    else deleteItem('user').catch(console.error)
+  }, { deep: true })
+
+  watch(sessionToken, (t) => {
+    if (t) saveItem('session-token', t).catch(console.error)
+    else deleteItem('session-token').catch(console.error)
   })
 
   // ---- Actions ----

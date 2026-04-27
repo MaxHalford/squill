@@ -9,6 +9,10 @@ use std::sync::Arc;
 use tauri::Manager;
 
 /// Port for the embedded backend server.
+/// Use 18223 in debug builds to avoid conflicting with the production desktop app.
+#[cfg(debug_assertions)]
+const BACKEND_PORT: u16 = 18223;
+#[cfg(not(debug_assertions))]
 const BACKEND_PORT: u16 = 18222;
 
 /// JS injected before page scripts. Prevents keyboard zoom (Cmd+/-/0),
