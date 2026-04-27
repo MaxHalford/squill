@@ -60,16 +60,25 @@ const emit = defineEmits<{
 const elapsedTime = ref(0)
 let timerInterval: ReturnType<typeof setInterval> | null = null
 
+// Delay showing the loading state so instant queries don't flash
+const showRunning = ref(false)
+let runningDelayTimer: ReturnType<typeof setTimeout> | null = null
+
 watch(() => props.isRunning, (running) => {
   if (running) {
     elapsedTime.value = 0
     seedStars()
+    runningDelayTimer = setTimeout(() => {
+      showRunning.value = true
+      runningDelayTimer = null
+    }, 200)
     timerInterval = setInterval(() => {
       elapsedTime.value += 0.1
     }, 100)
-  } else if (timerInterval) {
-    clearInterval(timerInterval)
-    timerInterval = null
+  } else {
+    if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null }
+    showRunning.value = false
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null }
   }
 })
 
@@ -911,7 +920,7 @@ defineExpose({ resetPagination, triggerReveal, refresh })
         </div>
       </div>
       <div
-        v-else-if="isRunning"
+        v-else-if="showRunning"
         class="idle-state running-starfield"
       >
         <template v-for="(item, i) in scatteredItems" :key="i">
