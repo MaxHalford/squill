@@ -10,7 +10,7 @@ export interface LineSuggestion {
 </script>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { Compartment, StateField, StateEffect, RangeSet, EditorState } from '@codemirror/state'
@@ -179,30 +179,6 @@ const triggerDryRun = () => {
   }, 300)
 }
 
-// Computed tooltip for run button
-const runButtonTooltip = computed(() => {
-  const base = 'Run query (⌘⏎)'
-
-  if (props.disabled) return 'Loading database...'
-  if (props.isRunning) return 'Query running...'
-
-  // Only show cost for BigQuery
-  if (props.connectionType !== 'bigquery') return base
-
-  if (isDryRunLoading.value) {
-    return `${base}\nEstimating cost...`
-  }
-
-  if (dryRunResult.value) {
-    if (dryRunResult.value.error) {
-      return `${base}\n⚠️ Query error`
-    }
-    return `${base}\n~${dryRunResult.value.totalBytesProcessed} • ${dryRunResult.value.estimatedCost}`
-  }
-
-  return base
-})
-
 // Format button handler
 const justFormatted = ref(false)
 const handleFormat = async () => {
@@ -256,13 +232,6 @@ const handleSpellClickOutside = (e: MouseEvent) => {
   if (target.closest('.spell-input-wrapper') || target.closest('.wand-btn')) return
   dismissSpellInput()
 }
-
-const formatButtonTooltip = computed(() => {
-  if (justFormatted.value) return 'Formatted'
-  if (sqlglotStore.isLoading) return 'Loading formatter...'
-  if (!sqlglotStore.isReady) return 'Formatter unavailable'
-  return 'Format SQL'
-})
 
 const languageCompartment = new Compartment()
 const lineNumbersCompartment = new Compartment()
@@ -966,6 +935,13 @@ defineExpose({
     return false
   },
   acceptSuggestion,
+  formatQuery: handleFormat,
+  triggerDryRun,
+  toggleSpellInput,
+  showSpellInput,
+  justFormatted,
+  dryRunResult,
+  isDryRunLoading,
 })
 </script>
 
@@ -999,28 +975,6 @@ defineExpose({
       {{ hoveredError.message }}
     </div>
 
-    <!-- Explode button — splits CTE query into separate boxes -->
-    <button
-      v-tooltip="canExplode ? 'Explode CTEs into separate boxes' : 'No CTEs to explode'"
-      class="explode-btn"
-      :disabled="!canExplode"
-      @click.stop="emit('explode')"
-    >
-      <!-- Starburst / explosion icon -->
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M12 2 L13.5 8.5 L20 5 L15.5 10.5 L22 12 L15.5 13.5 L20 19 L13.5 15.5 L12 22 L10.5 15.5 L4 19 L8.5 13.5 L2 12 L8.5 10.5 L4 5 L10.5 8.5 Z" />
-      </svg>
-    </button>
-
     <!-- Spell input — textarea centered above the wand button -->
     <div v-if="showSpellInput" class="spell-input-wrapper">
       <textarea
@@ -1046,130 +1000,6 @@ defineExpose({
       </button>
     </div>
 
-    <!-- Wand button — visible for all, disabled for non-pro -->
-    <button
-      v-tooltip="userStore.isPro ? (isCastingSpell ? 'Casting...' : 'Cast a spell') : 'Pro feature'"
-      class="wand-btn"
-      :class="{ active: showSpellInput, casting: isCastingSpell }"
-      :disabled="!userStore.isPro || isCastingSpell"
-      @click.stop="toggleSpellInput"
-    >
-      <svg
-        v-if="isCastingSpell"
-        class="spin"
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-      </svg>
-      <svg
-        v-else
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" />
-        <path d="m14 7 3 3" />
-        <path d="M5 6v4" />
-        <path d="M19 14v4" />
-        <path d="M10 2v2" />
-        <path d="M7 8H3" />
-        <path d="M21 16h-4" />
-        <path d="M11 3H9" />
-      </svg>
-    </button>
-
-    <button
-      v-tooltip="formatButtonTooltip"
-      class="format-btn"
-      :class="{ formatted: justFormatted }"
-      :disabled="disabled || isRunning || !sqlglotStore.isReady"
-      @click.stop="handleFormat"
-    >
-      <!-- Checkmark when just formatted -->
-      <svg
-        v-if="justFormatted"
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-      <!-- Paintbrush icon (Lucide) -->
-      <svg
-        v-else
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="m14.622 17.897-10.68-2.913" />
-        <path d="M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0z" />
-        <path d="M9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.507.507 0 0 0-.302.819l7.32 8.883a1 1 0 0 0 1.185.204C12.735 20.405 16 16.792 16 15" />
-      </svg>
-    </button>
-
-    <button
-      v-tooltip="explainDisabledReason || 'Explain query'"
-      class="explain-btn"
-      :disabled="disabled || isRunning || !!explainDisabledReason"
-      @click.stop="emit('explain', { clientX: $event.clientX, clientY: $event.clientY })"
-    >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="11" cy="11" r="8" />
-        <path d="m21 21-4.34-4.34" />
-      </svg>
-    </button>
-
-    <button
-      v-tooltip="runButtonTooltip"
-      class="run-btn"
-      :disabled="disabled || isRunning"
-      @mouseenter="triggerDryRun"
-      @click.stop="emit('run')"
-    >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
-      </svg>
-    </button>
   </div>
 </template>
 
@@ -1203,37 +1033,10 @@ defineExpose({
   display: none;
 }
 
-/* Explode Button — stacked above Format */
-.explode-btn {
-  position: absolute;
-  bottom: calc(var(--space-2) + 84px);
-  right: var(--space-2);
-  display: flex;
-  align-items: center;
-  padding: var(--space-1) var(--space-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  line-height: 1;
-  cursor: pointer;
-  z-index: 1;
-}
-
-.explode-btn:not(:disabled):hover {
-  color: var(--text-primary);
-}
-
-.explode-btn:disabled {
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 /* Spell Input — textarea centered above the wand button */
 .spell-input-wrapper {
   position: absolute;
-  bottom: calc(var(--space-2) + 30px);
+  bottom: var(--space-2);
   left: 50%;
   transform: translateX(-50%);
   z-index: 3;
@@ -1316,84 +1119,10 @@ defineExpose({
   color: var(--text-secondary);
 }
 
-/* Wand Button — stacked above Explode */
-.wand-btn {
-  position: absolute;
-  bottom: calc(var(--space-2) + 112px);
-  right: var(--space-2);
-  display: flex;
-  align-items: center;
-  padding: var(--space-1) var(--space-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  line-height: 1;
-  cursor: pointer;
-  z-index: 1;
-}
-
-.wand-btn:not(:disabled):hover {
-  color: var(--text-primary);
-}
-
-.wand-btn.active {
-  color: var(--text-primary);
-}
-
-.wand-btn:disabled {
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.wand-btn .spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Format Button — stacked above Explain */
-.format-btn {
-  position: absolute;
-  bottom: calc(var(--space-2) + 56px);
-  right: var(--space-2);
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-body-sm);
-  line-height: 1;
-  cursor: pointer;
-  z-index: 1;
-}
-
-.format-btn:not(:disabled):hover {
-  color: var(--text-primary);
-}
-
-.format-btn.formatted {
-  color: var(--text-primary);
-}
-
-.format-btn:disabled {
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 /* SQLGlot error tooltip */
 .sqlglot-error-tooltip {
   position: absolute;
-  right: calc(var(--space-2) + 32px);
+  right: var(--space-2);
   max-width: 300px;
   padding: var(--space-1) var(--space-2);
   background: var(--surface-primary);
@@ -1408,64 +1137,5 @@ defineExpose({
   box-shadow: var(--shadow-md);
 }
 
-/* Explain Button — stacked above Run */
-.explain-btn {
-  position: absolute;
-  bottom: calc(var(--space-2) + 28px);
-  right: var(--space-2);
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-body-sm);
-  line-height: 1;
-  cursor: pointer;
-  z-index: 1;
-}
-
-.explain-btn:not(:disabled):hover {
-  color: var(--text-primary);
-}
-
-.explain-btn:disabled {
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-/* Run Button */
-.run-btn {
-  position: absolute;
-  bottom: var(--space-2);
-  right: var(--space-2);
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-body-sm);
-  line-height: 1;
-  cursor: pointer;
-  z-index: 1;
-}
-
-.run-btn:not(:disabled):hover {
-  color: var(--text-primary);
-}
-
-.run-btn:disabled {
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-  opacity: 0.5;
-}
 
 </style>

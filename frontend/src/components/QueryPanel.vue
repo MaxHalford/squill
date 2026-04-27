@@ -716,12 +716,34 @@ onUnmounted(() => {
 // Expose
 // ---------------------------------------------------------------------------
 
+// Computed forwarding of editor state for header action buttons
+const editorShowSpellInput = computed(() => editorRef.value?.showSpellInput ?? false)
+const editorJustFormatted = computed(() => editorRef.value?.justFormatted ?? false)
+const editorDryRunResult = computed(() => editorRef.value?.dryRunResult ?? null)
+const editorIsDryRunLoading = computed(() => editorRef.value?.isDryRunLoading ?? false)
+const connectionType = computed(() => boxConnection.value?.type)
+
 defineExpose({
   runQuery,
   stopQuery,
   explainQuery,
   getQuery: () => editorRef.value?.getQuery() || queryText.value,
   focusEditor: () => editorRef.value?.focus(),
+  // State for header action buttons
+  isRunning,
+  isCastingSpell,
+  isEngineLoading,
+  explainDisabledReason,
+  connectionType,
+  // Delegated editor methods
+  formatQuery: () => editorRef.value?.formatQuery(),
+  triggerDryRun: () => editorRef.value?.triggerDryRun(),
+  toggleSpellInput: () => editorRef.value?.toggleSpellInput(),
+  // Forwarded editor reactive state
+  showSpellInput: editorShowSpellInput,
+  justFormatted: editorJustFormatted,
+  dryRunResult: editorDryRunResult,
+  isDryRunLoading: editorIsDryRunLoading,
 })
 </script>
 

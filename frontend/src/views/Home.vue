@@ -1529,6 +1529,7 @@ onUnmounted(() => {
     <DebugPanel
       v-if="isLocalhost && canvasRef"
       :zoom="canvasRef.zoom"
+      :visible-box-count="sortedBoxes.length"
       @show-whats-new="handleShowWhatsNew"
     />
 

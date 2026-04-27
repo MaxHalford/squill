@@ -1,12 +1,35 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useCanvasStore } from '../stores/canvas'
 import { calculateBoundingBox } from '../utils/geometry'
 
 const canvasStore = useCanvasStore()
 
+// FPS counter — samples frames and updates display every 500ms
+const fps = ref(0)
+const frameTime = ref(0)
+let frameCount = 0
+let lastFpsTime = performance.now()
+let fpsRafId: number | null = null
+
+const measureFrame = (now: number) => {
+  frameCount++
+  const elapsed = now - lastFpsTime
+  if (elapsed >= 500) {
+    fps.value = Math.round((frameCount * 1000) / elapsed)
+    frameTime.value = Math.round(elapsed / frameCount * 10) / 10
+    frameCount = 0
+    lastFpsTime = now
+  }
+  fpsRafId = requestAnimationFrame(measureFrame)
+}
+
+onMounted(() => { fpsRafId = requestAnimationFrame(measureFrame) })
+onUnmounted(() => { if (fpsRafId !== null) cancelAnimationFrame(fpsRafId) })
+
 defineProps<{
   zoom: number
+  visibleBoxCount?: number
 }>()
 
 const emit = defineEmits<{
@@ -75,9 +98,20 @@ const boundingBox = computed(() => {
         <span class="debug-label">sql</span>
         <span class="debug-value">{{ sqlBoxCount }}</span>
       </div>
+      <div
+        v-if="visibleBoxCount !== undefined"
+        class="debug-row"
+      >
+        <span class="debug-label">visible</span>
+        <span class="debug-value">{{ visibleBoxCount }}</span>
+      </div>
       <div class="debug-row">
         <span class="debug-label">zoom</span>
         <span class="debug-value">{{ zoom.toFixed(2) }}</span>
+      </div>
+      <div class="debug-row">
+        <span class="debug-label">fps</span>
+        <span class="debug-value" :class="{ 'fps-warn': fps < 30, 'fps-bad': fps < 15 }">{{ fps }} <span class="debug-label">({{ frameTime }}ms)</span></span>
       </div>
       <div
         v-if="boundingBox"
@@ -160,6 +194,14 @@ const boundingBox = computed(() => {
 .debug-value {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+}
+
+.debug-value.fps-warn {
+  color: #e6a700;
+}
+
+.debug-value.fps-bad {
+  color: #dc3545;
 }
 
 .debug-actions {

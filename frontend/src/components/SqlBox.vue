@@ -21,12 +21,14 @@ import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type
 import { DATABASE_INFO } from '../types/database'
 import { hasCTEs } from '../utils/cteParser'
 import { useSqlGlotStore } from '../stores/sqlglot'
+import { useUserStore } from '../stores/user'
 
 const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()
 const sqlglotStore = useSqlGlotStore()
 const queryHistoryStore = useQueryHistoryStore()
 const settingsStore = useSettingsStore()
+const userStore = useUserStore()
 
 // Inject box executor registry for recursive dependency execution
 const registerBoxExecutor = inject<((boxId: number, runFn: () => Promise<void>) => void) | null>('registerBoxExecutor', null)
@@ -58,6 +60,46 @@ const baseBoxRef = ref<InstanceType<typeof BaseBox> | null>(null)
 const queryPanelRef = ref<InstanceType<typeof QueryPanel> | null>(null)
 const queryText = ref(props.initialQuery)
 const lastQueryStartTime = ref(0)
+
+// ---------------------------------------------------------------------------
+// Header action button state (forwarded from QueryPanel/QueryEditor)
+// ---------------------------------------------------------------------------
+
+const panelIsRunning = computed(() => queryPanelRef.value?.isRunning ?? false)
+const panelIsCastingSpell = computed(() => queryPanelRef.value?.isCastingSpell ?? false)
+const panelIsEngineLoading = computed(() => queryPanelRef.value?.isEngineLoading ?? false)
+const panelExplainDisabledReason = computed(() => queryPanelRef.value?.explainDisabledReason ?? '')
+const panelConnectionType = computed(() => queryPanelRef.value?.connectionType)
+const panelShowSpellInput = computed(() => queryPanelRef.value?.showSpellInput ?? false)
+const panelJustFormatted = computed(() => queryPanelRef.value?.justFormatted ?? false)
+const panelDryRunResult = computed(() => queryPanelRef.value?.dryRunResult ?? null)
+const panelIsDryRunLoading = computed(() => queryPanelRef.value?.isDryRunLoading ?? false)
+
+const runButtonTooltip = computed(() => {
+  const base = 'Run query (\u2318\u23CE)'
+  if (panelIsEngineLoading.value) return 'Loading database...'
+  if (panelIsRunning.value) return 'Query running...'
+  if (panelConnectionType.value !== 'bigquery') return base
+  if (panelIsDryRunLoading.value) return `${base}\nEstimating cost...`
+  if (panelDryRunResult.value) {
+    if (panelDryRunResult.value.error) return `${base}\n\u26A0\uFE0F Query error`
+    return `${base}\n~${panelDryRunResult.value.totalBytesProcessed} \u2022 ${panelDryRunResult.value.estimatedCost}`
+  }
+  return base
+})
+
+const formatButtonTooltip = computed(() => {
+  if (panelJustFormatted.value) return 'Formatted'
+  if (sqlglotStore.isLoading) return 'Loading formatter...'
+  if (!sqlglotStore.isReady) return 'Formatter unavailable'
+  return 'Format SQL'
+})
+
+const wandButtonTooltip = computed(() => {
+  if (!userStore.isPro) return 'Pro feature'
+  if (panelIsCastingSpell.value) return 'Casting...'
+  return 'Cast a spell'
+})
 
 // ---------------------------------------------------------------------------
 // Connection
@@ -364,6 +406,152 @@ defineExpose({
     @drag-start="emit('drag-start')"
     @drag-end="emit('drag-end')"
   >
+    <template #header-actions>
+      <!-- Run query -->
+      <button
+        v-tooltip="runButtonTooltip"
+        class="header-action-btn"
+        :disabled="panelIsEngineLoading || panelIsRunning"
+        @mouseenter="queryPanelRef?.triggerDryRun()"
+        @click.stop="queryPanelRef?.runQuery()"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          stroke="none"
+        >
+          <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
+        </svg>
+      </button>
+
+      <!-- Explain query -->
+      <button
+        v-tooltip="panelExplainDisabledReason || 'Explain query'"
+        class="header-action-btn"
+        :disabled="panelIsEngineLoading || panelIsRunning || !!panelExplainDisabledReason"
+        @click.stop="queryPanelRef?.explainQuery({ clientX: $event.clientX, clientY: $event.clientY })"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.34-4.34" />
+        </svg>
+      </button>
+
+      <!-- Format SQL -->
+      <button
+        v-tooltip="formatButtonTooltip"
+        class="header-action-btn"
+        :class="{ formatted: panelJustFormatted }"
+        :disabled="panelIsEngineLoading || panelIsRunning || !sqlglotStore.isReady"
+        @click.stop="queryPanelRef?.formatQuery()"
+      >
+        <svg
+          v-if="panelJustFormatted"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+        <svg
+          v-else
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m14.622 17.897-10.68-2.913" />
+          <path d="M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0z" />
+          <path d="M9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.507.507 0 0 0-.302.819l7.32 8.883a1 1 0 0 0 1.185.204C12.735 20.405 16 16.792 16 15" />
+        </svg>
+      </button>
+
+      <!-- Explode CTEs -->
+      <button
+        v-tooltip="canExplode ? 'Explode CTEs into separate boxes' : 'No CTEs to explode'"
+        class="header-action-btn"
+        :disabled="!canExplode"
+        @click.stop="handleExplode"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 2 L13.5 8.5 L20 5 L15.5 10.5 L22 12 L15.5 13.5 L20 19 L13.5 15.5 L12 22 L10.5 15.5 L4 19 L8.5 13.5 L2 12 L8.5 10.5 L4 5 L10.5 8.5 Z" />
+        </svg>
+      </button>
+
+      <!-- Wand (AI spell) -->
+      <button
+        v-tooltip="wandButtonTooltip"
+        class="header-action-btn"
+        :class="{ active: panelShowSpellInput, casting: panelIsCastingSpell }"
+        :disabled="!userStore.isPro || panelIsCastingSpell"
+        @click.stop="queryPanelRef?.toggleSpellInput()"
+      >
+        <svg
+          v-if="panelIsCastingSpell"
+          class="spin"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        <svg
+          v-else
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" />
+          <path d="m14 7 3 3" />
+          <path d="M5 6v4" />
+          <path d="M19 14v4" />
+          <path d="M10 2v2" />
+          <path d="M7 8H3" />
+          <path d="M21 16h-4" />
+          <path d="M11 3H9" />
+        </svg>
+      </button>
+    </template>
+
     <QueryPanel
       ref="queryPanelRef"
       v-model="queryText"
@@ -383,3 +571,48 @@ defineExpose({
     />
   </BaseBox>
 </template>
+
+<style scoped>
+.header-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.header-action-btn:hover:not(:disabled) {
+  background: var(--text-secondary);
+  color: var(--surface-primary);
+}
+
+.header-action-btn.active {
+  color: var(--text-primary);
+}
+
+.header-action-btn.formatted {
+  color: var(--text-primary);
+}
+
+.header-action-btn:disabled {
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.header-action-btn .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+</style>

@@ -131,6 +131,7 @@ defineExpose({ boxName })
         class="header-buttons"
         :class="{ 'no-name': !showHeaderName }"
       >
+        <slot name="header-actions" />
         <button
           v-tooltip="'Fit to view'"
           class="header-btn"
@@ -138,8 +139,8 @@ defineExpose({ boxName })
           @click="handleMaximize"
         >
           <svg
-            width="16"
-            height="16"
+            width="13"
+            height="13"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"

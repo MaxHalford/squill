@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
+import { ref, computed, watchEffect, onMounted, onUnmounted, provide } from 'vue'
 import type { Box } from '../types/canvas'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
@@ -74,9 +74,12 @@ const markZoomActive = () => {
 // Precision rounding — keeps CSS transform strings short, avoids sub-pixel jitter
 const r4 = (v: number) => Math.round(v * 1e4) / 1e4
 
-const viewportStyle = computed(() => ({
-  transform: `translate3d(${r4(pan.value.x)}px, ${r4(pan.value.y)}px, 0) scale(${r4(zoom.value)})`
-}))
+// Direct DOM write — bypass Vue's vDOM style diff for the highest-frequency update
+watchEffect(() => {
+  const el = viewportRef.value
+  if (!el) return
+  el.style.transform = `translate3d(${r4(pan.value.x)}px, ${r4(pan.value.y)}px, 0) scale(${r4(zoom.value)})`
+})
 
 // Provide live zoom to children (used for coordinate correction in drag/resize)
 provide('canvasZoom', zoom)
@@ -133,7 +136,7 @@ const fitToBounds = (targetBoxes: { x: number; y: number; width: number; height:
 
   const zoomX = (rect.width - PADDING * 2) / contentWidth
   const zoomY = (rect.height - PADDING * 2) / contentHeight
-  const targetZoom = Math.min(Math.max(Math.min(zoomX, zoomY, 1), 0.15), 3)
+  const targetZoom = Math.min(Math.max(Math.min(zoomX, zoomY, 1), 0.15), 1.5)
 
   const contentCenterX = (minX + maxX) / 2
   const contentCenterY = (minY + maxY) / 2
@@ -216,27 +219,52 @@ const boxIntersectsRectangle = (box: Box, startX: number, startY: number, endX: 
   return !(box.x + box.width < rectLeft || box.x > rectRight || box.y + box.height < rectTop || box.y > rectBottom)
 }
 
+// Cached canvas rect — updated on resize, avoids forced layout in hot path
+let cachedCanvasRect: DOMRect | null = null
+let resizeObserver: ResizeObserver | null = null
+const updateCachedRect = () => {
+  if (canvasRef.value) cachedCanvasRect = canvasRef.value.getBoundingClientRect()
+}
+
+// RAF-batched wheel handler — accumulates delta across events, applies once per frame
+let wheelRafId: number | null = null
+let accumulatedDeltaY = 0
+let latestWheelX = 0
+let latestWheelY = 0
+
 const handleWheel = (e: WheelEvent) => {
   if (isOverScrollableArea(e.target as HTMLElement) && !(e.ctrlKey || e.metaKey)) return
 
   e.preventDefault()
   if (!canvasRef.value) return
 
-  const rect = canvasRef.value.getBoundingClientRect()
-  const mouseX = e.clientX - rect.left
-  const mouseY = e.clientY - rect.top
-
-  const mouseXInCanvas = (mouseX - pan.value.x) / zoom.value
-  const mouseYInCanvas = (mouseY - pan.value.y) / zoom.value
-
-  const newZoom = Math.min(Math.max(zoom.value * (1 - e.deltaY * 0.001), 0.15), 3)
-
-  pan.value = {
-    x: mouseX - mouseXInCanvas * newZoom,
-    y: mouseY - mouseYInCanvas * newZoom
-  }
-  zoom.value = newZoom
+  accumulatedDeltaY += e.deltaY
+  latestWheelX = e.clientX
+  latestWheelY = e.clientY
   markZoomActive()
+
+  if (wheelRafId !== null) return
+
+  wheelRafId = requestAnimationFrame(() => {
+    wheelRafId = null
+    if (!cachedCanvasRect) updateCachedRect()
+    const rect = cachedCanvasRect!
+
+    const mouseX = latestWheelX - rect.left
+    const mouseY = latestWheelY - rect.top
+
+    const mouseXInCanvas = (mouseX - pan.value.x) / zoom.value
+    const mouseYInCanvas = (mouseY - pan.value.y) / zoom.value
+
+    const newZoom = Math.min(Math.max(zoom.value * (1 - accumulatedDeltaY * 0.001), 0.15), 1.5)
+    accumulatedDeltaY = 0
+
+    pan.value = {
+      x: mouseX - mouseXInCanvas * newZoom,
+      y: mouseY - mouseYInCanvas * newZoom
+    }
+    zoom.value = newZoom
+  })
 }
 
 // Capture-phase handler: intercepts CMD/Space + mousedown before children see it
@@ -464,6 +492,13 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
   window.addEventListener('blur', handleWindowBlur)
+
+  // Cache canvas rect and keep it fresh on resize
+  updateCachedRect()
+  if (canvasRef.value) {
+    resizeObserver = new ResizeObserver(updateCachedRect)
+    resizeObserver.observe(canvasRef.value)
+  }
 })
 
 onUnmounted(() => {
@@ -484,6 +519,14 @@ onUnmounted(() => {
     cancelAnimationFrame(panRafId)
     panRafId = null
   }
+  if (wheelRafId !== null) {
+    cancelAnimationFrame(wheelRafId)
+    wheelRafId = null
+  }
+
+  // Clean up resize observer
+  resizeObserver?.disconnect()
+  resizeObserver = null
 
   // Clean up zoom idle timer
   if (zoomIdleTimer) {
@@ -508,7 +551,6 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="viewport"
-      :style="viewportStyle"
     >
       <slot />
 
