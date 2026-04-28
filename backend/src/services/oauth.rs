@@ -27,6 +27,7 @@ pub struct GoogleOAuthService {
     client_id: String,
     client_secret: String,
     test_mode: bool,
+    client: Client,
 }
 
 impl GoogleOAuthService {
@@ -34,11 +35,12 @@ impl GoogleOAuthService {
     const USERINFO_URL: &str = "https://www.googleapis.com/oauth2/v2/userinfo";
     const REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
 
-    pub fn new(client_id: &str, client_secret: &str, test_mode: bool) -> Self {
+    pub fn new(client_id: &str, client_secret: &str, test_mode: bool, client: Client) -> Self {
         Self {
             client_id: client_id.to_string(),
             client_secret: client_secret.to_string(),
             test_mode,
+            client,
         }
     }
 
@@ -55,7 +57,7 @@ impl GoogleOAuthService {
             return Ok(m);
         }
 
-        let client = Client::new();
+        let client = &self.client;
         let resp = client
             .post(Self::TOKEN_URL)
             .form(&[
@@ -94,7 +96,7 @@ impl GoogleOAuthService {
             return Ok(m);
         }
 
-        let client = Client::new();
+        let client = &self.client;
         let resp = client
             .get(Self::USERINFO_URL)
             .bearer_auth(access_token)
@@ -127,7 +129,7 @@ impl GoogleOAuthService {
             return Ok(m);
         }
 
-        let client = Client::new();
+        let client = &self.client;
         let resp = client
             .post(Self::TOKEN_URL)
             .form(&[
@@ -159,7 +161,7 @@ impl GoogleOAuthService {
             return Ok(());
         }
 
-        let client = Client::new();
+        let client = &self.client;
         let _ = client
             .post(Self::REVOKE_URL)
             .form(&[("token", token)])
@@ -186,6 +188,7 @@ pub struct GitHubOAuthService {
     client_id: String,
     client_secret: String,
     test_mode: bool,
+    client: Client,
 }
 
 impl GitHubOAuthService {
@@ -193,11 +196,12 @@ impl GitHubOAuthService {
     const USER_URL: &str = "https://api.github.com/user";
     const EMAILS_URL: &str = "https://api.github.com/user/emails";
 
-    pub fn new(client_id: &str, client_secret: &str, test_mode: bool) -> Self {
+    pub fn new(client_id: &str, client_secret: &str, test_mode: bool, client: Client) -> Self {
         Self {
             client_id: client_id.to_string(),
             client_secret: client_secret.to_string(),
             test_mode,
+            client,
         }
     }
 
@@ -209,7 +213,7 @@ impl GitHubOAuthService {
             return Ok(m);
         }
 
-        let client = Client::new();
+        let client = &self.client;
         let resp = client
             .post(Self::TOKEN_URL)
             .form(&[
@@ -244,7 +248,7 @@ impl GitHubOAuthService {
             return Ok(Some("test@example.com".into()));
         }
 
-        let client = Client::new();
+        let client = &self.client;
         let resp = client
             .get(Self::EMAILS_URL)
             .bearer_auth(access_token)
@@ -302,7 +306,7 @@ impl GitHubOAuthService {
             return Ok(Some("test-user".into()));
         }
 
-        let client = Client::new();
+        let client = &self.client;
         let resp = client
             .get(Self::USER_URL)
             .bearer_auth(access_token)
@@ -337,17 +341,19 @@ pub struct MicrosoftOAuthService {
     client_id: String,
     client_secret: String,
     test_mode: bool,
+    client: Client,
 }
 
 impl MicrosoftOAuthService {
     const TOKEN_URL: &str = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
     const USER_URL: &str = "https://graph.microsoft.com/v1.0/me";
 
-    pub fn new(client_id: &str, client_secret: &str, test_mode: bool) -> Self {
+    pub fn new(client_id: &str, client_secret: &str, test_mode: bool, client: Client) -> Self {
         Self {
             client_id: client_id.to_string(),
             client_secret: client_secret.to_string(),
             test_mode,
+            client,
         }
     }
 
@@ -359,7 +365,7 @@ impl MicrosoftOAuthService {
             return Ok(m);
         }
 
-        let client = Client::new();
+        let client = &self.client;
         let resp = client
             .post(Self::TOKEN_URL)
             .form(&[
@@ -400,7 +406,7 @@ impl MicrosoftOAuthService {
             return Ok(m);
         }
 
-        let client = Client::new();
+        let client = &self.client;
         let resp = client
             .get(Self::USER_URL)
             .bearer_auth(access_token)

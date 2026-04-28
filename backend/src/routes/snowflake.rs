@@ -7,13 +7,13 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth::middleware::AuthUser;
-use crate::encryption::TokenEncryption;
+use crate::error::error_response;
+use crate::helpers::now_sqlite;
 use crate::AppState;
 
 // ---------------------------------------------------------------------------
@@ -69,14 +69,6 @@ struct CredentialsResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-fn error_response(status: StatusCode, detail: &str) -> Response {
-    (status, Json(json!({"detail": detail}))).into_response()
-}
-
-// ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
 
@@ -86,15 +78,15 @@ pub async fn create_connection(
     AuthUser(user): AuthUser,
     Json(body): Json<CreateConnectionRequest>,
 ) -> Result<impl IntoResponse, Response> {
-    let enc = TokenEncryption::new(&state.config.token_encryption_key)
-        .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Encryption init error: {e}")))?;
+    let enc = state.encryption.as_ref()
+        .ok_or_else(|| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Encryption not configured"))?;
 
     let (ciphertext, iv) = enc
         .encrypt(&body.password)
         .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Encryption error: {e}")))?;
 
     let id = Uuid::new_v4().to_string();
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
 
     sqlx::query(
         "INSERT INTO snowflake_connections
@@ -138,8 +130,8 @@ pub async fn get_credentials(
     .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "Connection not found"))?;
 
-    let enc = TokenEncryption::new(&state.config.token_encryption_key)
-        .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Encryption init error: {e}")))?;
+    let enc = state.encryption.as_ref()
+        .ok_or_else(|| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Encryption not configured"))?;
 
     let password = enc
         .decrypt(&row.password_encrypted, &row.encryption_iv)

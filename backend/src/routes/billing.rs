@@ -6,21 +6,14 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use base64::Engine;
 use chrono::NaiveDateTime;
-use hmac::{Hmac, Mac};
+use hmac::{Mac, Hmac};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::Sha256;
 
 use crate::auth::middleware::AuthUser;
+use crate::error::error_response;
 use crate::AppState;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-fn error_response(status: StatusCode, detail: &str) -> Response {
-    (status, Json(json!({"detail": detail}))).into_response()
-}
 
 /// Verify the Polar webhook signature using the standard-webhooks algorithm.
 ///
@@ -74,19 +67,21 @@ fn verify_webhook_signature(
 
     // The net HMAC key is just secret.as_bytes() — Polar's SDK does
     // base64_encode(secret) then Webhook does base64_decode, which cancels out.
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
+    let mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "HMAC key error"))?;
-    mac.update(to_sign.as_bytes());
-    let result = mac.finalize().into_bytes();
-    let expected = format!(
-        "v1,{}",
-        base64::engine::general_purpose::STANDARD.encode(result)
-    );
 
     // The header may contain multiple space-separated signatures.
-    let valid = signatures
-        .split(' ')
-        .any(|sig| sig.starts_with("v1,") && sig == expected);
+    // Use Mac::verify_slice for constant-time comparison.
+    let valid = signatures.split(' ').any(|sig| {
+        if let Some(b64) = sig.strip_prefix("v1,") {
+            if let Ok(sig_bytes) = base64::engine::general_purpose::STANDARD.decode(b64) {
+                let mut mac = mac.clone();
+                mac.update(to_sign.as_bytes());
+                return mac.verify_slice(&sig_bytes).is_ok();
+            }
+        }
+        false
+    });
 
     if !valid {
         return Err(error_response(StatusCode::BAD_REQUEST, "Invalid signature"));
@@ -142,7 +137,7 @@ pub async fn checkout_session(
 
     // Call Polar API to create a checkout session
     let base = polar_api_base(&config.polar_server);
-    let client = reqwest::Client::new();
+    let client = &state.http_client;
     let resp = client
         .post(format!("{base}/v1/checkouts"))
         .header("Authorization", format!("Bearer {}", config.polar_access_token))
@@ -206,7 +201,7 @@ pub async fn cancel_subscription(
     }
 
     let base = polar_api_base(&config.polar_server);
-    let client = reqwest::Client::new();
+    let client = &state.http_client;
     let resp = client
         .patch(format!("{base}/v1/subscriptions/{sub_id}"))
         .header("Authorization", format!("Bearer {}", config.polar_access_token))
@@ -254,7 +249,7 @@ pub async fn resubscribe(
     }
 
     let base = polar_api_base(&config.polar_server);
-    let client = reqwest::Client::new();
+    let client = &state.http_client;
     let resp = client
         .patch(format!("{base}/v1/subscriptions/{sub_id}"))
         .header("Authorization", format!("Bearer {}", config.polar_access_token))

@@ -5,9 +5,9 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
-use serde_json::json;
 
 use crate::auth::middleware::AuthUser;
+use crate::error::error_response;
 use crate::services::openai::{
     self, AiCache, FixResponse as FixServiceResponse, SpellResponse as SpellServiceResponse,
 };
@@ -60,7 +60,7 @@ pub async fn cast_spell(
     AuthUser(_user): AuthUser,
     Json(body): Json<CastSpellRequest>,
 ) -> Response {
-    let client = reqwest::Client::new();
+    let client = &state.http_client;
     let service_request = openai::SpellRequest {
         query: body.query,
         instruction: body.instruction,
@@ -83,7 +83,7 @@ pub async fn remove_hex(
     AuthUser(_user): AuthUser,
     Json(body): Json<RemoveHexRequest>,
 ) -> Response {
-    let client = reqwest::Client::new();
+    let client = &state.http_client;
     let service_request = openai::FixRequest {
         query: body.query,
         error_message: body.error_message,
@@ -101,10 +101,3 @@ pub async fn remove_hex(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-fn error_response(status: StatusCode, detail: &str) -> Response {
-    (status, Json(json!({"detail": detail}))).into_response()
-}

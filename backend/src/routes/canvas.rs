@@ -4,12 +4,14 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::auth::middleware::{check_pro_or_vip, AuthUser};
+use crate::error::error_response;
+use crate::helpers::now_sqlite;
 use crate::AppState;
 
 // ---------------------------------------------------------------------------
@@ -160,10 +162,6 @@ struct ShareValidateResponse {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn error_response(status: StatusCode, detail: &str) -> Response {
-    (status, Json(json!({"detail": detail}))).into_response()
-}
-
 /// Load a canvas owned by the given user, or return 404.
 async fn get_owned_canvas(
     db: &sqlx::SqlitePool,
@@ -249,7 +247,7 @@ pub async fn create_canvas(
             .into_response());
     }
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
     sqlx::query(
         "INSERT INTO canvases (id, user_id, name, next_box_id, version, created_at, updated_at)
          VALUES (?, ?, ?, 1, 1, ?, ?)",
@@ -284,7 +282,7 @@ pub async fn rename_canvas(
     check_pro_or_vip(&user)?;
     let canvas = get_owned_canvas(&state.db, &canvas_id, &user.id).await?;
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
     sqlx::query("UPDATE canvases SET name = ?, updated_at = ? WHERE id = ?")
         .bind(&body.name)
         .bind(&now)
@@ -308,19 +306,6 @@ pub async fn delete_canvas(
 ) -> Result<impl IntoResponse, Response> {
     check_pro_or_vip(&user)?;
     let canvas = get_owned_canvas(&state.db, &canvas_id, &user.id).await?;
-
-    // Cascade: delete shares and boxes first, then canvas
-    sqlx::query("DELETE FROM canvas_shares WHERE canvas_id = ?")
-        .bind(&canvas.id)
-        .execute(&state.db)
-        .await
-        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    sqlx::query("DELETE FROM boxes WHERE canvas_id = ?")
-        .bind(&canvas.id)
-        .execute(&state.db)
-        .await
-        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     sqlx::query("DELETE FROM canvases WHERE id = ?")
         .bind(&canvas.id)
@@ -387,7 +372,10 @@ pub async fn create_box(
     let box_id = canvas.next_box_id;
     let state_str = serde_json::to_string(&body.state)
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "JSON error"))?;
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
+
+    let mut tx = state.db.begin().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     sqlx::query(
         "INSERT INTO boxes (canvas_id, box_id, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -397,7 +385,7 @@ pub async fn create_box(
     .bind(&state_str)
     .bind(&now)
     .bind(&now)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -405,8 +393,11 @@ pub async fn create_box(
         .bind(box_id + 1)
         .bind(&now)
         .bind(&canvas.id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    tx.commit().await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     Ok((
@@ -436,9 +427,12 @@ pub async fn create_boxes_batch(
 
     let canvas = get_owned_canvas(&state.db, &canvas_id, &user.id).await?;
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
     let mut next_id = canvas.next_box_id;
     let mut created: Vec<BoxResponse> = Vec::with_capacity(body.boxes.len());
+
+    let mut tx = state.db.begin().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     for box_state in &body.boxes {
         let state_str = serde_json::to_string(box_state)
@@ -452,7 +446,7 @@ pub async fn create_boxes_batch(
         .bind(&state_str)
         .bind(&now)
         .bind(&now)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -467,8 +461,11 @@ pub async fn create_boxes_batch(
         .bind(next_id)
         .bind(&now)
         .bind(&canvas.id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    tx.commit().await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     Ok((StatusCode::CREATED, Json(created)).into_response())
@@ -504,12 +501,15 @@ pub async fn update_box(
         }
     }
 
+    let mut tx = state.db.begin().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
     let box_row = sqlx::query_as::<_, BoxRow>(
         "SELECT canvas_id, box_id, state FROM boxes WHERE canvas_id = ? AND box_id = ?",
     )
     .bind(&canvas.id)
     .bind(box_id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
     .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "Box not found"))?;
@@ -526,22 +526,25 @@ pub async fn update_box(
 
     let merged_str = serde_json::to_string(&existing)
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "JSON error"))?;
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
 
     sqlx::query("UPDATE boxes SET state = ?, updated_at = ? WHERE canvas_id = ? AND box_id = ?")
         .bind(&merged_str)
         .bind(&now)
         .bind(&canvas.id)
         .bind(box_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(&canvas.id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    tx.commit().await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     Ok(Json(BoxResponse {
@@ -567,8 +570,11 @@ pub async fn update_boxes_batch(
 
     let canvas = get_owned_canvas(&state.db, &canvas_id, &user.id).await?;
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
     let mut updated: Vec<BoxResponse> = Vec::new();
+
+    let mut tx = state.db.begin().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     for item in &body.updates {
         let box_row = sqlx::query_as::<_, BoxRow>(
@@ -576,7 +582,7 @@ pub async fn update_boxes_batch(
         )
         .bind(&canvas.id)
         .bind(item.box_id)
-        .fetch_optional(&state.db)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -600,7 +606,7 @@ pub async fn update_boxes_batch(
             .bind(&now)
             .bind(&canvas.id)
             .bind(item.box_id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await
             .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -615,8 +621,11 @@ pub async fn update_boxes_batch(
     sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(&canvas.id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    tx.commit().await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     Ok(Json(updated))
@@ -630,10 +639,13 @@ pub async fn delete_box(
     check_pro_or_vip(&user)?;
     let canvas = get_owned_canvas(&state.db, &canvas_id, &user.id).await?;
 
+    let mut tx = state.db.begin().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
     let result = sqlx::query("DELETE FROM boxes WHERE canvas_id = ? AND box_id = ?")
         .bind(&canvas.id)
         .bind(box_id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -641,12 +653,15 @@ pub async fn delete_box(
         return Err(error_response(StatusCode::NOT_FOUND, "Box not found"));
     }
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
     sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(&canvas.id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    tx.commit().await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -661,6 +676,9 @@ pub async fn delete_boxes_batch(
     check_pro_or_vip(&user)?;
     let canvas = get_owned_canvas(&state.db, &canvas_id, &user.id).await?;
 
+    let mut tx = state.db.begin().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
     // Build a DELETE with IN clause using positional parameters
     if !body.box_ids.is_empty() {
         let placeholders: Vec<&str> = body.box_ids.iter().map(|_| "?").collect();
@@ -673,17 +691,20 @@ pub async fn delete_boxes_batch(
             query = query.bind(id);
         }
         query
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await
             .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
     }
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
     sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(&canvas.id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    tx.commit().await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -715,7 +736,10 @@ pub async fn import_canvas_state(
         return build_snapshot_response(&state.db, &canvas.id).await;
     }
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
+
+    let mut tx = state.db.begin().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     for box_state in &body.boxes {
         let box_id = box_state
@@ -740,7 +764,7 @@ pub async fn import_canvas_state(
         .bind(&state_str)
         .bind(&now)
         .bind(&now)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
     }
@@ -751,9 +775,12 @@ pub async fn import_canvas_state(
     .bind(body.next_box_id)
     .bind(&now)
     .bind(&canvas.id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    tx.commit().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     build_snapshot_response(&state.db, &canvas.id).await
 }
@@ -819,7 +846,7 @@ pub async fn create_share(
 
     let share_id = Uuid::new_v4().to_string();
     let share_token = Uuid::new_v4().as_simple().to_string(); // 32-char hex
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
 
     sqlx::query(
         "INSERT INTO canvas_shares (id, canvas_id, owner_user_id, share_token, permission, email, created_at, expires_at)
@@ -944,7 +971,7 @@ pub async fn validate_share(
     if let Some(ref expires_at_str) = share.expires_at {
         if let Ok(expires_at) = NaiveDateTime::parse_from_str(expires_at_str, "%Y-%m-%d %H:%M:%S")
         {
-            if expires_at < Utc::now().naive_utc() {
+            if expires_at < chrono::Utc::now().naive_utc() {
                 return Err(error_response(StatusCode::GONE, "Share link has expired"));
             }
         }

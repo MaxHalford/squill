@@ -12,6 +12,7 @@ use tracing::{info, warn};
 
 use crate::auth::jwt::verify_session_token;
 use crate::auth::middleware::UserRow;
+use crate::helpers::now_sqlite;
 use crate::services::ws_manager::ConnectionInfo;
 use crate::AppState;
 
@@ -414,7 +415,7 @@ async fn handle_box_create(
 ) {
     let db = &state.db;
 
-    // Get canvas for next_box_id
+    // Get canvas for next_box_id (read stays outside transaction)
     let canvas: Option<CanvasRow> = sqlx::query_as(
         "SELECT id, name, next_box_id, version, user_id FROM canvases WHERE id = ?",
     )
@@ -431,7 +432,15 @@ async fn handle_box_create(
 
     let box_id = canvas.next_box_id;
     let state_str = data.to_string();
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
+
+    let mut tx = match state.db.begin().await {
+        Ok(tx) => tx,
+        Err(_) => {
+            send_error(state, canvas_id, client_id, "Database error", "db_error");
+            return;
+        }
+    };
 
     // Insert box
     if sqlx::query(
@@ -442,7 +451,7 @@ async fn handle_box_create(
     .bind(&state_str)
     .bind(&now)
     .bind(&now)
-    .execute(db)
+    .execute(&mut *tx)
     .await
     .is_err()
     {
@@ -451,14 +460,24 @@ async fn handle_box_create(
     }
 
     // Increment version and next_box_id
-    let _ = sqlx::query(
+    if sqlx::query(
         "UPDATE canvases SET next_box_id = ?, version = version + 1, updated_at = ? WHERE id = ?",
     )
     .bind(box_id + 1)
     .bind(&now)
     .bind(canvas_id)
-    .execute(db)
-    .await;
+    .execute(&mut *tx)
+    .await
+    .is_err()
+    {
+        send_error(state, canvas_id, client_id, "Database error", "db_error");
+        return;
+    }
+
+    if tx.commit().await.is_err() {
+        send_error(state, canvas_id, client_id, "Database error", "db_error");
+        return;
+    }
 
     let new_version = canvas.version + 1;
 
@@ -482,8 +501,6 @@ async fn handle_box_update(
     state: &AppState,
     data: &Value,
 ) {
-    let db = &state.db;
-
     let box_id = match data.get("box_id").and_then(|v| v.as_i64()) {
         Some(id) => id,
         None => {
@@ -500,13 +517,23 @@ async fn handle_box_update(
         }
     };
 
+    let now = now_sqlite();
+
+    let mut tx = match state.db.begin().await {
+        Ok(tx) => tx,
+        Err(_) => {
+            send_error(state, canvas_id, client_id, "Database error", "db_error");
+            return;
+        }
+    };
+
     // Load existing box
     let box_row: Option<BoxRow> = sqlx::query_as(
         "SELECT box_id, state FROM boxes WHERE canvas_id = ? AND box_id = ?",
     )
     .bind(canvas_id)
     .bind(box_id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *tx)
     .await
     .ok()
     .flatten();
@@ -528,14 +555,13 @@ async fn handle_box_update(
     }
 
     let merged_str = existing.to_string();
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     if sqlx::query("UPDATE boxes SET state = ?, updated_at = ? WHERE canvas_id = ? AND box_id = ?")
         .bind(&merged_str)
         .bind(&now)
         .bind(canvas_id)
         .bind(box_id)
-        .execute(db)
+        .execute(&mut *tx)
         .await
         .is_err()
     {
@@ -543,13 +569,23 @@ async fn handle_box_update(
         return;
     }
 
-    let _ = sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
+    if sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(canvas_id)
-        .execute(db)
-        .await;
+        .execute(&mut *tx)
+        .await
+        .is_err()
+    {
+        send_error(state, canvas_id, client_id, "Database error", "db_error");
+        return;
+    }
 
-    let new_version = fetch_version(db, canvas_id).await;
+    if tx.commit().await.is_err() {
+        send_error(state, canvas_id, client_id, "Database error", "db_error");
+        return;
+    }
+
+    let new_version = fetch_version(&state.db, canvas_id).await;
 
     let out = json!({
         "type": "box.updated",
@@ -570,8 +606,6 @@ async fn handle_box_delete(
     state: &AppState,
     data: &Value,
 ) {
-    let db = &state.db;
-
     let box_id = match data.get("box_id").and_then(|v| v.as_i64()) {
         Some(id) => id,
         None => {
@@ -580,10 +614,20 @@ async fn handle_box_delete(
         }
     };
 
+    let now = now_sqlite();
+
+    let mut tx = match state.db.begin().await {
+        Ok(tx) => tx,
+        Err(_) => {
+            send_error(state, canvas_id, client_id, "Database error", "db_error");
+            return;
+        }
+    };
+
     let result = sqlx::query("DELETE FROM boxes WHERE canvas_id = ? AND box_id = ?")
         .bind(canvas_id)
         .bind(box_id)
-        .execute(db)
+        .execute(&mut *tx)
         .await;
 
     match result {
@@ -598,14 +642,23 @@ async fn handle_box_delete(
         _ => {}
     }
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let _ = sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
+    if sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(canvas_id)
-        .execute(db)
-        .await;
+        .execute(&mut *tx)
+        .await
+        .is_err()
+    {
+        send_error(state, canvas_id, client_id, "Database error", "db_error");
+        return;
+    }
 
-    let new_version = fetch_version(db, canvas_id).await;
+    if tx.commit().await.is_err() {
+        send_error(state, canvas_id, client_id, "Database error", "db_error");
+        return;
+    }
+
+    let new_version = fetch_version(&state.db, canvas_id).await;
 
     let out = json!({
         "type": "box.deleted",
@@ -626,8 +679,6 @@ async fn handle_box_batch_update(
     state: &AppState,
     data: &Value,
 ) {
-    let db = &state.db;
-
     let updates = match data.get("updates").and_then(|v| v.as_array()) {
         Some(arr) => arr,
         None => {
@@ -636,7 +687,16 @@ async fn handle_box_batch_update(
         }
     };
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = now_sqlite();
+
+    let mut tx = match state.db.begin().await {
+        Ok(tx) => tx,
+        Err(_) => {
+            send_error(state, canvas_id, client_id, "Database error", "db_error");
+            return;
+        }
+    };
+
     let mut applied: Vec<Value> = Vec::new();
 
     for item in updates {
@@ -654,7 +714,7 @@ async fn handle_box_batch_update(
         )
         .bind(canvas_id)
         .bind(box_id)
-        .fetch_optional(db)
+        .fetch_optional(&mut *tx)
         .await
         .ok()
         .flatten();
@@ -671,27 +731,42 @@ async fn handle_box_batch_update(
             }
 
             let merged_str = existing.to_string();
-            let _ = sqlx::query(
+            if sqlx::query(
                 "UPDATE boxes SET state = ?, updated_at = ? WHERE canvas_id = ? AND box_id = ?",
             )
             .bind(&merged_str)
             .bind(&now)
             .bind(canvas_id)
             .bind(box_id)
-            .execute(db)
-            .await;
+            .execute(&mut *tx)
+            .await
+            .is_err()
+            {
+                send_error(state, canvas_id, client_id, "Failed to update box", "db_error");
+                return;
+            }
 
             applied.push(json!({ "box_id": box_id, "fields": fields }));
         }
     }
 
-    let _ = sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
+    if sqlx::query("UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(canvas_id)
-        .execute(db)
-        .await;
+        .execute(&mut *tx)
+        .await
+        .is_err()
+    {
+        send_error(state, canvas_id, client_id, "Database error", "db_error");
+        return;
+    }
 
-    let new_version = fetch_version(db, canvas_id).await;
+    if tx.commit().await.is_err() {
+        send_error(state, canvas_id, client_id, "Database error", "db_error");
+        return;
+    }
+
+    let new_version = fetch_version(&state.db, canvas_id).await;
 
     let out = json!({
         "type": "box.batch_updated",

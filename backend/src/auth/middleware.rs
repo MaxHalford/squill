@@ -6,6 +6,8 @@ use axum::Json;
 use chrono::{NaiveDateTime, Utc};
 use serde_json::json;
 
+use axum::extract::FromRef;
+
 use super::jwt::verify_session_token;
 use crate::AppState;
 
@@ -119,15 +121,4 @@ fn auth_error(detail: &str) -> Response {
         Json(json!({"detail": detail})),
     )
         .into_response()
-}
-
-// Helper trait to extract AppState from any state type
-trait FromRef<T> {
-    fn from_ref(state: &T) -> Self;
-}
-
-impl FromRef<AppState> for AppState {
-    fn from_ref(state: &AppState) -> Self {
-        state.clone()
-    }
 }

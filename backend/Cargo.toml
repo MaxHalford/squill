@@ -7,8 +7,8 @@ edition = "2024"
 # Web framework
 axum = { version = "0.8", features = ["ws", "macros"] }
 axum-extra = { version = "0.10", features = ["typed-header"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "normalize-path"] }
 tokio = { version = "1", features = ["full"] }
 hyper = "1"
 http = "1"
@@ -54,6 +54,7 @@ futures-util = "0.3"
 
 # Error handling
 anyhow = "1"
+lru = "0.12"
 rmcp = { version = "1.5.0", features = ["server", "macros", "transport-streamable-http-server"] }
 tokio-util = "0.7"
 

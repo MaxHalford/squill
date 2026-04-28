@@ -13,13 +13,14 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::auth::jwt::create_session_token;
-use crate::encryption::TokenEncryption;
+use crate::auth::middleware::AuthUser;
+use crate::error::error_response;
+use crate::helpers::now_sqlite;
 use crate::services::oauth::{GitHubOAuthService, GoogleOAuthService, MicrosoftOAuthService};
 use crate::AppState;
 
@@ -108,10 +109,6 @@ struct BqConnectionRow {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn error_response(status: StatusCode, detail: &str) -> Response {
-    (status, Json(json!({"detail": detail}))).into_response()
-}
-
 fn error_response_json(status: StatusCode, detail: Value) -> Response {
     (status, Json(json!({"detail": detail}))).into_response()
 }
@@ -146,8 +143,7 @@ async fn upsert_user(
 
     match existing {
         Some(mut user) => {
-            // Update name on each login
-            let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let now = now_sqlite();
             sqlx::query(
                 "UPDATE users SET first_name = ?, last_name = ?, is_vip = ?, last_login_at = ? WHERE id = ?",
             )
@@ -169,7 +165,7 @@ async fn upsert_user(
         }
         None => {
             let id = Uuid::new_v4().to_string();
-            let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let now = now_sqlite();
 
             sqlx::query(
                 "INSERT INTO users (id, email, first_name, last_name, plan, is_vip, created_at, last_login_at) VALUES (?, ?, ?, ?, 'free', ?, ?, ?)",
@@ -213,10 +209,22 @@ pub async fn google_login(
     State(state): State<AppState>,
     Json(body): Json<OAuthCodeRequest>,
 ) -> Result<impl IntoResponse, Response> {
+    let config = &state.config;
+
+    if !config.test_mode
+        && (config.google_client_id.is_empty() || config.google_client_secret.is_empty())
+    {
+        return Err(error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Google OAuth is not configured",
+        ));
+    }
+
     let google = GoogleOAuthService::new(
-        &state.config.google_client_id,
-        &state.config.google_client_secret,
-        state.config.test_mode,
+        &config.google_client_id,
+        &config.google_client_secret,
+        config.test_mode,
+        state.http_client.clone(),
     );
 
     // Exchange code for tokens
@@ -235,7 +243,7 @@ pub async fn google_login(
         .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("Failed to get user info: {e}")))?;
 
     // In test mode, override email from the code
-    if state.config.test_mode && body.code.starts_with("test-") {
+    if config.test_mode && body.code.starts_with("test-") {
         let email = body.code.strip_prefix("test-").unwrap_or(&body.code);
         user_info.insert("email".into(), Value::String(email.to_string()));
     }
@@ -250,8 +258,8 @@ pub async fn google_login(
     let session_token = create_session_token(
         &user.id,
         &user.email,
-        &state.config.jwt_secret,
-        state.config.jwt_expiration_days,
+        &config.jwt_secret,
+        config.jwt_expiration_days,
     )
     .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("JWT error: {e}")))?;
 
@@ -273,6 +281,7 @@ pub async fn google_callback(
         &state.config.google_client_id,
         &state.config.google_client_secret,
         state.config.test_mode,
+        state.http_client.clone(),
     );
 
     // Exchange code for tokens
@@ -306,24 +315,27 @@ pub async fn google_callback(
 
     let user = upsert_user(&state, email, first_name, last_name).await?;
 
-    // Upsert BigQuery connection with encrypted refresh token
+    // Upsert BigQuery connection with encrypted refresh token (in a transaction)
+    let mut tx = state.db.begin().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
     let existing_bq: Option<BqConnectionRow> = sqlx::query_as(
         "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE user_id = ? AND email = ?",
     )
     .bind(&user.id)
     .bind(email)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     if let Some(rt) = &refresh_token {
-        let enc = TokenEncryption::new(&state.config.token_encryption_key)
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Encryption init error: {e}")))?;
+        let enc = state.encryption.as_ref()
+            .ok_or_else(|| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Encryption not configured"))?;
         let (ciphertext, iv) = enc
             .encrypt(rt)
             .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Encryption error: {e}")))?;
 
-        let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = now_sqlite();
 
         if existing_bq.is_some() {
             sqlx::query(
@@ -334,7 +346,7 @@ pub async fn google_callback(
             .bind(&now)
             .bind(&user.id)
             .bind(email)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await
             .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
         } else {
@@ -349,7 +361,7 @@ pub async fn google_callback(
             .bind(&iv)
             .bind(&now)
             .bind(&now)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await
             .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
         }
@@ -359,6 +371,9 @@ pub async fn google_callback(
             "No refresh token received and no existing connection. Please try signing in again.",
         ));
     }
+
+    tx.commit().await
+        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     let session_token = create_session_token(
         &user.id,
@@ -399,6 +414,7 @@ pub async fn github_login(
         &config.github_client_id,
         &config.github_client_secret,
         config.test_mode,
+        state.http_client.clone(),
     );
 
     let tokens = github
@@ -472,6 +488,7 @@ pub async fn microsoft_login(
         &config.microsoft_client_id,
         &config.microsoft_client_secret,
         config.test_mode,
+        state.http_client.clone(),
     );
 
     let tokens = microsoft
@@ -522,23 +539,30 @@ pub async fn microsoft_login(
 }
 
 // ---------------------------------------------------------------------------
-// POST /auth/refresh
+// POST /auth/refresh (auth required)
 // ---------------------------------------------------------------------------
 
 pub async fn refresh_token(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     Json(body): Json<RefreshRequest>,
 ) -> Result<impl IntoResponse, Response> {
+    if body.email != user.email {
+        return Err(error_response(StatusCode::FORBIDDEN, "Email does not match authenticated user"));
+    }
+
     let google = GoogleOAuthService::new(
         &state.config.google_client_id,
         &state.config.google_client_secret,
         state.config.test_mode,
+        state.http_client.clone(),
     );
 
-    // Find BQ connection by email
+    // Find BQ connection by user_id + email
     let bq: BqConnectionRow = sqlx::query_as(
-        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE email = ?",
+        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE user_id = ? AND email = ?",
     )
+    .bind(&user.id)
     .bind(&body.email)
     .fetch_optional(&state.db)
     .await
@@ -554,12 +578,12 @@ pub async fn refresh_token(
     })?;
 
     // Decrypt refresh token
-    let enc = TokenEncryption::new(&state.config.token_encryption_key).map_err(|_| {
+    let enc = state.encryption.as_ref().ok_or_else(|| {
         error_response_json(
             StatusCode::UNAUTHORIZED,
             json!({
                 "error": "decrypt_failed",
-                "message": "Failed to decrypt refresh token."
+                "message": "Encryption not configured."
             }),
         )
     })?;
@@ -599,16 +623,22 @@ pub async fn refresh_token(
 }
 
 // ---------------------------------------------------------------------------
-// GET /auth/user/{email}
+// GET /auth/user/{email} (auth required)
 // ---------------------------------------------------------------------------
 
 pub async fn get_user_by_email(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     Path(email): Path<String>,
 ) -> Result<impl IntoResponse, Response> {
+    if email != user.email {
+        return Err(error_response(StatusCode::FORBIDDEN, "Can only check your own connections"));
+    }
+
     let bq: Option<BqConnectionRow> = sqlx::query_as(
-        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE email = ?",
+        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE user_id = ? AND email = ?",
     )
+    .bind(&user.id)
     .bind(&email)
     .fetch_optional(&state.db)
     .await
@@ -625,16 +655,22 @@ pub async fn get_user_by_email(
 }
 
 // ---------------------------------------------------------------------------
-// POST /auth/logout
+// POST /auth/logout (auth required)
 // ---------------------------------------------------------------------------
 
 pub async fn logout(
     State(state): State<AppState>,
+    AuthUser(user): AuthUser,
     Json(body): Json<LogoutRequest>,
 ) -> Result<impl IntoResponse, Response> {
+    if body.email != user.email {
+        return Err(error_response(StatusCode::FORBIDDEN, "Email does not match authenticated user"));
+    }
+
     let bq: Option<BqConnectionRow> = sqlx::query_as(
-        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE email = ?",
+        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE user_id = ? AND email = ?",
     )
+    .bind(&user.id)
     .bind(&body.email)
     .fetch_optional(&state.db)
     .await
@@ -642,20 +678,21 @@ pub async fn logout(
 
     if let Some(bq) = bq {
         // Try to revoke with Google (best effort)
-        let enc = TokenEncryption::new(&state.config.token_encryption_key);
-        if let Ok(enc) = enc {
+        if let Some(enc) = state.encryption.as_ref() {
             if let Ok(rt) = enc.decrypt(&bq.refresh_token_encrypted, &bq.encryption_iv) {
                 let google = GoogleOAuthService::new(
                     &state.config.google_client_id,
                     &state.config.google_client_secret,
                     state.config.test_mode,
+                    state.http_client.clone(),
                 );
                 let _ = google.revoke_token(&rt).await;
             }
         }
 
         // Delete the BQ connection
-        sqlx::query("DELETE FROM bigquery_connections WHERE email = ?")
+        sqlx::query("DELETE FROM bigquery_connections WHERE user_id = ? AND email = ?")
+            .bind(&user.id)
             .bind(&body.email)
             .execute(&state.db)
             .await

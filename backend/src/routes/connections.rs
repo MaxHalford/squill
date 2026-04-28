@@ -8,9 +8,9 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
-use serde_json::json;
 
 use crate::auth::middleware::{check_pro_or_vip, AuthUser};
+use crate::error::error_response;
 use crate::AppState;
 
 // ---------------------------------------------------------------------------
@@ -53,14 +53,6 @@ struct ConnectionItem {
 #[derive(Serialize)]
 struct ConnectionListResponse {
     connections: Vec<ConnectionItem>,
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-fn error_response(status: StatusCode, detail: &str) -> Response {
-    (status, Json(json!({"detail": detail}))).into_response()
 }
 
 /// Parse a datetime string like "2024-01-01 12:00:00" into epoch millis for the BigQuery ID.

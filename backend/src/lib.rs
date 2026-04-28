@@ -2,12 +2,15 @@ pub mod auth;
 pub mod config;
 pub mod db;
 pub mod encryption;
+pub mod error;
+pub mod helpers;
 pub mod routes;
 pub mod services;
 
 use axum::response::IntoResponse;
 use axum::Router;
 use config::Config;
+use encryption::TokenEncryption;
 use http::header;
 use services::ws_manager::WsManager;
 use sqlx::SqlitePool;
@@ -21,6 +24,8 @@ pub struct AppState {
     pub db: SqlitePool,
     pub config: Arc<Config>,
     pub ws_manager: Arc<WsManager>,
+    pub encryption: Option<Arc<TokenEncryption>>,
+    pub http_client: reqwest::Client,
 }
 
 /// Build the Axum router with all routes and middleware.
@@ -136,9 +141,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/billing/webhook", axum::routing::post(routes::billing::webhook))
         // AI (spell caster + hex remover)
         .route("/cast-spell", axum::routing::post(routes::ai::cast_spell))
-        .route("/cast-spell/", axum::routing::post(routes::ai::cast_spell))
         .route("/remove-hex", axum::routing::post(routes::ai::remove_hex))
-        .route("/remove-hex/", axum::routing::post(routes::ai::remove_hex))
         // WebSocket
         .route("/ws/canvas/{canvas_id}", axum::routing::get(routes::ws::canvas_websocket));
 
@@ -160,12 +163,8 @@ pub fn build_app(state: AppState) -> Router {
         .route("/token", axum::routing::post(routes::mcp_oauth::token));
 
     // MCP (Model Context Protocol) endpoint
-    // Register both `/mcp` and `/mcp/` so clients work with or without trailing slash.
     let mcp_service = routes::mcp::build_mcp_service(state.db.clone(), config.mcp_user_id.clone(), state.ws_manager.clone());
-    let mcp_service_slash = routes::mcp::build_mcp_service(state.db.clone(), config.mcp_user_id.clone(), state.ws_manager.clone());
-    app = app
-        .route("/mcp", axum::routing::any_service(mcp_service))
-        .route("/mcp/", axum::routing::any_service(mcp_service_slash));
+    app = app.route("/mcp", axum::routing::any_service(mcp_service));
 
     app.fallback(fallback_handler)
         .layer(cors)

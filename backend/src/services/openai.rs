@@ -4,9 +4,10 @@
 //! Both functions support an in-memory LRU-style cache (HashMap with SHA-256 keys,
 //! max 5000 entries, evicts oldest on overflow).
 
-use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::Mutex;
 
+use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tracing::error;
@@ -73,13 +74,15 @@ impl std::fmt::Display for AiError {
 const CACHE_MAX_SIZE: usize = 5_000;
 
 pub struct AiCache<V> {
-    inner: Mutex<HashMap<String, V>>,
+    inner: Mutex<LruCache<String, V>>,
 }
 
 impl<V: Clone> AiCache<V> {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(HashMap::new()),
+            inner: Mutex::new(LruCache::new(
+                NonZeroUsize::new(CACHE_MAX_SIZE).unwrap(),
+            )),
         }
     }
 
@@ -88,14 +91,7 @@ impl<V: Clone> AiCache<V> {
     }
 
     fn insert(&self, key: String, value: V) {
-        let mut map = self.inner.lock().unwrap();
-        if map.len() >= CACHE_MAX_SIZE {
-            // Evict an arbitrary entry (HashMap iteration order)
-            if let Some(oldest_key) = map.keys().next().cloned() {
-                map.remove(&oldest_key);
-            }
-        }
-        map.insert(key, value);
+        self.inner.lock().unwrap().put(key, value);
     }
 }
 

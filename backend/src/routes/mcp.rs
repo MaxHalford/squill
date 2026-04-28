@@ -160,7 +160,7 @@ impl SquillMcpHandler {
         Parameters(params): Parameters<CreateCanvasParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let canvas_id = uuid::Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = crate::helpers::now_sqlite();
 
         let result = sqlx::query(
             "INSERT INTO canvases (id, user_id, name, next_box_id, version, created_at, updated_at)
@@ -337,7 +337,7 @@ impl SquillMcpHandler {
             "height": params.height,
         });
         let state_str = state.to_string();
-        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = crate::helpers::now_sqlite();
 
         let insert = sqlx::query(
             "INSERT INTO boxes (canvas_id, box_id, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -458,7 +458,7 @@ impl SquillMcpHandler {
         }
 
         let merged_str = existing.to_string();
-        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = crate::helpers::now_sqlite();
 
         let update = sqlx::query(
             "UPDATE boxes SET state = ?, updated_at = ? WHERE canvas_id = ? AND box_id = ?",
@@ -559,7 +559,7 @@ impl SquillMcpHandler {
             _ => {}
         }
 
-        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = crate::helpers::now_sqlite();
         let _ = sqlx::query(
             "UPDATE canvases SET version = version + 1, updated_at = ? WHERE id = ?",
         )
