@@ -1,0 +1,8 @@
+:{$PORT:8000} {
+    handle /admin/* {
+        reverse_proxy localhost:8001
+    }
+    handle {
+        reverse_proxy localhost:8002
+    }
+}
