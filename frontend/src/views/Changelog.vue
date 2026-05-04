@@ -18,10 +18,12 @@
           class="changelog-entry"
         >
           <time class="entry-date">{{ formatDate(entry.date) }}</time>
+          <!-- eslint-disable vue/no-v-html -->
           <div
             class="entry-content markdown-content"
             v-html="renderMarkdown(entry.content)"
           />
+          <!-- eslint-enable vue/no-v-html -->
         </article>
       </div>
     </div>

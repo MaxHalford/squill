@@ -9,6 +9,7 @@ use serde_json::json;
 use axum::extract::FromRef;
 
 use super::jwt::verify_session_token;
+use crate::token_revocation;
 use crate::AppState;
 
 /// A user row from the database.
@@ -56,6 +57,11 @@ where
         // Verify JWT
         let claims = verify_session_token(token, &config.jwt_secret)
             .map_err(|_| auth_error("Invalid or expired session token"))?;
+
+        // Check revocation list
+        if token_revocation::is_token_revoked(db, token).await {
+            return Err(auth_error("Session has been revoked"));
+        }
 
         // Load user from DB
         let user: UserRow = sqlx::query_as(

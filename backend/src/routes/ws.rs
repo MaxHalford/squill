@@ -180,33 +180,104 @@ fn is_expired(expires_at: &Option<String>) -> bool {
 // Endpoint
 // ---------------------------------------------------------------------------
 
-/// `GET /ws/canvas/{canvas_id}?token=...`
+/// `GET /ws/canvas/{canvas_id}`
+///
+/// Authentication is performed via the first WebSocket message (type: "auth")
+/// rather than a query parameter, so tokens don't leak into server logs or
+/// browser history.
 pub async fn canvas_websocket(
     ws: WebSocketUpgrade,
     Path(canvas_id): Path<String>,
     Query(params): Query<HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> Response {
-    let token = params.get("token").cloned().unwrap_or_default();
+    // Support both first-message auth (preferred) and legacy query-param auth
+    let legacy_token = params.get("token").cloned();
 
-    // Authenticate before upgrading
+    ws.on_upgrade(move |socket| async move {
+        if let Some(token) = legacy_token {
+            // Legacy path: token was in query string
+            match authenticate(&state.db, &state.config.jwt_secret, &canvas_id, &token).await {
+                Ok(auth) => handle_socket(socket, canvas_id, auth, state).await,
+                Err(reason) => {
+                    warn!("WS auth failed for canvas {canvas_id}: {reason}");
+                    let mut socket = socket;
+                    let _ = socket
+                        .send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                            code: 4001,
+                            reason: reason.into(),
+                        })))
+                        .await;
+                }
+            }
+        } else {
+            // Preferred path: wait for auth message
+            handle_auth_then_socket(socket, canvas_id, state).await;
+        }
+    })
+}
+
+/// Wait for an `{"type":"auth","token":"..."}` message, then authenticate and
+/// proceed to the normal socket handler. Times out after 10 seconds.
+async fn handle_auth_then_socket(socket: WebSocket, canvas_id: String, state: AppState) {
+    use futures_util::StreamExt;
+
+    let (ws_sender, mut ws_receiver) = socket.split();
+    // Wait up to 10s for the auth message
+    let auth_msg = tokio::time::timeout(Duration::from_secs(10), ws_receiver.next()).await;
+
+    let token = match auth_msg {
+        Ok(Some(Ok(Message::Text(text)))) => {
+            let parsed: Value = match serde_json::from_str(&text) {
+                Ok(v) => v,
+                Err(_) => {
+                    warn!("WS auth: invalid JSON from client for canvas {canvas_id}");
+                    let mut socket = ws_sender.reunite(ws_receiver).expect("same socket");
+                    let _ = socket.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                        code: 4001,
+                        reason: "Invalid auth message".into(),
+                    }))).await;
+                    return;
+                }
+            };
+            if parsed.get("type").and_then(|v| v.as_str()) != Some("auth") {
+                warn!("WS auth: first message was not auth for canvas {canvas_id}");
+                let mut socket = ws_sender.reunite(ws_receiver).expect("same socket");
+                let _ = socket.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                    code: 4001,
+                    reason: "First message must be auth".into(),
+                }))).await;
+                return;
+            }
+            parsed.get("token").and_then(|v| v.as_str()).unwrap_or("").to_string()
+        }
+        _ => {
+            warn!("WS auth: timeout or error waiting for auth message for canvas {canvas_id}");
+            let mut socket = ws_sender.reunite(ws_receiver).expect("same socket");
+            let _ = socket.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                code: 4001,
+                reason: "Auth timeout".into(),
+            }))).await;
+            return;
+        }
+    };
+
     let auth = match authenticate(&state.db, &state.config.jwt_secret, &canvas_id, &token).await {
         Ok(a) => a,
         Err(reason) => {
             warn!("WS auth failed for canvas {canvas_id}: {reason}");
-            // Close with 4001 by returning a close frame in the upgrade handler
-            return ws.on_upgrade(move |mut socket| async move {
-                let _ = socket
-                    .send(Message::Close(Some(axum::extract::ws::CloseFrame {
-                        code: 4001,
-                        reason: reason.into(),
-                    })))
-                    .await;
-            });
+            let mut socket = ws_sender.reunite(ws_receiver).expect("same socket");
+            let _ = socket.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                code: 4001,
+                reason: reason.into(),
+            }))).await;
+            return;
         }
     };
 
-    ws.on_upgrade(move |socket| handle_socket(socket, canvas_id, auth, state))
+    // Reunite the split socket and proceed to normal handler
+    let socket = ws_sender.reunite(ws_receiver).expect("same socket");
+    handle_socket(socket, canvas_id, auth, state).await;
 }
 
 // ---------------------------------------------------------------------------

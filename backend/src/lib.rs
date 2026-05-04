@@ -7,9 +7,10 @@ pub mod helpers;
 pub mod rate_limit;
 pub mod routes;
 pub mod services;
+pub mod token_revocation;
 
 use axum::response::IntoResponse;
-use axum::Router;
+use axum::{middleware, Router};
 use config::Config;
 use encryption::TokenEncryption;
 use http::header;
@@ -29,6 +30,7 @@ pub struct AppState {
     pub encryption: Option<Arc<TokenEncryption>>,
     pub http_client: reqwest::Client,
     pub rate_limiter: Arc<RateLimiter>,
+    pub general_rate_limiter: Arc<RateLimiter>,
 }
 
 /// Build the Axum router with all routes and middleware.
@@ -171,9 +173,41 @@ pub fn build_app(state: AppState) -> Router {
     app = app.route("/mcp", axum::routing::any(routes::mcp::authenticated_mcp_handler));
 
     app.fallback(fallback_handler)
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            general_rate_limit_middleware,
+        ))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+/// Middleware that enforces general rate limiting (200 req/60s) on all endpoints.
+async fn general_rate_limit_middleware(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    req: axum::extract::Request,
+    next: middleware::Next,
+) -> axum::response::Response {
+    let ip = req
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.rsplit(',').next())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    if !state.general_rate_limiter.check(&ip) {
+        return (
+            http::StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({
+                "error": "rate_limit_exceeded",
+                "error_description": "Too many requests. Please try again later."
+            })),
+        )
+            .into_response();
+    }
+
+    next.run(req).await
 }
 
 /// Return JSON 404 for unmatched routes so MCP/OAuth clients get parseable responses.

@@ -1026,10 +1026,12 @@ const latestChangelogHtml = latestChangelog ? renderMarkdown(latestChangelog.con
       </h2>
       <div class="whats-new-entry">
         <time class="whats-new-date">{{ latestChangelogDate }}</time>
+        <!-- eslint-disable vue/no-v-html -->
         <div
           class="whats-new-content markdown-content"
           v-html="latestChangelogHtml"
         />
+        <!-- eslint-enable vue/no-v-html -->
         <router-link
           to="/changelog"
           class="whats-new-link"

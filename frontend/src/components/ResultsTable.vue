@@ -997,6 +997,7 @@ defineExpose({ resetPagination, triggerReveal, refresh })
               <span class="column-header">
                 <span class="column-info">
                   <span v-tooltip-overflow class="column-name">{{ column }}</span>
+                  <!-- eslint-disable-next-line vue/no-v-html -->
                   <span v-tooltip="simplifyTypeName(columnTypes[column])" class="type-icon" :class="{ visible: hoveredColumn === column }" v-html="typeIconSvg(columnTypes[column] || '')" />
                   <button v-if="showAnalytics" v-tooltip="'View column analytics'" class="analytics-btn" :class="{ visible: hoveredColumn === column, hidden: getTypeCategory(columnTypes[column] || '') === 'binary' || getTypeCategory(columnTypes[column] || '') === 'json' }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="handleShowAnalytics($event, column)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6" /></svg></button>
                   <button v-tooltip="'Unpin column'" class="pin-btn pinned" :class="{ visible: hoveredColumn === column }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="togglePin(column)"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="2" x2="2" y2="14" /><path d="M13 5L7 8L13 11" /></svg></button>
@@ -1022,6 +1023,7 @@ defineExpose({ resetPagination, triggerReveal, refresh })
               <span class="column-header">
                 <span class="column-info">
                   <span v-tooltip-overflow class="column-name">{{ column }}</span>
+                  <!-- eslint-disable-next-line vue/no-v-html -->
                   <span v-tooltip="simplifyTypeName(columnTypes[column])" class="type-icon" :class="{ visible: hoveredColumn === column }" v-html="typeIconSvg(columnTypes[column] || '')" />
                   <button v-if="showAnalytics" v-tooltip="'View column analytics'" class="analytics-btn" :class="{ visible: hoveredColumn === column, hidden: getTypeCategory(columnTypes[column] || '') === 'binary' || getTypeCategory(columnTypes[column] || '') === 'json' }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="handleShowAnalytics($event, column)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6" /></svg></button>
                   <button v-tooltip="'Pin column'" class="pin-btn" :class="{ visible: hoveredColumn === column }" :tabindex="hoveredColumn === column ? 0 : -1" @click.stop="togglePin(column)"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="2" x2="2" y2="14" /><path d="M13 5L7 8L13 11" /></svg></button>

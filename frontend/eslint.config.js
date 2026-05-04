@@ -21,7 +21,7 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-empty-object-type': 'off',
       'vue/multi-word-component-names': 'off',
-      'vue/no-v-html': 'off',
+      'vue/no-v-html': 'warn',
       'vue/max-attributes-per-line': 'off',
       'no-undef': 'off',
       'no-useless-assignment': 'off', // False positives in Vue <script setup> (template usage invisible to ESLint)

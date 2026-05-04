@@ -37,11 +37,13 @@ export class CanvasWebSocket {
     if (this.disposed) return
 
     const wsUrl = this.options.url.replace(/^http/, 'ws')
-    const fullUrl = `${wsUrl}/ws/canvas/${this.options.canvasId}?token=${encodeURIComponent(this.options.token)}`
+    const fullUrl = `${wsUrl}/ws/canvas/${this.options.canvasId}`
 
     this.ws = new WebSocket(fullUrl)
 
     this.ws.onopen = () => {
+      // Send auth as first message instead of URL query param (avoids token in logs/history)
+      this.ws!.send(JSON.stringify({ type: 'auth', token: this.options.token }))
       this.reconnectAttempts = 0
       this.options.onStatusChange(true)
       this.startHeartbeat()

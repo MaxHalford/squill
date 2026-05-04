@@ -58,11 +58,14 @@ impl FromRequestParts<AppState> for RateLimited {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
+        // Use the *last* X-Forwarded-For entry (the one added by our trusted
+        // reverse proxy, e.g. Caddy / Railway). Earlier entries are user-controlled
+        // and can be spoofed. Falls back to "unknown" if the header is absent.
         let ip = parts
             .headers
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next())
+            .and_then(|v| v.rsplit(',').next())
             .map(|s| s.trim().to_string())
             .unwrap_or_else(|| "unknown".to_string());
 

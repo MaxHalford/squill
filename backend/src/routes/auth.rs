@@ -19,11 +19,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::auth::jwt::create_session_token;
+use crate::auth::jwt::{create_session_token, verify_session_token};
 use crate::auth::middleware::AuthUser;
 use crate::error::error_response;
 use crate::helpers::now_sqlite;
 use crate::services::oauth::{GitHubOAuthService, GoogleOAuthService, MicrosoftOAuthService};
+use crate::token_revocation;
 use crate::AppState;
 
 // ---------------------------------------------------------------------------
@@ -665,11 +666,24 @@ pub async fn get_user_by_email(
 
 pub async fn logout(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     AuthUser(user): AuthUser,
     Json(body): Json<LogoutRequest>,
 ) -> Result<impl IntoResponse, Response> {
     if body.email != user.email {
         return Err(error_response(StatusCode::FORBIDDEN, "Email does not match authenticated user"));
+    }
+
+    // Revoke the current session token so it can't be reused
+    if let Some(auth_header) = headers.get("authorization").and_then(|v| v.to_str().ok()) {
+        if let Some(token) = auth_header.strip_prefix("Bearer ") {
+            if let Ok(claims) = verify_session_token(token, &state.config.jwt_secret) {
+                let expires_at = chrono::DateTime::from_timestamp(claims.exp, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| now_sqlite());
+                let _ = token_revocation::revoke_token(&state.db, token, &expires_at).await;
+            }
+        }
     }
 
     let bq: Option<BqConnectionRow> = sqlx::query_as(
@@ -713,7 +727,7 @@ pub async fn logout(
 
 /// Issue a JWT for the local desktop user without credentials.
 /// Only available when the server runs in test/desktop mode.
-pub async fn desktop_token(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn desktop_token(_: RateLimited, State(state): State<AppState>) -> impl IntoResponse {
     let config = &state.config;
     match create_session_token(
         &config.mcp_user_id,

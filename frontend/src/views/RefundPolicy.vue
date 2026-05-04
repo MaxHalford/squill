@@ -7,10 +7,12 @@
       >
         ← Back
       </button>
+      <!-- eslint-disable vue/no-v-html -->
       <div
         class="markdown-content"
         v-html="htmlContent"
       />
+      <!-- eslint-enable vue/no-v-html -->
     </div>
   </div>
 </template>

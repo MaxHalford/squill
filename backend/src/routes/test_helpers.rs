@@ -54,18 +54,20 @@ pub async fn seed_user(
 }
 
 pub async fn reset_db(State(state): State<AppState>) -> impl IntoResponse {
-    let tables = [
-        "boxes",
-        "canvas_shares",
-        "canvases",
-        "bigquery_connections",
-        "clickhouse_connections",
-        "snowflake_connections",
-        "users",
+    // Each DELETE is a separate parameterized statement to avoid string interpolation.
+    // Order matters: children before parents to respect foreign key constraints.
+    let statements: &[&str] = &[
+        "DELETE FROM boxes",
+        "DELETE FROM canvas_shares",
+        "DELETE FROM canvases",
+        "DELETE FROM bigquery_connections",
+        "DELETE FROM clickhouse_connections",
+        "DELETE FROM snowflake_connections",
+        "DELETE FROM revoked_tokens",
+        "DELETE FROM users",
     ];
-    for table in tables {
-        let query = format!("DELETE FROM {table}");
-        if let Err(e) = sqlx::query(&query).execute(&state.db).await {
+    for sql in statements {
+        if let Err(e) = sqlx::query(sql).execute(&state.db).await {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": e.to_string()})),
