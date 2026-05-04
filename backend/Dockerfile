@@ -26,15 +26,11 @@ COPY Caddyfile /etc/caddy/Caddyfile
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-RUN useradd -m -u 1000 appuser
-# Ensure data directory is writable
-RUN mkdir -p /data && chown appuser:appuser /data
+RUN mkdir -p /data
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8002/ || exit 1
-
-USER 1000
 
 CMD ["entrypoint.sh"]

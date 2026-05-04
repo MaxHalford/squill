@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# Fail fast if admin credentials are missing
+if [ -z "$ADMIN_PASSWORD_HASH" ]; then
+    echo "ERROR: ADMIN_PASSWORD_HASH must be set" >&2
+    exit 1
+fi
+
 # Extract file path from DATABASE_URL (e.g. "sqlite:///data/squill.db" -> "/data/squill.db")
 DB_PATH="${DATABASE_URL#sqlite:}"
 
