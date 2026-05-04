@@ -47,7 +47,7 @@ jobs:
     needs: [lint, frontend-tests]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    container: ghcr.io/railwayapp/cli:v4
+    container: ghcr.io/railwayapp/cli:latest
     strategy:
       matrix:
         include:
