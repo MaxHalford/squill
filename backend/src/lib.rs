@@ -4,6 +4,7 @@ pub mod db;
 pub mod encryption;
 pub mod error;
 pub mod helpers;
+pub mod rate_limit;
 pub mod routes;
 pub mod services;
 
@@ -12,6 +13,7 @@ use axum::Router;
 use config::Config;
 use encryption::TokenEncryption;
 use http::header;
+use rate_limit::RateLimiter;
 use services::ws_manager::WsManager;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -26,6 +28,7 @@ pub struct AppState {
     pub ws_manager: Arc<WsManager>,
     pub encryption: Option<Arc<TokenEncryption>>,
     pub http_client: reqwest::Client,
+    pub rate_limiter: Arc<RateLimiter>,
 }
 
 /// Build the Axum router with all routes and middleware.
@@ -154,13 +157,15 @@ pub fn build_app(state: AppState) -> Router {
             .route("/auth/desktop-token", axum::routing::get(routes::auth::desktop_token));
     }
 
-    // MCP OAuth (null-auth flow for clients that force re-authentication)
-    app = app
-        .route("/.well-known/oauth-authorization-server", axum::routing::get(routes::mcp_oauth::metadata))
-        .route("/.well-known/oauth-protected-resource", axum::routing::get(routes::mcp_oauth::protected_resource))
-        .route("/register", axum::routing::post(routes::mcp_oauth::register))
-        .route("/authorize", axum::routing::get(routes::mcp_oauth::authorize))
-        .route("/token", axum::routing::post(routes::mcp_oauth::token));
+    // MCP OAuth (null-auth flow for desktop clients only — never exposed in production)
+    if config.desktop_mode {
+        app = app
+            .route("/.well-known/oauth-authorization-server", axum::routing::get(routes::mcp_oauth::metadata))
+            .route("/.well-known/oauth-protected-resource", axum::routing::get(routes::mcp_oauth::protected_resource))
+            .route("/register", axum::routing::post(routes::mcp_oauth::register))
+            .route("/authorize", axum::routing::get(routes::mcp_oauth::authorize))
+            .route("/token", axum::routing::post(routes::mcp_oauth::token));
+    }
 
     // MCP (Model Context Protocol) endpoint — authenticated via JWT Bearer token
     app = app.route("/mcp", axum::routing::any(routes::mcp::authenticated_mcp_handler));

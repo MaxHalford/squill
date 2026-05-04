@@ -39,7 +39,7 @@ pub struct Config {
     // CORS
     pub cors_origins: Vec<String>,
 
-    // VIP emails
+    // VIP emails (set via VIP_EMAILS env var; empty by default)
     pub vip_emails: HashSet<String>,
 
     // Test mode
@@ -47,6 +47,9 @@ pub struct Config {
 
     // MCP local user ID (for desktop app — bypasses OAuth)
     pub mcp_user_id: String,
+
+    // Desktop mode: enables MCP null-auth OAuth endpoints (localhost only)
+    pub desktop_mode: bool,
 }
 
 impl Config {
@@ -94,12 +97,7 @@ impl Config {
 
             vip_emails: env::var("VIP_EMAILS")
                 .map(|v| v.split(',').map(|s| s.trim().to_string()).collect())
-                .unwrap_or_else(|_| {
-                    HashSet::from([
-                        "maxhalford25@gmail.com".to_string(),
-                        "max@carbonfact.com".to_string(),
-                    ])
-                }),
+                .unwrap_or_default(),
 
             test_mode: env::var("SQUILL_TEST_MODE")
                 .map(|v| v == "1" || v == "true")
@@ -107,6 +105,8 @@ impl Config {
 
             mcp_user_id: env::var("MCP_USER_ID")
                 .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000001".to_string()),
+
+            desktop_mode: false,
         }
     }
 
@@ -115,6 +115,7 @@ impl Config {
         let mut config = Self::from_env();
         config.database_url = database_url.to_string();
         config.test_mode = test_mode;
+        config.desktop_mode = true;
         // Desktop mode: add localhost with the embedded port to CORS origins
         if !config.cors_origins.iter().any(|o| o.contains("18222")) {
             config.cors_origins.push("http://localhost:18222".to_string());

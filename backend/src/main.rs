@@ -1,7 +1,7 @@
 use clap::Parser;
 use squill_server::{
-    build_app, config::Config, db, encryption::TokenEncryption, services::ws_manager::WsManager,
-    AppState,
+    build_app, config::Config, db, encryption::TokenEncryption, rate_limit::RateLimiter,
+    services::ws_manager::WsManager, AppState,
 };
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -43,6 +43,10 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("MCP local user ensured: {}", config.mcp_user_id);
 
     let encryption = if config.token_encryption_key.is_empty() {
+        tracing::warn!(
+            "TOKEN_ENCRYPTION_KEY is not set — database credentials will be stored UNENCRYPTED. \
+             Set this variable to a 32-byte base64-encoded key for production use."
+        );
         None
     } else {
         Some(Arc::new(
@@ -51,12 +55,16 @@ async fn main() -> anyhow::Result<()> {
         ))
     };
 
+    // Auth endpoints: 20 requests per 60 seconds per IP
+    let rate_limiter = Arc::new(RateLimiter::new(20, 60));
+
     let state = AppState {
         db: pool,
         config: Arc::new(config),
         ws_manager: Arc::new(WsManager::new()),
         encryption,
         http_client: reqwest::Client::new(),
+        rate_limiter,
     };
 
     let app = build_app(state);

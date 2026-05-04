@@ -4,7 +4,7 @@ import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
 import { DataType as ArrowDataType } from 'apache-arrow'
 import { loadCsvWithDuckDB } from '../services/csvHandler'
-import { sanitizeTableName, sanitizeFileName, escapeSqlString } from '../utils/sqlSanitize'
+import { sanitizeTableName, sanitizeFileName, escapeSqlString, escapeIdentifier } from '../utils/sqlSanitize'
 import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
 import { buildDuckDBSchema, type SchemaNamespace } from '../utils/schemaBuilder'
 import type { SchemaItem } from '../utils/textSimilarity'
@@ -316,6 +316,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     await ensureInit()
 
     const tableName = sanitizeTableName(boxName)
+    const quoted = escapeIdentifier(tableName)
 
     // Handle empty results: create an empty table with schema if available
     if (!results || results.length === 0) {
@@ -328,10 +329,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
               : 'VARCHAR'
             return `"${col.name}" ${duckdbType}`
           }).join(', ')
-          await conn.value!.query(`CREATE OR REPLACE TABLE ${tableName} (${columnDefs})`)
+          await conn.value!.query(`CREATE OR REPLACE TABLE ${quoted} (${columnDefs})`)
         } else {
           // No schema available - create a minimal empty table
-          await conn.value!.query(`CREATE OR REPLACE TABLE ${tableName} (_empty VARCHAR)`)
+          await conn.value!.query(`CREATE OR REPLACE TABLE ${quoted} (_empty VARCHAR)`)
         }
 
         tables.value[tableName] = {
@@ -382,14 +383,14 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         }).join(', ')
 
         await conn.value!.query(
-          `CREATE OR REPLACE TABLE ${tableName} AS SELECT ${columnDefs} FROM read_json_auto('${jsonFileName}')`
+          `CREATE OR REPLACE TABLE ${quoted} AS SELECT ${columnDefs} FROM read_json_auto('${jsonFileName}')`
         )
       } else {
         // Other engines (Postgres, Snowflake, etc.): let DuckDB infer types
         // These databases return properly typed JSON that DuckDB can handle
         const columnList = columns.map(c => `"${c}"`).join(', ')
         await conn.value!.query(
-          `CREATE OR REPLACE TABLE ${tableName} AS SELECT ${columnList} FROM read_json_auto('${jsonFileName}')`
+          `CREATE OR REPLACE TABLE ${quoted} AS SELECT ${columnList} FROM read_json_auto('${jsonFileName}')`
         )
       }
 
@@ -426,15 +427,16 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
 
     const tempJsonFile = `_temp_append_${tableName}.json`
+    const quoted = escapeIdentifier(tableName)
 
     try {
       // Register JSON and insert via temp table to match existing schema
       await db.value!.registerFileText(tempJsonFile, JSON.stringify(rows))
-      await conn.value!.query(`INSERT INTO ${tableName} SELECT * FROM read_json_auto('${tempJsonFile}')`)
+      await conn.value!.query(`INSERT INTO ${quoted} SELECT * FROM read_json_auto('${tempJsonFile}')`)
       await db.value!.dropFile(tempJsonFile)
 
       // Update metadata with new row count
-      const countResult = await conn.value!.query(`SELECT COUNT(*) as count FROM ${tableName}`)
+      const countResult = await conn.value!.query(`SELECT COUNT(*) as count FROM ${quoted}`)
       const countData = countResult.toArray()
       const newRowCount = Number(countData[0]?.count || 0)
 
@@ -461,11 +463,12 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     await ensureInit()
 
     const tableName = sanitizeTableName(boxName)
+    const quoted = escapeIdentifier(tableName)
     const startTime = performance.now()
 
     try {
       // Drop required here — insertArrowFromIPCStream has no "replace" option
-      await conn.value!.query(`DROP TABLE IF EXISTS ${tableName}`)
+      await conn.value!.query(`DROP TABLE IF EXISTS ${quoted}`)
 
       // Read Arrow IPC stream and insert into DuckDB
       const reader = arrowStream.getReader()
@@ -487,12 +490,12 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }
 
       // Get table metadata after insertion
-      const countResult = await conn.value!.query(`SELECT COUNT(*) as count FROM ${tableName}`)
+      const countResult = await conn.value!.query(`SELECT COUNT(*) as count FROM ${quoted}`)
       const countData = countResult.toArray()
       const rowCount = Number(countData[0]?.count || 0)
 
       // Get column names from schema
-      const schemaResult = await conn.value!.query(`SELECT * FROM ${tableName} LIMIT 0`)
+      const schemaResult = await conn.value!.query(`SELECT * FROM ${quoted} LIMIT 0`)
       const columns = schemaResult.schema.fields.map(f => f.name)
 
       const endTime = performance.now()
@@ -523,7 +526,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // Get accurate DuckDB SQL type names via DESCRIBE (e.g. "JSON", "VARCHAR", "BIGINT")
   // rather than Arrow's internal names ("Utf8", "Int64") from f.type.toString()
   const describeTableTypes = async (tableName: string): Promise<Record<string, string>> => {
-    const result = await conn.value!.query(`DESCRIBE ${tableName}`)
+    const result = await conn.value!.query(`DESCRIBE ${escapeIdentifier(tableName)}`)
     const types: Record<string, string> = {}
     result.toArray().forEach(row => {
       types[row.column_name as string] = row.column_type as string
@@ -545,17 +548,18 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       // Use a VIEW instead of a TABLE — the data is already in DuckDB,
       // so there's no need to duplicate it. ResultsTable can paginate views
       // via queryTablePage() the same way it does tables.
-      await conn.value!.query(`CREATE OR REPLACE VIEW ${tableName} AS (${query})`)
+      const quoted = escapeIdentifier(tableName)
+      await conn.value!.query(`CREATE OR REPLACE VIEW ${quoted} AS (${query})`)
 
       const endTime = performance.now()
 
       // Get row count via the view (window COUNT avoids a separate query)
-      const countResult = await conn.value!.query(`SELECT COUNT(*) as count FROM ${tableName}`)
+      const countResult = await conn.value!.query(`SELECT COUNT(*) as count FROM ${quoted}`)
       const countData = countResult.toArray()
       const rowCount = Number(countData[0]?.count || 0)
 
       // Get schema (columns + types) — use DESCRIBE for accurate DuckDB SQL type names
-      const schemaResult = await conn.value!.query(`SELECT * FROM ${tableName} LIMIT 0`)
+      const schemaResult = await conn.value!.query(`SELECT * FROM ${quoted} LIMIT 0`)
       const columns = schemaResult.schema.fields.map(f => f.name)
       const columnTypes = await describeTableTypes(tableName)
 
@@ -636,7 +640,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     await ensureInit()
 
     const offset = (page - 1) * pageSize
-    const query = `SELECT * FROM ${tableName} LIMIT ${pageSize} OFFSET ${offset}`
+    const query = `SELECT * FROM ${escapeIdentifier(tableName)} LIMIT ${pageSize} OFFSET ${offset}`
 
     try {
       const result = await conn.value!.query(query)
@@ -668,7 +672,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     await ensureInit()
 
     try {
-      const result = await conn.value!.query(`SELECT * FROM ${tableName} LIMIT 0`)
+      const result = await conn.value!.query(`SELECT * FROM ${escapeIdentifier(tableName)} LIMIT 0`)
       return result.schema.fields.map(f => f.name)
     } catch (err: unknown) {
       console.error('Failed to get table columns:', err)
@@ -681,7 +685,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     await ensureInit()
 
     try {
-      const result = await conn.value!.query(`SELECT * FROM "${tableName}" LIMIT 0`)
+      const result = await conn.value!.query(`SELECT * FROM ${escapeIdentifier(tableName)} LIMIT 0`)
       return result.schema.fields.map(f => ({
         name: f.name,
         type: f.type.toString()
@@ -704,7 +708,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
     // Fallback to COUNT(*) query
     try {
-      const result = await conn.value!.query(`SELECT COUNT(*) as count FROM ${tableName}`)
+      const result = await conn.value!.query(`SELECT COUNT(*) as count FROM ${escapeIdentifier(tableName)}`)
       const rows = result.toArray()
       return Number(rows[0]?.count || 0)
     } catch (err: unknown) {
@@ -767,7 +771,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
       // Use ALTER TABLE/VIEW to rename
       const isView = tables.value[oldTableName]?.isView
-      await conn.value!.query(`ALTER ${isView ? 'VIEW' : 'TABLE'} ${oldTableName} RENAME TO ${newTableName}`)
+      const quotedOld = escapeIdentifier(oldTableName)
+      const quotedNew = escapeIdentifier(newTableName)
+      await conn.value!.query(`ALTER ${isView ? 'VIEW' : 'TABLE'} ${quotedOld} RENAME TO ${quotedNew}`)
 
       // Update metadata
       tables.value[newTableName] = {
@@ -937,7 +943,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   ): Promise<Blob> => {
     await ensureInit()
 
-    const selectQuery = `SELECT * FROM ${tableName}`
+    const selectQuery = `SELECT * FROM ${escapeIdentifier(tableName)}`
 
     // Generate temp filename for DuckDB's virtual filesystem
     const tempFile = `_export_${Date.now()}.${format}`

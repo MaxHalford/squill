@@ -2,7 +2,7 @@
 import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@unhead/vue'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import { DATABASE_ENGINES, DATABASE_INFO, type DatabaseEngine, type DatabaseInfo } from '../types/database'
 import { changelog } from '../data/changelog'
 
@@ -312,7 +312,7 @@ const latestChangelogDate = (() => {
   const date = new Date(latestChangelog.date + 'T00:00:00')
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 })()
-const latestChangelogHtml = latestChangelog ? marked(latestChangelog.content) as string : ''
+const latestChangelogHtml = latestChangelog ? renderMarkdown(latestChangelog.content) : ''
 </script>
 
 <template>

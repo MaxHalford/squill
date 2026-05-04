@@ -4,6 +4,7 @@ mod secure_store;
 
 use oauth::start_oauth_flow;
 use secure_store::{delete_secret, load_secret, save_secret};
+use squill_server::rate_limit::RateLimiter;
 use squill_server::services::ws_manager::WsManager;
 use std::sync::Arc;
 use tauri::Manager;
@@ -76,6 +77,9 @@ fn start_backend_server(app_data_dir: std::path::PathBuf) {
                 db: pool,
                 config: Arc::new(config),
                 ws_manager: Arc::new(WsManager::new()),
+                encryption: None,
+                http_client: reqwest::Client::new(),
+                rate_limiter: Arc::new(RateLimiter::new(20, 60)),
             };
 
             let app = squill_server::build_app(state);

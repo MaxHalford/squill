@@ -14,6 +14,11 @@ use crate::error::error_response;
 use crate::helpers::now_sqlite;
 use crate::AppState;
 
+// Input size limits
+const MAX_NAME_LEN: usize = 255;
+const MAX_BOX_STATE_BYTES: usize = 2 * 1024 * 1024; // 2 MB per box
+const MAX_BATCH_SIZE: usize = 200;
+
 // ---------------------------------------------------------------------------
 // Row types (sqlx::FromRow)
 // ---------------------------------------------------------------------------
@@ -224,6 +229,10 @@ pub async fn create_canvas(
 ) -> Result<Response, Response> {
     check_pro_or_vip(&user)?;
 
+    if body.name.len() > MAX_NAME_LEN {
+        return Err(error_response(StatusCode::BAD_REQUEST, "Canvas name too long"));
+    }
+
     // Idempotent: if the canvas already exists for this user, return it
     if let Some(existing) = sqlx::query_as::<_, CanvasRow>(
         "SELECT id, name, next_box_id, version, created_at, updated_at
@@ -280,6 +289,9 @@ pub async fn rename_canvas(
     Json(body): Json<CanvasRenameRequest>,
 ) -> Result<impl IntoResponse, Response> {
     check_pro_or_vip(&user)?;
+    if body.name.len() > MAX_NAME_LEN {
+        return Err(error_response(StatusCode::BAD_REQUEST, "Canvas name too long"));
+    }
     let canvas = get_owned_canvas(&state.db, &canvas_id, &user.id).await?;
 
     let now = now_sqlite();
@@ -372,6 +384,9 @@ pub async fn create_box(
     let box_id = canvas.next_box_id;
     let state_str = serde_json::to_string(&body.state)
         .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "JSON error"))?;
+    if state_str.len() > MAX_BOX_STATE_BYTES {
+        return Err(error_response(StatusCode::PAYLOAD_TOO_LARGE, "Box state too large"));
+    }
     let now = now_sqlite();
 
     let mut tx = state.db.begin().await
@@ -418,7 +433,7 @@ pub async fn create_boxes_batch(
 ) -> Result<Response, Response> {
     check_pro_or_vip(&user)?;
 
-    if body.boxes.len() > 100 {
+    if body.boxes.len() > MAX_BATCH_SIZE {
         return Err(error_response(
             StatusCode::BAD_REQUEST,
             "Maximum 100 boxes per batch",

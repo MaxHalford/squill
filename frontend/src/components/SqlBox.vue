@@ -598,7 +598,7 @@ defineExpose({
 }
 
 .header-action-btn.formatted {
-  color: var(--text-primary);
+  color: var(--text-inverse);
 }
 
 .header-action-btn:disabled {

@@ -13,6 +13,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+
+use crate::rate_limit::RateLimited;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -206,6 +208,7 @@ fn value_as_i64(map: &std::collections::HashMap<String, Value>, key: &str) -> Op
 // ---------------------------------------------------------------------------
 
 pub async fn google_login(
+    _: RateLimited,
     State(state): State<AppState>,
     Json(body): Json<OAuthCodeRequest>,
 ) -> Result<impl IntoResponse, Response> {
@@ -396,6 +399,7 @@ pub async fn google_callback(
 // ---------------------------------------------------------------------------
 
 pub async fn github_login(
+    _: RateLimited,
     State(state): State<AppState>,
     Json(body): Json<OAuthCodeRequest>,
 ) -> Result<impl IntoResponse, Response> {
@@ -470,6 +474,7 @@ pub async fn github_login(
 // ---------------------------------------------------------------------------
 
 pub async fn microsoft_login(
+    _: RateLimited,
     State(state): State<AppState>,
     Json(body): Json<OAuthCodeRequest>,
 ) -> Result<impl IntoResponse, Response> {

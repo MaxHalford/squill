@@ -1,19 +1,45 @@
-//! Minimal "null-auth" OAuth endpoints for MCP clients.
+//! Minimal "null-auth" OAuth endpoints for MCP clients (desktop mode only).
 //!
 //! MCP clients (e.g. Claude Desktop) may force an OAuth flow when the user
 //! clicks "re-authenticate". This module implements the bare minimum of
 //! RFC 8414 (metadata), RFC 7591 (dynamic client registration), and
 //! RFC 6749 (authorize + token) so the handshake succeeds without real auth.
+//!
+//! These endpoints are only registered when `Config::desktop_mode` is true,
+//! meaning the server is running locally inside the Tauri desktop app.
+//! They are never exposed on production deployments.
 
 use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Redirect};
 use axum::Json;
+use lru::LruCache;
 use serde::Deserialize;
 use serde_json::json;
+use std::num::NonZeroUsize;
+use std::sync::{LazyLock, Mutex};
+use std::time::Instant;
 use uuid::Uuid;
 
 use crate::auth::jwt::create_session_token;
 use crate::AppState;
+
+/// In-memory store for issued authorization codes (valid for 5 minutes).
+struct CodeEntry {
+    redirect_uri: String,
+    issued_at: Instant,
+}
+
+static CODE_STORE: LazyLock<Mutex<LruCache<String, CodeEntry>>> =
+    LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap())));
+
+const CODE_TTL_SECS: u64 = 300; // 5 minutes
+
+/// Returns true if `uri` points to a loopback address.
+fn is_loopback_uri(uri: &str) -> bool {
+    uri.starts_with("http://localhost")
+        || uri.starts_with("http://127.0.0.1")
+        || uri.starts_with("http://[::1]")
+}
 
 /// GET /.well-known/oauth-authorization-server
 ///
@@ -99,24 +125,47 @@ pub struct AuthorizeParams {
 
 /// GET /authorize
 ///
-/// Immediately redirects back to the client with an authorization code.
-/// No login page — this is a local server with no real auth.
+/// Validates that redirect_uri is a loopback address, issues an authorization
+/// code, stores it for later verification, then redirects back to the client.
 pub async fn authorize(Query(params): Query<AuthorizeParams>) -> impl IntoResponse {
+    // Only allow redirects to loopback addresses (desktop-mode defense-in-depth)
+    if !is_loopback_uri(&params.redirect_uri) {
+        return (
+            http::StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "invalid_request",
+                "error_description": "redirect_uri must be a loopback address"
+            })),
+        )
+            .into_response();
+    }
+
     let code = Uuid::new_v4().to_string();
+
+    // Store the code for verification during token exchange
+    {
+        let mut store = CODE_STORE.lock().unwrap();
+        store.put(
+            code.clone(),
+            CodeEntry {
+                redirect_uri: params.redirect_uri.clone(),
+                issued_at: Instant::now(),
+            },
+        );
+    }
+
     let mut redirect = format!("{}?code={}", params.redirect_uri, code);
     if let Some(state) = params.state {
         redirect.push_str(&format!("&state={state}"));
     }
-    Redirect::temporary(&redirect)
+    Redirect::temporary(&redirect).into_response()
 }
 
 #[derive(Deserialize)]
 pub struct TokenRequest {
     #[allow(dead_code)]
     grant_type: Option<String>,
-    #[allow(dead_code)]
     code: Option<String>,
-    #[allow(dead_code)]
     redirect_uri: Option<String>,
     #[allow(dead_code)]
     code_verifier: Option<String>,
@@ -126,13 +175,70 @@ pub struct TokenRequest {
 
 /// POST /token
 ///
-/// Exchanges the authorization code for an access token.
-/// Returns a real JWT for the MCP local user so that MCP clients
-/// can authenticate to the `/mcp` endpoint.
+/// Validates the authorization code and redirect_uri, then issues a JWT
+/// for the MCP local user.
 pub async fn token(
     State(state): State<AppState>,
-    axum::extract::Form(_body): axum::extract::Form<TokenRequest>,
+    axum::extract::Form(body): axum::extract::Form<TokenRequest>,
 ) -> impl IntoResponse {
+    // Validate the authorization code
+    let code = match &body.code {
+        Some(c) => c.clone(),
+        None => {
+            return (
+                http::StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "invalid_request",
+                    "error_description": "missing code parameter"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    {
+        let mut store = CODE_STORE.lock().unwrap();
+        match store.pop(&code) {
+            Some(entry) => {
+                // Check code hasn't expired
+                if entry.issued_at.elapsed().as_secs() > CODE_TTL_SECS {
+                    return (
+                        http::StatusCode::BAD_REQUEST,
+                        Json(json!({
+                            "error": "invalid_grant",
+                            "error_description": "authorization code expired"
+                        })),
+                    )
+                        .into_response();
+                }
+
+                // Verify redirect_uri matches what was used in /authorize
+                if let Some(ref redirect_uri) = body.redirect_uri {
+                    if *redirect_uri != entry.redirect_uri {
+                        return (
+                            http::StatusCode::BAD_REQUEST,
+                            Json(json!({
+                                "error": "invalid_grant",
+                                "error_description": "redirect_uri mismatch"
+                            })),
+                        )
+                            .into_response();
+                    }
+                }
+            }
+            None => {
+                return (
+                    http::StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": "invalid_grant",
+                        "error_description": "invalid or already-used authorization code"
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    }
+
     let config = &state.config;
     let expires_in = config.jwt_expiration_days * 86400;
 
@@ -146,14 +252,15 @@ pub async fn token(
             "access_token": token,
             "token_type": "Bearer",
             "expires_in": expires_in,
-        })),
-        Err(_) => {
-            // Fallback: issue a random token (will fail auth, but keeps OAuth flow intact)
+        }))
+        .into_response(),
+        Err(_) => (
+            http::StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
-                "access_token": Uuid::new_v4().to_string(),
-                "token_type": "Bearer",
-                "expires_in": 3600,
-            }))
-        }
+                "error": "server_error",
+                "error_description": "failed to issue token"
+            })),
+        )
+            .into_response(),
     }
 }

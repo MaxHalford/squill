@@ -540,7 +540,7 @@ onUnmounted(() => {
   <div
     ref="canvasRef"
     class="infinite-canvas"
-    :class="[canvasPatternClass, { 'dragging-file': isDraggingFile, 'low-zoom': isLowZoom, 'is-zooming': isZooming }]"
+    :class="[canvasPatternClass, { 'dragging-file': isDraggingFile, 'low-zoom': isLowZoom }]"
     @mousedown="handleMouseDown"
     @mouseleave="emit('cursor-leave')"
     @dragenter="handleDragEnter"
@@ -631,8 +631,7 @@ onUnmounted(() => {
   pointer-events: all;
 }
 
-/* Disable expensive paint effects during active zoom and at very low zoom levels */
-.infinite-canvas.is-zooming :deep(.resizable-box),
+/* Disable expensive paint effects at very low zoom levels */
 .infinite-canvas.low-zoom :deep(.resizable-box) {
   box-shadow: none !important;
 }

@@ -18,7 +18,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import { useHead } from '@unhead/vue'
 
 const router = useRouter()
@@ -159,7 +159,7 @@ For questions about this privacy policy, please [open an issue on GitHub](https:
 `
 
 const htmlContent = computed(() => {
-  return marked(markdownContent)
+  return renderMarkdown(markdownContent)
 })
 </script>
 

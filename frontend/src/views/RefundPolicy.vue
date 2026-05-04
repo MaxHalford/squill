@@ -18,7 +18,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import { useHead } from '@unhead/vue'
 
 const router = useRouter()
@@ -114,7 +114,7 @@ For refund requests or questions about this policy, please [open an issue on Git
 `
 
 const htmlContent = computed(() => {
-  return marked(markdownContent)
+  return renderMarkdown(markdownContent)
 })
 </script>
 

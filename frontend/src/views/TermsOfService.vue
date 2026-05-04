@@ -18,7 +18,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import { useHead } from '@unhead/vue'
 
 const router = useRouter()
@@ -212,7 +212,7 @@ By using Squill, you acknowledge that you have read, understood, and agree to be
 `
 
 const htmlContent = computed(() => {
-  return marked(markdownContent)
+  return renderMarkdown(markdownContent)
 })
 </script>
 

@@ -3,9 +3,9 @@
 # Extract file path from DATABASE_URL (e.g. "sqlite:///data/squill.db" -> "/data/squill.db")
 DB_PATH="${DATABASE_URL#sqlite:}"
 
-# Start sqlite-web on internal port with /admin prefix
+# Start sqlite-web on loopback only (Caddy handles external access with basicauth)
 /opt/sqlite-web/bin/sqlite_web "$DB_PATH" \
-    --host 0.0.0.0 \
+    --host 127.0.0.1 \
     --port 8001 \
     --url-prefix /admin \
     --no-browser \

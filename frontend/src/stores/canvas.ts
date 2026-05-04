@@ -244,6 +244,14 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
+  /** Apply fields to an object, filtering out prototype-polluting keys. */
+  const safeAssign = (target: Record<string, unknown>, fields: Record<string, unknown>) => {
+    for (const key of Object.keys(fields)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+      ;(target as Record<string, unknown>)[key] = fields[key]
+    }
+  }
+
   const handleRemoteEvent = (event: CanvasWSEvent) => {
     const { type, data } = event
     // Ignore events from this client (already applied optimistically)
@@ -264,7 +272,7 @@ export const useCanvasStore = defineStore('canvas', () => {
       case 'box.updated': {
         const update = data as { box_id: number; fields: Record<string, unknown> }
         const box = boxes.value.find(b => b.id === update.box_id)
-        if (box) Object.assign(box, update.fields)
+        if (box) safeAssign(box as unknown as Record<string, unknown>, update.fields)
         break
       }
       case 'box.deleted': {
@@ -277,7 +285,7 @@ export const useCanvasStore = defineStore('canvas', () => {
         const batch = data as { updates: { box_id: number; fields: Record<string, unknown> }[] }
         for (const u of batch.updates) {
           const box = boxes.value.find(b => b.id === u.box_id)
-          if (box) Object.assign(box, u.fields)
+          if (box) safeAssign(box as unknown as Record<string, unknown>, u.fields)
         }
         break
       }

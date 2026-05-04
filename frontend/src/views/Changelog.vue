@@ -30,7 +30,7 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import { useHead } from '@unhead/vue'
 import { changelog } from '../data/changelog'
 
@@ -68,9 +68,7 @@ const formatDate = (dateStr: string): string => {
   })
 }
 
-const renderMarkdown = (content: string): string => {
-  return marked(content) as string
-}
+// renderMarkdown imported from utils/markdown (DOMPurify-sanitized)
 </script>
 
 <style scoped>

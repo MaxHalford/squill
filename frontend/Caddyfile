@@ -14,6 +14,16 @@
 	log {
 		format json
 	}
+
+	header {
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-XSS-Protection "1; mode=block"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://cloud.umami.is 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://accounts.google.com https://github.com https://login.microsoftonline.com https://*.squill.dev https://cloud.umami.is wss://*.squill.dev blob:; img-src 'self' data: https:; frame-src https://polar.sh https://sandbox.polar.sh; worker-src 'self' blob:"
+	}
+
 	rewrite /health /*
 	root * dist
 	encode gzip

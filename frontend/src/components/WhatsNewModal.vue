@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { watch, onMounted, onUnmounted } from 'vue'
-import { marked } from 'marked'
+import { renderMarkdown } from '../utils/markdown'
 import type { ChangelogEntry } from '../data/changelog'
 
 const props = defineProps<{
@@ -21,9 +21,7 @@ const formatDate = (dateStr: string): string => {
   })
 }
 
-const renderMarkdown = (content: string): string => {
-  return marked(content) as string
-}
+// renderMarkdown imported from utils/markdown (DOMPurify-sanitized)
 
 watch(() => props.show, (isShowing) => {
   if (isShowing) {

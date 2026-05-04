@@ -1036,9 +1036,9 @@ defineExpose({
 /* Spell Input — textarea centered above the wand button */
 .spell-input-wrapper {
   position: absolute;
-  bottom: var(--space-2);
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   z-index: 3;
   /* Contain the absolutely-positioned submit button */
   display: inline-block;
