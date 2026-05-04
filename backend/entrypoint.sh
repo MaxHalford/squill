@@ -1,10 +1,13 @@
 #!/bin/sh
 
 # Fail fast if admin credentials are missing
-if [ -z "$ADMIN_PASSWORD_HASH" ]; then
-    echo "ERROR: ADMIN_PASSWORD_HASH must be set" >&2
+if [ -z "$ADMIN_PASSWORD" ]; then
+    echo "ERROR: ADMIN_PASSWORD must be set" >&2
     exit 1
 fi
+
+# Hash the plaintext password for Caddy basicauth
+export ADMIN_PASSWORD_HASH=$(caddy hash-password --plaintext "$ADMIN_PASSWORD")
 
 # Extract file path from DATABASE_URL (e.g. "sqlite:///data/squill.db" -> "/data/squill.db")
 DB_PATH="${DATABASE_URL#sqlite:}"
