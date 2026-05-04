@@ -1,19 +1,20 @@
 :{$PORT:8000} {
-    header {
-        X-Frame-Options "DENY"
-        X-Content-Type-Options "nosniff"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        X-XSS-Protection "1; mode=block"
-        Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    }
+	header {
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-XSS-Protection "1; mode=block"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
 
-    handle /admin/* {
-        basicauth {
-            {$ADMIN_USER:admin} {$ADMIN_PASSWORD_HASH}
-        }
-        reverse_proxy localhost:8001
-    }
-    handle {
-        reverse_proxy localhost:8002
-    }
+	@admin path /admin /admin/*
+	handle @admin {
+		basicauth {
+			{$ADMIN_USER:admin} {$ADMIN_PASSWORD_HASH}
+		}
+		reverse_proxy localhost:8001
+	}
+	handle {
+		reverse_proxy localhost:8002
+	}
 }
