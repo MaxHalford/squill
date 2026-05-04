@@ -16,7 +16,6 @@ const StickyNoteBox = defineAsyncComponent(() => import('../components/StickyNot
 const RowDetailBox = defineAsyncComponent(() => import('../components/RowDetailBox.vue'))
 const PivotBox = defineAsyncComponent(() => import('../components/PivotBox.vue'))
 const HistoryBox = defineAsyncComponent(() => import('../components/HistoryBox.vue'))
-const ChatBox = defineAsyncComponent(() => import('../components/ChatBox.vue'))
 const ExplainBox = defineAsyncComponent(() => import('../components/ExplainBox.vue'))
 
 // Lazy-load modals - only loaded when opened
@@ -1473,30 +1472,6 @@ onUnmounted(() => {
           @delete="handleDelete(box.id)"
           @maximize="handleMaximize(box.id)"
           @restore-query="handleRestoreQuery"
-        />
-
-        <!-- AI Chat Box -->
-        <ChatBox
-          v-else-if="box.type === 'chat'"
-          :box-id="box.id"
-          :initial-x="box.x"
-          :initial-y="box.y"
-          :initial-width="box.width"
-          :initial-height="box.height"
-          :initial-z-index="box.zIndex"
-          :initial-name="box.name"
-          :initial-query="box.query"
-          :connection-id="box.connectionId"
-          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
-          @select="selectBox(box.id, $event)"
-          @update:position="handleUpdatePosition(box.id, $event)"
-          @update:size="handleUpdateSize(box.id, $event)"
-          @update:name="handleUpdateName(box.id, $event)"
-          @update:query="handleUpdateQuery(box.id, $event)"
-          @delete="handleDelete(box.id)"
-          @maximize="handleMaximize(box.id)"
-          @drag-start="handleDragStart"
-          @drag-end="handleDragEnd"
         />
 
         <!-- Explain Plan Box -->

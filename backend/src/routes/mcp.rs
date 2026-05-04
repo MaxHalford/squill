@@ -3,13 +3,14 @@
 //! Exposes Squill canvas/box/connection operations as MCP tools so that
 //! LLM clients can programmatically manipulate canvases.
 //!
-//! Auth strategy for now:
-//! - In test mode (`SQUILL_TEST_MODE=1`): accepts a hardcoded test user or the
-//!   first user in the database.
-//! - Production MCP OAuth can be layered in later.
+//! Auth: every request must carry a valid `Authorization: Bearer <JWT>` header.
+//! The user_id is extracted from JWT claims and used for all operations.
 
 use std::sync::Arc;
 
+use axum::extract::State;
+use axum::response::{IntoResponse, Response};
+use http::StatusCode;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, Content};
 use rmcp::tool;
@@ -17,6 +18,7 @@ use rmcp::transport::streamable_http_server::{
     session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
@@ -24,7 +26,9 @@ use tokio_util::sync::CancellationToken;
 use rmcp::schemars;
 use rmcp::schemars::JsonSchema;
 
+use crate::auth::jwt::verify_session_token;
 use crate::services::ws_manager::WsManager;
+use crate::AppState;
 
 // ---------------------------------------------------------------------------
 // Handler struct
@@ -649,29 +653,60 @@ impl SquillMcpHandler {
 }
 
 // ---------------------------------------------------------------------------
-// Build the MCP service for mounting in the Axum router
+// Authenticated MCP handler
 // ---------------------------------------------------------------------------
 
-/// Create a `StreamableHttpService` ready to be mounted at `/mcp`.
+/// Axum handler that validates JWT Bearer tokens and dispatches to the MCP service.
 ///
-/// The returned service implements `tower::Service<http::Request<B>>` and can
-/// be used with `axum::routing::any_service()`.
-pub fn build_mcp_service(
-    db: SqlitePool,
-    mcp_user_id: String,
-    ws_manager: Arc<WsManager>,
-) -> StreamableHttpService<SquillMcpHandler, LocalSessionManager> {
-    let user_id = mcp_user_id;
+/// Each request is authenticated independently. The `user_id` from JWT claims
+/// is used to scope all canvas/box operations to the authenticated user.
+pub async fn authenticated_mcp_handler(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+) -> Response {
+    // Extract Bearer token from Authorization header
+    let token = match req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        Some(t) => t.to_string(),
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({"error": "unauthorized", "error_description": "Missing or invalid Authorization header"})),
+            )
+                .into_response();
+        }
+    };
 
+    // Verify JWT
+    let claims = match verify_session_token(&token, &state.config.jwt_secret) {
+        Ok(c) => c,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({"error": "unauthorized", "error_description": "Invalid or expired token"})),
+            )
+                .into_response();
+        }
+    };
+
+    let user_id = claims.user_id;
+    let db = state.db.clone();
+    let ws_manager = state.ws_manager.clone();
+
+    // Build a stateless MCP service for this authenticated user
     let config = StreamableHttpServerConfig::default()
         .with_stateful_mode(false)
         .with_json_response(true)
         .with_cancellation_token(CancellationToken::new())
-        .disable_allowed_hosts(); // Host validation handled by Axum CORS layer.
+        .disable_allowed_hosts();
 
     let session_manager = Arc::new(LocalSessionManager::default());
 
-    StreamableHttpService::new(
+    let mut service = StreamableHttpService::new(
         move || {
             Ok(SquillMcpHandler {
                 db: db.clone(),
@@ -681,5 +716,12 @@ pub fn build_mcp_service(
         },
         session_manager,
         config,
-    )
+    );
+
+    // Dispatch to the MCP service
+    use tower::Service;
+    match service.call(req).await {
+        Ok(response) => response.map(axum::body::Body::new),
+        Err(infallible) => match infallible {},
+    }
 }

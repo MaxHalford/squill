@@ -232,8 +232,7 @@ const webApplicationSchema = {
     'Drag and drop CSV file analysis',
     'Schema browser',
     'Go to definition (Cmd+click)',
-    'AI SQL line fixer (Pro)',
-    'Ask a wizard - AI chat (Pro, coming soon)'
+    'AI SQL line fixer (Pro)'
   ]
 }
 

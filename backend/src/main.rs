@@ -31,6 +31,10 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let config = Config::from_env();
 
+    if config.jwt_secret.is_empty() {
+        anyhow::bail!("JWT_SECRET environment variable must be set");
+    }
+
     tracing::info!("Connecting to database: {}", config.database_url);
     let pool = db::create_pool(&config.database_url).await?;
     tracing::info!("Database ready, migrations applied");

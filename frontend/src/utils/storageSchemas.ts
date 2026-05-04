@@ -34,7 +34,7 @@ export type SettingsData = z.infer<typeof SettingsSchema>
 // ============================================
 // Canvas/Box Schema
 // ============================================
-const BoxTypeSchema = z.enum(['sql', 'schema', 'note', 'detail', 'analytics', 'history', 'chat', 'explain'])
+const BoxTypeSchema = z.enum(['sql', 'schema', 'note', 'detail', 'analytics', 'history', 'explain'])
 
 const BoxSchema = z.object({
   id: z.number(),

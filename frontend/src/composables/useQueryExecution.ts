@@ -2,7 +2,7 @@
  * Shared query execution logic.
  *
  * Encapsulates the "detect engine → dispatch to store → store in DuckDB"
- * pattern used by both SqlBox and ChatBox. Adding a new database engine
+ * pattern used by SqlBox and other box types. Adding a new database engine
  * only requires updating this single file.
  */
 

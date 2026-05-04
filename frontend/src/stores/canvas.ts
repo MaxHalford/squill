@@ -92,35 +92,7 @@ const getUniqueTreeName = (existingNames: string[]): string => {
   }
 }
 
-// Wizard names for chat boxes (single word, lowercase)
-const WIZARD_NAMES = [
-  'gandalf', 'merlin', 'dumbledore', 'rincewind', 'raistlin', 'elminster',
-  'morgana', 'circe', 'prospero', 'medea', 'mordred',
-  'saruman', 'radagast', 'voldemort', 'jafar', 'maleficent', 'zatanna',
-  'khadgar', 'medivh', 'nostradamus', 'babayaga',
-  'zoroaster', 'hermes', 'orpheus', 'viviane', 'nimue', 'oberon',
-  'titania', 'sauron', 'galadriel', 'arwen',
-]
 
-// Get a unique wizard name that isn't already used
-const getUniqueWizardName = (existingNames: string[]): string => {
-  const usedNames = new Set(existingNames.map(n => n.toLowerCase()))
-  const available = WIZARD_NAMES.filter(name => !usedNames.has(name))
-
-  if (available.length > 0) {
-    return available[Math.floor(Math.random() * available.length)]
-  }
-
-  // Fallback: all wizards used, add numeric suffix
-  let suffix = 2
-  while (true) {
-    const candidate = `${WIZARD_NAMES[Math.floor(Math.random() * WIZARD_NAMES.length)]} ${suffix}`
-    if (!usedNames.has(candidate)) {
-      return candidate
-    }
-    suffix++
-  }
-}
 
 // Generate UUID
 const generateCanvasId = (): string => {
@@ -683,14 +655,12 @@ export const useCanvasStore = defineStore('canvas', () => {
                   type === 'analytics' ? 800 :
                   type === 'schema' ? 800 :
                   type === 'history' ? 700 :
-                  type === 'chat' ? 1000 :
                   type === 'explain' ? 600 : 600
     const height = type === 'note' ? 300 :
                    type === 'detail' ? 500 :
                    type === 'analytics' ? 500 :
                    type === 'schema' ? 600 :
                    type === 'history' ? 500 :
-                   type === 'chat' ? 600 :
                    type === 'explain' ? 500 : 500
 
     const newBox: Box = {
@@ -708,7 +678,6 @@ export const useCanvasStore = defineStore('canvas', () => {
             type === 'analytics' ? `analytics_${boxId}` :
             type === 'history' ? 'Query history' :
             type === 'schema' ? 'Schema browser' :
-            type === 'chat' ? getUniqueWizardName(boxes.value.map(b => b.name)) :
             type === 'explain' ? `explain_${boxId}` :
             `box_${boxId}`,
       dependencies: [],

@@ -162,9 +162,8 @@ pub fn build_app(state: AppState) -> Router {
         .route("/authorize", axum::routing::get(routes::mcp_oauth::authorize))
         .route("/token", axum::routing::post(routes::mcp_oauth::token));
 
-    // MCP (Model Context Protocol) endpoint
-    let mcp_service = routes::mcp::build_mcp_service(state.db.clone(), config.mcp_user_id.clone(), state.ws_manager.clone());
-    app = app.route("/mcp", axum::routing::any_service(mcp_service));
+    // MCP (Model Context Protocol) endpoint — authenticated via JWT Bearer token
+    app = app.route("/mcp", axum::routing::any(routes::mcp::authenticated_mcp_handler));
 
     app.fallback(fallback_handler)
         .layer(cors)

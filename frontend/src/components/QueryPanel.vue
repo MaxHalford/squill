@@ -3,8 +3,8 @@
  * QueryPanel — reusable query execution panel.
  *
  * Contains the full "editor + splitter + results" triad with all execution
- * logic. Used by both SqlBox (wrapped in BaseBox with dependency tracking)
- * and ChatBox (embedded alongside the chat panel).
+ * logic. Used by SqlBox (wrapped in BaseBox with dependency tracking)
+ * and other box types that need query execution.
  */
 import { ref, inject, watch, onMounted, onUnmounted, computed, nextTick, toRef } from 'vue'
 import QueryEditor from './QueryEditor.vue'

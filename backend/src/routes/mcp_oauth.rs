@@ -5,12 +5,15 @@
 //! RFC 8414 (metadata), RFC 7591 (dynamic client registration), and
 //! RFC 6749 (authorize + token) so the handshake succeeds without real auth.
 
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Redirect};
 use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
+
+use crate::auth::jwt::create_session_token;
+use crate::AppState;
 
 /// GET /.well-known/oauth-authorization-server
 ///
@@ -124,13 +127,33 @@ pub struct TokenRequest {
 /// POST /token
 ///
 /// Exchanges the authorization code for an access token.
-/// Always succeeds — no real validation needed for local null-auth.
+/// Returns a real JWT for the MCP local user so that MCP clients
+/// can authenticate to the `/mcp` endpoint.
 pub async fn token(
+    State(state): State<AppState>,
     axum::extract::Form(_body): axum::extract::Form<TokenRequest>,
 ) -> impl IntoResponse {
-    Json(json!({
-        "access_token": Uuid::new_v4().to_string(),
-        "token_type": "Bearer",
-        "expires_in": 3600,
-    }))
+    let config = &state.config;
+    let expires_in = config.jwt_expiration_days * 86400;
+
+    match create_session_token(
+        &config.mcp_user_id,
+        "local@squill.desktop",
+        &config.jwt_secret,
+        config.jwt_expiration_days,
+    ) {
+        Ok(token) => Json(json!({
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_in": expires_in,
+        })),
+        Err(_) => {
+            // Fallback: issue a random token (will fail auth, but keeps OAuth flow intact)
+            Json(json!({
+                "access_token": Uuid::new_v4().to_string(),
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            }))
+        }
+    }
 }
