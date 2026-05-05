@@ -57,7 +57,7 @@ const clickhouseStore = useClickHouseStore()
 const snowflakeStore = useSnowflakeStore()
 const userStore = useUserStore()
 
-const menuBoxDefs = computed(() => getMenuBoxDefinitions())
+const menuBoxDefs = getMenuBoxDefinitions()
 
 // Emits for parent component to handle
 const emit = defineEmits<{

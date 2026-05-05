@@ -1,4 +1,3 @@
-// Register all box modules
 import './sql'
 import './schema'
 import './note'

@@ -16,7 +16,7 @@ export interface BoxDefinition {
   menuOrder?: number
   platforms?: ('web' | 'desktop')[]
   /** The prop name used to pass box.query data to the component */
-  dataProp?: string
+  dataProp?: 'initialQuery' | 'initialContent' | 'initialRowData' | 'initialData'
 }
 
 const registry = new Map<BoxType, BoxDefinition>()
