@@ -9,19 +9,19 @@
  * - DuckDB table rename on box name change
  */
 import { ref, watch, onMounted, onUnmounted, computed, inject, toRef, nextTick } from 'vue'
-import BaseBox from './BaseBox.vue'
-import QueryPanel, { type QueryCompleteEvent } from './QueryPanel.vue'
-import { useDuckDBStore } from '../stores/duckdb'
-import { useCanvasStore } from '../stores/canvas'
-import { useQueryHistoryStore } from '../stores/queryHistory'
-import { useSettingsStore } from '../stores/settings'
-import { useBoxConnection } from '../composables/useBoxConnection'
-import { announceQueryResult, notifyTab } from '../utils/voiceNotify'
-import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
-import { DATABASE_INFO } from '../types/database'
-import { hasCTEs } from '../utils/cteParser'
-import { useSqlGlotStore } from '../stores/sqlglot'
-import { useUserStore } from '../stores/user'
+import BaseBox from '../../components/BaseBox.vue'
+import QueryPanel, { type QueryCompleteEvent } from '../../components/QueryPanel.vue'
+import { useDuckDBStore } from '../../stores/duckdb'
+import { useCanvasStore } from '../../stores/canvas'
+import { useQueryHistoryStore } from '../../stores/queryHistory'
+import { useSettingsStore } from '../../stores/settings'
+import { useBoxConnection } from '../../composables/useBoxConnection'
+import { announceQueryResult, notifyTab } from '../../utils/voiceNotify'
+import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type TableReferenceWithPosition } from '../../utils/queryAnalyzer'
+import { DATABASE_INFO } from '../../types/database'
+import { hasCTEs } from '../../utils/cteParser'
+import { useSqlGlotStore } from '../../stores/sqlglot'
+import { useUserStore } from '../../stores/user'
 
 const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()

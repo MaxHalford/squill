@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import BaseBox from './BaseBox.vue'
+import BaseBox from '../../components/BaseBox.vue'
 
 const props = defineProps({
   boxId: { type: Number, required: true },

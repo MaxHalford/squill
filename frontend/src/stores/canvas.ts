@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef, watch, computed, onScopeDispose } from 'vue'
 import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex, CursorState } from '../types/canvas'
 import type { DatabaseEngine } from '../types/database'
-import { getDefaultQuery } from '../constants/defaultQueries'
+import { getBoxDefinition } from '../boxes'
 import { computeExplodeLayout } from '../utils/cteParser'
 import type { ExplodedQuery } from '../utils/cteParser'
 import { CanvasDataSchema } from '../utils/storageSchemas'
@@ -59,39 +59,6 @@ const PAINTING_NAMES = [
 const getRandomPaintingName = (): string => {
   return PAINTING_NAMES[Math.floor(Math.random() * PAINTING_NAMES.length)]
 }
-
-// Tree names for query boxes (8 chars or less)
-const TREE_NAMES = [
-  'Oak', 'Pine', 'Maple', 'Birch', 'Cedar', 'Willow', 'Elm', 'Ash',
-  'Beech', 'Spruce', 'Fir', 'Walnut', 'Cherry', 'Apple', 'Pear', 'Plum',
-  'Peach', 'Olive', 'Palm', 'Cypress', 'Juniper', 'Hemlock', 'Hickory',
-  'Chestnut', 'Magnolia', 'Dogwood', 'Redwood', 'Sequoia', 'Acacia', 'Aspen',
-  'Alder', 'Poplar', 'Larch', 'Yew', 'Holly', 'Hazel', 'Rowan', 'Laurel',
-  'Myrtle', 'Banyan', 'Baobab', 'Bamboo', 'Teak', 'Ebony', 'Mahogany',
-  'Sycamore', 'Mulberry', 'Hawthorn', 'Tamarind', 'Buckeye', 'Fig', 'Linden',
-  'Locust', 'Mimosa', 'Catalpa', 'Ginkgo', 'Tupelo', 'Osage',
-]
-
-// Get a unique tree name that isn't already used
-const getUniqueTreeName = (existingNames: string[]): string => {
-  const usedNames = new Set(existingNames.map(n => n.toLowerCase()))
-  const available = TREE_NAMES.filter(name => !usedNames.has(name.toLowerCase()))
-
-  if (available.length > 0) {
-    return available[Math.floor(Math.random() * available.length)].toLowerCase()
-  }
-
-  // Fallback: all trees used, add numeric suffix
-  let suffix = 2
-  while (true) {
-    const candidate = `${TREE_NAMES[Math.floor(Math.random() * TREE_NAMES.length)].toLowerCase()} ${suffix}`
-    if (!usedNames.has(candidate)) {
-      return candidate
-    }
-    suffix++
-  }
-}
-
 
 
 // Generate UUID
@@ -646,6 +613,9 @@ export const useCanvasStore = defineStore('canvas', () => {
     engine?: DatabaseEngine,
     connectionId?: string
   ): number => {
+    const def = getBoxDefinition(type)
+    if (!def) throw new Error(`Unknown box type: ${type}`)
+
     saveToUndoStack()
 
     let centerPosition: Position | null = null
@@ -657,19 +627,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     const defaultY = 100 + Math.random() * 200
 
     const boxId = nextBoxId.value++
-
-    const width = type === 'note' ? 400 :
-                  type === 'detail' ? 400 :
-                  type === 'analytics' ? 800 :
-                  type === 'schema' ? 800 :
-                  type === 'history' ? 700 :
-                  type === 'explain' ? 600 : 600
-    const height = type === 'note' ? 300 :
-                   type === 'detail' ? 500 :
-                   type === 'analytics' ? 500 :
-                   type === 'schema' ? 600 :
-                   type === 'history' ? 500 :
-                   type === 'explain' ? 500 : 500
+    const width = def.defaultWidth
+    const height = def.defaultHeight
 
     const newBox: Box = {
       id: boxId,
@@ -679,15 +638,8 @@ export const useCanvasStore = defineStore('canvas', () => {
       width: width,
       height: height,
       zIndex: getMaxZIndex() + 1,
-      query: type === 'sql' ? getDefaultQuery(engine) : '',
-      name: type === 'sql' ? getUniqueTreeName(boxes.value.map(b => b.name)) :
-            type === 'note' ? `note_${boxId}` :
-            type === 'detail' ? `row_detail_${boxId}` :
-            type === 'analytics' ? `analytics_${boxId}` :
-            type === 'history' ? 'Query history' :
-            type === 'schema' ? 'Schema browser' :
-            type === 'explain' ? `explain_${boxId}` :
-            `box_${boxId}`,
+      query: def.defaultQuery?.(engine) ?? '',
+      name: def.generateName(boxId, boxes.value.map(b => b.name)),
       dependencies: [],
       connectionId: connectionId
     }
@@ -937,13 +889,10 @@ export const useCanvasStore = defineStore('canvas', () => {
     const OFFSET = 30
     const boxId = nextBoxId.value++
 
-    const newName = originalBox.type === 'sql' ? getUniqueTreeName(boxes.value.map(b => b.name)) :
-                    originalBox.type === 'note' ? `note_${boxId}` :
-                    originalBox.type === 'detail' ? `row_detail_${boxId}` :
-                    originalBox.type === 'analytics' ? `analytics_${boxId}` :
-                    originalBox.type === 'history' ? 'Query history' :
-                    originalBox.type === 'explain' ? `explain_${boxId}` :
-                    `schema_${boxId}`
+    const def = getBoxDefinition(originalBox.type)
+    const newName = def
+      ? def.generateName(boxId, boxes.value.map(b => b.name))
+      : `box_${boxId}`
 
     const newBox: Box = {
       id: boxId,
@@ -982,13 +931,10 @@ export const useCanvasStore = defineStore('canvas', () => {
     originalBoxes.forEach(originalBox => {
       const boxId = nextBoxId.value++
 
-      const newName = originalBox.type === 'sql' ? getUniqueTreeName(boxes.value.map(b => b.name)) :
-                      originalBox.type === 'note' ? `note_${boxId}` :
-                      originalBox.type === 'detail' ? `row_detail_${boxId}` :
-                      originalBox.type === 'analytics' ? `analytics_${boxId}` :
-                      originalBox.type === 'history' ? 'Query history' :
-                      originalBox.type === 'explain' ? `explain_${boxId}` :
-                      `schema_${boxId}`
+      const def = getBoxDefinition(originalBox.type)
+      const newName = def
+        ? def.generateName(boxId, boxes.value.map(b => b.name))
+        : `box_${boxId}`
 
       const newBox: Box = {
         id: boxId,

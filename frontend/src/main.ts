@@ -4,6 +4,7 @@ import './style.css'
 import App from './App.vue'
 import type { RouteRecordRaw } from 'vue-router'
 import { vTooltip, vTooltipOverflow } from './directives/tooltip'
+import './boxes' // Register all box modules
 
 // Eagerly load landing page for fast initial render
 import LandingPage from './views/LandingPage.vue'

@@ -5,10 +5,10 @@ import { EditorState } from '@codemirror/state'
 import { json } from '@codemirror/lang-json'
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
-import BaseBox from './BaseBox.vue'
+import BaseBox from '../../components/BaseBox.vue'
 import PlanTree from './PlanTree.vue'
-import CopyButton from './CopyButton.vue'
-import { parsePlan, type PlanNode } from '../utils/planParser'
+import CopyButton from '../../components/CopyButton.vue'
+import { parsePlan, type PlanNode } from '../../utils/planParser'
 
 const props = defineProps({
   boxId: { type: Number, required: true },

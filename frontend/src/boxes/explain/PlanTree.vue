@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import 'treeflex/dist/css/treeflex.css'
-import { type PlanNode, rankNodesByCost } from '../utils/planParser'
+import { type PlanNode, rankNodesByCost } from '../../utils/planParser'
 import PlanTreeNode from './PlanTreeNode.vue'
 
 const props = defineProps<{

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { PlanNode } from '../utils/planParser'
-import { formatExecutionTime, formatRowCountCompact } from '../utils/formatUtils'
+import type { PlanNode } from '../../utils/planParser'
+import { formatExecutionTime, formatRowCountCompact } from '../../utils/formatUtils'
 
 const props = defineProps<{
   node: PlanNode

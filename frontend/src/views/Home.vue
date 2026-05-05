@@ -8,15 +8,8 @@ import OnboardingModal from '../components/OnboardingModal.vue'
 import UploadProgress from '../components/UploadProgress.vue'
 import BoxCreationButtons from '../components/BoxCreationButtons.vue'
 import DebugPanel from '../components/DebugPanel.vue'
-
-// Lazy-load box components - only loaded when needed
-const SqlBox = defineAsyncComponent(() => import('../components/SqlBox.vue'))
-const SchemaBox = defineAsyncComponent(() => import('../components/SchemaBox.vue'))
-const StickyNoteBox = defineAsyncComponent(() => import('../components/StickyNoteBox.vue'))
-const RowDetailBox = defineAsyncComponent(() => import('../components/RowDetailBox.vue'))
-const PivotBox = defineAsyncComponent(() => import('../components/PivotBox.vue'))
-const HistoryBox = defineAsyncComponent(() => import('../components/HistoryBox.vue'))
-const ExplainBox = defineAsyncComponent(() => import('../components/ExplainBox.vue'))
+import { getBoxDefinition } from '../boxes'
+import type { Box } from '../types/canvas'
 
 // Lazy-load modals - only loaded when opened
 const SnowflakeConnectionModal = defineAsyncComponent(() => import('../components/SnowflakeConnectionModal.vue'))
@@ -822,6 +815,69 @@ const handleCreateQueryBox = async (
   setTimeout(() => executeBoxQuery(boxId), 100)
 }
 
+// ============================================
+// Dynamic box rendering helpers
+// ============================================
+
+const getBoxComponent = (type: Box['type']) => {
+  return getBoxDefinition(type)?.component
+}
+
+const registerBoxRef = (box: Box, el: unknown) => {
+  if (box.type === 'sql') {
+    if (el) sqlBoxRefs.value.set(box.id, el as { focusEditor: () => void })
+    else sqlBoxRefs.value.delete(box.id)
+  } else if (box.type === 'schema') {
+    if (el) schemaBoxRefs.value.set(box.id, el as { navigateToTable: (info: { connectionType: string; connectionId?: string; tableName: string; projectId?: string; datasetId?: string; databaseName?: string; schemaName?: string }) => Promise<void> })
+    else schemaBoxRefs.value.delete(box.id)
+  }
+}
+
+const getExtraProps = (box: Box) => {
+  const props: Record<string, unknown> = {}
+  const def = getBoxDefinition(box.type)
+  if (def?.dataProp) {
+    props[def.dataProp] = box.query
+  }
+  if (box.type === 'sql') {
+    props.connectionId = box.connectionId
+    props.initialEditorHeight = box.editorHeight
+  }
+  return props
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const getExtraEvents = (box: Box) => {
+  const events: Record<string, (...args: any[]) => void> = {}
+  switch (box.type) {
+    case 'sql':
+      events['update:query'] = (q: string) => handleUpdateQuery(box.id, q)
+      events['update:editor-height'] = (h: number) => handleUpdateEditorHeight(box.id, h)
+      events['update:multi-position'] = handleUpdateMultiPosition
+      events['show-row-detail'] = handleShowRowDetail
+      events['show-column-analytics'] = handleShowColumnAnalytics
+      events['show-explain'] = (e: any) => handleShowExplain(e, box.id, box.name)
+      events['navigate-to-table'] = handleNavigateToTable
+      break
+    case 'schema':
+      events['update:multi-position'] = handleUpdateMultiPosition
+      events['query-table'] = handleQueryTableFromSchema
+      events['show-column-analytics'] = handleShowColumnAnalytics
+      break
+    case 'note':
+      events['update:content'] = (c: string) => handleUpdateQuery(box.id, c)
+      break
+    case 'analytics':
+      events['update:data'] = (d: string) => handleUpdateQuery(box.id, d)
+      break
+    case 'history':
+      events['restore-query'] = handleRestoreQuery
+      break
+  }
+  return events
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 const handleKeyDown = (e: KeyboardEvent) => {
   // Don't handle shortcuts if user is typing in an input/textarea or CodeMirror editor
   const activeElement = document.activeElement
@@ -1333,167 +1389,30 @@ onUnmounted(() => {
         @create-box-right="(sb) => handleCreateQueryBox(sb, 'right')"
       />
 
-      <template
+      <component
         v-for="box in sortedBoxes"
         :key="box.id"
-      >
-        <!-- SQL Editor Box -->
-        <SqlBox
-          v-if="box.type === 'sql'"
-          :ref="(el: any) => { if (el) sqlBoxRefs.set(box.id, el); else sqlBoxRefs.delete(box.id) }"
-          :box-id="box.id"
-          :initial-x="box.x"
-          :initial-y="box.y"
-          :initial-width="box.width"
-          :initial-height="box.height"
-          :initial-z-index="box.zIndex"
-          :initial-query="box.query"
-          :initial-name="box.name"
-          :connection-id="box.connectionId"
-          :initial-editor-height="box.editorHeight"
-          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
-          @select="selectBox(box.id, $event)"
-          @update:position="handleUpdatePosition(box.id, $event)"
-          @update:size="handleUpdateSize(box.id, $event)"
-          @update:name="handleUpdateName(box.id, $event)"
-          @update:query="handleUpdateQuery(box.id, $event)"
-          @update:editor-height="handleUpdateEditorHeight(box.id, $event)"
-          @update:multi-position="handleUpdateMultiPosition"
-          @delete="handleDelete(box.id)"
-          @maximize="handleMaximize(box.id)"
-          @show-row-detail="handleShowRowDetail"
-          @show-column-analytics="handleShowColumnAnalytics"
-          @show-explain="(e: any) => handleShowExplain(e, box.id, box.name)"
-          @drag-start="handleDragStart"
-          @drag-end="handleDragEnd"
-          @navigate-to-table="handleNavigateToTable"
-        />
-
-        <!-- Schema Browser Box -->
-        <SchemaBox
-          v-else-if="box.type === 'schema'"
-          :ref="(el: any) => { if (el) schemaBoxRefs.set(box.id, el); else schemaBoxRefs.delete(box.id) }"
-          :box-id="box.id"
-          :initial-x="box.x"
-          :initial-y="box.y"
-          :initial-width="box.width"
-          :initial-height="box.height"
-          :initial-z-index="box.zIndex"
-          :initial-name="box.name"
-          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
-          @select="selectBox(box.id, $event)"
-          @update:position="handleUpdatePosition(box.id, $event)"
-          @update:size="handleUpdateSize(box.id, $event)"
-          @update:name="handleUpdateName(box.id, $event)"
-          @update:multi-position="handleUpdateMultiPosition"
-          @delete="handleDelete(box.id)"
-          @maximize="handleMaximize(box.id)"
-          @query-table="handleQueryTableFromSchema"
-          @show-column-analytics="handleShowColumnAnalytics"
-        />
-
-        <!-- Sticky Note Box -->
-        <StickyNoteBox
-          v-else-if="box.type === 'note'"
-          :box-id="box.id"
-          :initial-x="box.x"
-          :initial-y="box.y"
-          :initial-width="box.width"
-          :initial-height="box.height"
-          :initial-z-index="box.zIndex"
-          :initial-content="box.query"
-          :initial-name="box.name"
-          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
-          @select="selectBox(box.id, $event)"
-          @update:position="handleUpdatePosition(box.id, $event)"
-          @update:size="handleUpdateSize(box.id, $event)"
-          @update:name="handleUpdateName(box.id, $event)"
-          @update:content="handleUpdateQuery(box.id, $event)"
-          @delete="handleDelete(box.id)"
-          @maximize="handleMaximize(box.id)"
-        />
-
-        <!-- Row Detail Box -->
-        <RowDetailBox
-          v-else-if="box.type === 'detail'"
-          :box-id="box.id"
-          :initial-x="box.x"
-          :initial-y="box.y"
-          :initial-width="box.width"
-          :initial-height="box.height"
-          :initial-z-index="box.zIndex"
-          :initial-row-data="box.query"
-          :initial-name="box.name"
-          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
-          @select="selectBox(box.id, $event)"
-          @update:position="handleUpdatePosition(box.id, $event)"
-          @update:size="handleUpdateSize(box.id, $event)"
-          @update:name="handleUpdateName(box.id, $event)"
-          @delete="handleDelete(box.id)"
-          @maximize="handleMaximize(box.id)"
-        />
-
-        <!-- Pivot Table Box -->
-        <PivotBox
-          v-else-if="box.type === 'analytics'"
-          :box-id="box.id"
-          :initial-x="box.x"
-          :initial-y="box.y"
-          :initial-width="box.width"
-          :initial-height="box.height"
-          :initial-z-index="box.zIndex"
-          :initial-data="box.query"
-          :initial-name="box.name"
-          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
-          @select="selectBox(box.id, $event)"
-          @update:position="handleUpdatePosition(box.id, $event)"
-          @update:size="handleUpdateSize(box.id, $event)"
-          @update:name="handleUpdateName(box.id, $event)"
-          @update:data="handleUpdateQuery(box.id, $event)"
-          @delete="handleDelete(box.id)"
-          @maximize="handleMaximize(box.id)"
-        />
-
-        <!-- Query history Box -->
-        <HistoryBox
-          v-else-if="box.type === 'history'"
-          :box-id="box.id"
-          :initial-x="box.x"
-          :initial-y="box.y"
-          :initial-width="box.width"
-          :initial-height="box.height"
-          :initial-z-index="box.zIndex"
-          :initial-name="box.name"
-          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
-          @select="selectBox(box.id, $event)"
-          @update:position="handleUpdatePosition(box.id, $event)"
-          @update:size="handleUpdateSize(box.id, $event)"
-          @update:name="handleUpdateName(box.id, $event)"
-          @delete="handleDelete(box.id)"
-          @maximize="handleMaximize(box.id)"
-          @restore-query="handleRestoreQuery"
-        />
-
-        <!-- Explain Plan Box -->
-        <ExplainBox
-          v-else-if="box.type === 'explain'"
-          :box-id="box.id"
-          :initial-x="box.x"
-          :initial-y="box.y"
-          :initial-width="box.width"
-          :initial-height="box.height"
-          :initial-z-index="box.zIndex"
-          :initial-data="box.query"
-          :initial-name="box.name"
-          :is-selected="canvasStore.boxSelectionMap.has(box.id)"
-          @select="selectBox(box.id, $event)"
-          @update:position="handleUpdatePosition(box.id, $event)"
-          @update:size="handleUpdateSize(box.id, $event)"
-          @update:name="handleUpdateName(box.id, $event)"
-          @delete="handleDelete(box.id)"
-          @maximize="handleMaximize(box.id)"
-        />
-      </template>
+        :is="getBoxComponent(box.type)"
+        :ref="(el: any) => registerBoxRef(box, el)"
+        :box-id="box.id"
+        :initial-x="box.x"
+        :initial-y="box.y"
+        :initial-width="box.width"
+        :initial-height="box.height"
+        :initial-z-index="box.zIndex"
+        :initial-name="box.name"
+        :is-selected="canvasStore.boxSelectionMap.has(box.id)"
+        v-bind="getExtraProps(box)"
+        @select="selectBox(box.id, $event)"
+        @update:position="handleUpdatePosition(box.id, $event)"
+        @update:size="handleUpdateSize(box.id, $event)"
+        @update:name="handleUpdateName(box.id, $event)"
+        @delete="handleDelete(box.id)"
+        @maximize="handleMaximize(box.id)"
+        @drag-start="handleDragStart"
+        @drag-end="handleDragEnd"
+        v-on="getExtraEvents(box)"
+      />
     </InfiniteCanvas>
 
     <UploadProgress

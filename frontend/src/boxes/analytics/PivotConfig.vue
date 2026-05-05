@@ -6,11 +6,11 @@ import type {
   AvailableColumn,
   DateGranularity,
   MetricAggregation,
-} from '../types/pivot'
+} from '../../types/pivot'
 import {
   METRICS_BY_TYPE,
   DATE_GRANULARITIES,
-} from '../types/pivot'
+} from '../../types/pivot'
 
 const props = defineProps<{
   config: PivotConfig

@@ -1,0 +1,11 @@
+// Register all box modules
+import './sql'
+import './schema'
+import './note'
+import './detail'
+import './analytics'
+import './history'
+import './explain'
+
+export { getBoxDefinition, getAllBoxDefinitions, getMenuBoxDefinitions } from './registry'
+export type { BoxDefinition } from './registry'

@@ -11,6 +11,7 @@ import { useClickHouseStore } from '../stores/clickhouse'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useUserStore } from '../stores/user'
 import type { BoxType } from '../types/canvas'
+import { getMenuBoxDefinitions } from '../boxes'
 import type { ConnectionType } from '../types/connection'
 import { DATABASE_INFO } from '../types/database'
 import { useDialog } from '../composables/useDialog'
@@ -55,6 +56,8 @@ const duckdbStore = useDuckDBStore()
 const clickhouseStore = useClickHouseStore()
 const snowflakeStore = useSnowflakeStore()
 const userStore = useUserStore()
+
+const menuBoxDefs = computed(() => getMenuBoxDefinitions())
 
 // Emits for parent component to handle
 const emit = defineEmits<{
@@ -596,12 +599,14 @@ onUnmounted(() => {
         </button>
         <Transition name="dropdown">
           <div v-if="activeDropdown === 'new'" class="dropdown os-dropdown">
-            <button class="dropdown-item" @click="addBox('sql')">
-              SQL editor <span class="shortcut">&#x2318;J</span>
+            <button
+              v-for="def in menuBoxDefs"
+              :key="def.type"
+              class="dropdown-item"
+              @click="addBox(def.type)"
+            >
+              {{ def.label }} <span v-if="def.shortcut" class="shortcut" v-html="def.shortcut"></span>
             </button>
-            <button class="dropdown-item" @click="addBox('note')">Sticky note</button>
-            <button class="dropdown-item" @click="addBox('schema')">Schema browser</button>
-            <button class="dropdown-item" @click="addBox('history')">Query history</button>
             <div class="dropdown-divider"></div>
             <button class="dropdown-item" @click="handleImportClick">
               Import file...

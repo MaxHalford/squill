@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import BaseBox from './BaseBox.vue'
-import JsonTree from './JsonTree.vue'
-import { simplifyTypeName, getTypeCategory, formatDateValue } from '../utils/typeUtils'
-import { formatNumber } from '../utils/formatUtils'
+import BaseBox from '../../components/BaseBox.vue'
+import JsonTree from '../../components/JsonTree.vue'
+import { simplifyTypeName, getTypeCategory, formatDateValue } from '../../utils/typeUtils'
+import { formatNumber } from '../../utils/formatUtils'
 
 const props = defineProps({
   boxId: { type: Number, required: true },
