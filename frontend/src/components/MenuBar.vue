@@ -11,7 +11,8 @@ import { useClickHouseStore } from '../stores/clickhouse'
 import { useSnowflakeStore } from '../stores/snowflake'
 import { useUserStore } from '../stores/user'
 import type { BoxType } from '../types/canvas'
-import { getMenuBoxDefinitions } from '../boxes'
+import { getMenuBoxDefinitions, isBoxSupportedForEngine } from '../boxes'
+import type { BoxDefinition } from '../boxes'
 import type { ConnectionType } from '../types/connection'
 import { DATABASE_INFO } from '../types/database'
 import { useDialog } from '../composables/useDialog'
@@ -58,6 +59,17 @@ const snowflakeStore = useSnowflakeStore()
 const userStore = useUserStore()
 
 const menuBoxDefs = getMenuBoxDefinitions()
+const activeEngine = computed(() => connectionsStore.activeConnection?.type || 'duckdb')
+
+const isBoxDisabled = (def: BoxDefinition): boolean => {
+  return !isBoxSupportedForEngine(def, activeEngine.value)
+}
+
+const getDisabledTooltip = (def: BoxDefinition): string | undefined => {
+  if (!isBoxDisabled(def)) return undefined
+  const engineName = DATABASE_INFO[activeEngine.value].name
+  return `${def.label} is not available for ${engineName}`
+}
 
 // Emits for parent component to handle
 const emit = defineEmits<{
@@ -399,10 +411,11 @@ const handleReconnect = async (connectionId: string, event: Event) => {
 
 // Add box with engine and connection based on active connection
 const addBox = (boxType: BoxType) => {
+  const def = menuBoxDefs.find(d => d.type === boxType)
+  if (def && !isBoxSupportedForEngine(def, activeEngine.value)) return
   const activeConnection = connectionsStore.activeConnection
-  const engine = activeConnection?.type || 'duckdb'
   const connectionId = activeConnection?.id
-  const boxId = canvasStore.addBox(boxType, null, engine, connectionId)
+  const boxId = canvasStore.addBox(boxType, null, activeEngine.value, connectionId)
   emit('box-created', boxId)
   closeDropdown()
 }
@@ -603,6 +616,8 @@ onUnmounted(() => {
               v-for="def in menuBoxDefs"
               :key="def.type"
               class="dropdown-item"
+              :disabled="isBoxDisabled(def)"
+              v-tooltip="getDisabledTooltip(def)"
               @click="addBox(def.type)"
             >
               {{ def.label }} <span v-if="def.shortcut" class="shortcut" v-html="def.shortcut"></span>

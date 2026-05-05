@@ -53,6 +53,7 @@ registerBox({
   showInNewMenu: true,          // false = only created programmatically
   menuOrder: 5,                 // sort position in "New" menu
   // platforms: ['web'],        // omit for both web + desktop
+  // supportedEngines: ['duckdb'], // omit for all engines; restricts which DB engines can use this box
   dataProp: 'initialData',     // prop name to receive box.query data (omit if none)
 })
 ```
@@ -163,9 +164,39 @@ if (!isTauri()) {
 
 This skips registration entirely, so `addBox()` will throw for that type on the excluded platform.
 
+## Restricting a Box to Specific Database Engines
+
+Use the `supportedEngines` field in the box's `index.ts`:
+
+```typescript
+import type { DatabaseEngine } from '../../types/database'
+
+registerBox({
+  type: 'mybox',
+  // ...
+  supportedEngines: ['duckdb'],                    // DuckDB only
+  // supportedEngines: ['duckdb', 'clickhouse'],   // DuckDB + ClickHouse
+  // omit supportedEngines entirely for all engines
+})
+```
+
+This controls:
+- **Menu visibility** -- MenuBar grays out the item when the active connection's engine is not in the list, with a tooltip like "My box is not available for BigQuery"
+- **addBox() guard** -- MenuBar's `addBox()` silently ignores clicks on disabled items
+- The box can still be created programmatically from code that passes the right engine
+
+Helper to check support from any code:
+
+```typescript
+import { getBoxDefinition, isBoxSupportedForEngine } from '../boxes'
+
+const def = getBoxDefinition('mybox')
+if (def && isBoxSupportedForEngine(def, engine)) { /* ok */ }
+```
+
 ## Reference
 
-- Registry: `frontend/src/boxes/registry.ts` -- `BoxDefinition` interface
+- Registry: `frontend/src/boxes/registry.ts` -- `BoxDefinition` interface, `isBoxSupportedForEngine()` helper
 - Simple box example: `frontend/src/boxes/note/` (StickyNoteBox)
 - Complex box example: `frontend/src/boxes/sql/` (SqlBox with tree names, default queries)
 - Rendering: `frontend/src/views/Home.vue` -- `getBoxComponent`, `getExtraProps`, `getExtraEvents`, `registerBoxRef`

@@ -15,6 +15,8 @@ export interface BoxDefinition {
   showInNewMenu: boolean
   menuOrder?: number
   platforms?: ('web' | 'desktop')[]
+  /** Which database engines this box supports. Omit for all engines. */
+  supportedEngines?: DatabaseEngine[]
   /** The prop name used to pass box.query data to the component */
   dataProp?: 'initialQuery' | 'initialContent' | 'initialRowData' | 'initialData'
 }
@@ -39,4 +41,8 @@ export function getMenuBoxDefinitions(): BoxDefinition[] {
     .filter(d => d.showInNewMenu)
     .filter(d => !d.platforms || d.platforms.includes(platform))
     .sort((a, b) => (a.menuOrder ?? 99) - (b.menuOrder ?? 99))
+}
+
+export function isBoxSupportedForEngine(def: BoxDefinition, engine: DatabaseEngine): boolean {
+  return !def.supportedEngines || def.supportedEngines.includes(engine)
 }

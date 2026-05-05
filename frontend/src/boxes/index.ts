@@ -6,5 +6,5 @@ import './analytics'
 import './history'
 import './explain'
 
-export { getBoxDefinition, getAllBoxDefinitions, getMenuBoxDefinitions } from './registry'
+export { getBoxDefinition, getAllBoxDefinitions, getMenuBoxDefinitions, isBoxSupportedForEngine } from './registry'
 export type { BoxDefinition } from './registry'
