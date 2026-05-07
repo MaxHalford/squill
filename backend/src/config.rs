@@ -96,7 +96,7 @@ impl Config {
                 }),
 
             vip_emails: env::var("VIP_EMAILS")
-                .map(|v| v.split(',').map(|s| s.trim().to_string()).collect())
+                .map(|v| v.split(',').map(|s| s.trim().to_lowercase()).collect())
                 .unwrap_or_default(),
 
             test_mode: env::var("SQUILL_TEST_MODE")
