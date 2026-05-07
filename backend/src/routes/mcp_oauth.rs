@@ -299,14 +299,6 @@ pub struct AuthorizeParams {
     code_challenge_method: Option<String>,
 }
 
-#[derive(sqlx::FromRow)]
-struct OauthClientRow {
-    #[sqlx(rename = "client_id")]
-    _client_id: String,
-    client_name: Option<String>,
-    redirect_uris: String,
-}
-
 pub async fn authorize_get(
     State(state): State<AppState>,
     Query(params): Query<AuthorizeParams>,
@@ -409,8 +401,8 @@ pub async fn authorize_get(
 
     // Production: load registered client, validate redirect_uri, persist a
     // pending request, redirect to the frontend consent page.
-    let client: Option<OauthClientRow> = match sqlx::query_as(
-        "SELECT client_id AS _client_id, client_name, redirect_uris FROM oauth_clients WHERE client_id = ?",
+    let redirect_uris_json: Option<String> = match sqlx::query_scalar(
+        "SELECT redirect_uris FROM oauth_clients WHERE client_id = ?",
     )
     .bind(&client_id)
     .fetch_optional(&state.db)
@@ -426,14 +418,14 @@ pub async fn authorize_get(
             );
         }
     };
-    let Some(client) = client else {
+    let Some(redirect_uris_json) = redirect_uris_json else {
         return oauth_error(
             http::StatusCode::BAD_REQUEST,
             "invalid_client",
             "unknown client_id",
         );
     };
-    let registered = parse_redirect_uris(&client.redirect_uris);
+    let registered = parse_redirect_uris(&redirect_uris_json);
     if !registered.iter().any(|u| redirect_uri_matches(u, &redirect_uri)) {
         return oauth_error(
             http::StatusCode::BAD_REQUEST,
@@ -464,7 +456,6 @@ pub async fn authorize_get(
         );
     }
 
-    let _ = client.client_name;
     let consent = format!(
         "{}/oauth/consent?request_id={}",
         state.config.frontend_url.trim_end_matches('/'),
