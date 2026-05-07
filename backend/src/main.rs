@@ -1,7 +1,7 @@
 use clap::Parser;
 use squill_server::{
     build_app, config::Config, db, encryption::TokenEncryption, rate_limit::RateLimiter,
-    services::ws_manager::WsManager, token_revocation, AppState,
+    routes::mcp_oauth, services::ws_manager::WsManager, token_revocation, AppState,
 };
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -101,6 +101,8 @@ async fn main() -> anyhow::Result<()> {
                 Err(e) => tracing::warn!("Revoked token cleanup failed: {e}"),
                 _ => {}
             }
+            // Clean up expired OAuth state (codes, pending requests, refresh tokens)
+            mcp_oauth::cleanup_expired(&cleanup_pool).await;
         }
     });
 

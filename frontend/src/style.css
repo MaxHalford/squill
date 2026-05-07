@@ -514,3 +514,8 @@ html.dark .canvas-waves {
 .canvas-none {
   background-image: none !important;
 }
+
+/* ClickHouse logo is hardcoded near-black; invert it in dark mode. */
+html.dark img[src$="/logos/clickhouse.svg"] {
+  filter: invert(1);
+}

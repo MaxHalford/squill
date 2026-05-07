@@ -255,6 +255,12 @@ onMounted(async () => {
   // Clear the state
   sessionStorage.removeItem('squill-oauth-state')
 
+  // Honor a post-login redirect target (set by flows like /oauth/consent
+  // that bounce unauthenticated users through login first).
+  const next = sessionStorage.getItem('squill-login-next')
+  const postLoginTarget = next && next.startsWith('/') ? next : '/app'
+  if (next) sessionStorage.removeItem('squill-login-next')
+
   try {
     // Route to appropriate handler based on flow type
     if (flowType === 'login' && chainAction === 'then-bigquery') {
@@ -266,19 +272,19 @@ onMounted(async () => {
     } else if (flowType === 'login') {
       // Login-only flow (user just wants to sign in without adding BigQuery)
       await handleLoginFlow(code)
-      router.push('/app')
+      router.push(postLoginTarget)
     } else if (flowType === 'github-login') {
       // GitHub OAuth login flow
       await handleGitHubLoginFlow(code)
-      router.push('/app')
+      router.push(postLoginTarget)
     } else if (flowType === 'microsoft-login') {
       // Microsoft OAuth login flow
       await handleMicrosoftLoginFlow(code)
-      router.push('/app')
+      router.push(postLoginTarget)
     } else {
       // BigQuery connection flow (default, including legacy states)
       await handleBigQueryFlow(code)
-      router.push('/app')
+      router.push(postLoginTarget)
     }
   } catch (err: unknown) {
     status.value = 'error'

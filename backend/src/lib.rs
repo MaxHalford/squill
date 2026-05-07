@@ -159,15 +159,16 @@ pub fn build_app(state: AppState) -> Router {
             .route("/auth/desktop-token", axum::routing::get(routes::auth::desktop_token));
     }
 
-    // MCP OAuth (null-auth flow for desktop clients only — never exposed in production)
-    if config.desktop_mode {
-        app = app
-            .route("/.well-known/oauth-authorization-server", axum::routing::get(routes::mcp_oauth::metadata))
-            .route("/.well-known/oauth-protected-resource", axum::routing::get(routes::mcp_oauth::protected_resource))
-            .route("/register", axum::routing::post(routes::mcp_oauth::register))
-            .route("/authorize", axum::routing::get(routes::mcp_oauth::authorize))
-            .route("/token", axum::routing::post(routes::mcp_oauth::token));
-    }
+    // OAuth 2.1 + PKCE for MCP. Always exposed; the handlers branch on
+    // `config.desktop_mode` for the loopback null-auth short-circuit.
+    app = app
+        .route("/.well-known/oauth-authorization-server", axum::routing::get(routes::mcp_oauth::metadata))
+        .route("/.well-known/oauth-protected-resource", axum::routing::get(routes::mcp_oauth::protected_resource))
+        .route("/oauth/register", axum::routing::post(routes::mcp_oauth::register))
+        .route("/oauth/authorize", axum::routing::get(routes::mcp_oauth::authorize_get))
+        .route("/oauth/authorize/confirm", axum::routing::post(routes::mcp_oauth::authorize_confirm))
+        .route("/oauth/pending/{request_id}", axum::routing::get(routes::mcp_oauth::pending_get))
+        .route("/oauth/token", axum::routing::post(routes::mcp_oauth::token));
 
     // MCP (Model Context Protocol) endpoint — authenticated via JWT Bearer token
     app = app.route("/mcp", axum::routing::any(routes::mcp::authenticated_mcp_handler));

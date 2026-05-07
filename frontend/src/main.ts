@@ -4,6 +4,7 @@ import './style.css'
 import App from './App.vue'
 import type { RouteRecordRaw } from 'vue-router'
 import { vTooltip, vTooltipOverflow } from './directives/tooltip'
+import { isTauri } from './utils/tauri'
 import './boxes' // Register all box modules
 
 // Eagerly load landing page for fast initial render
@@ -19,11 +20,13 @@ const AuthCallback = () => import('./views/AuthCallback.vue')
 const AccountPage = () => import('./views/AccountPage.vue')
 const Changelog = () => import('./views/Changelog.vue')
 const NotFound = () => import('./views/NotFound.vue')
+const OAuthConsent = () => import('./views/OAuthConsent.vue')
 
 const routes: RouteRecordRaw[] = [
   { path: '/', component: LandingPage },
   { path: '/app', component: Home },
   { path: '/auth/callback', component: AuthCallback },
+  { path: '/oauth/consent', component: OAuthConsent },
   { path: '/account', component: AccountPage },
   { path: '/privacy-policy', component: PrivacyPolicy },
   { path: '/terms-of-service', component: TermsOfService },
@@ -56,10 +59,17 @@ export const createApp = ViteSSG(
       return false
     }
   },
-  ({ app }) => {
+  ({ app, router }) => {
     const pinia = createPinia()
     app.use(pinia)
     app.directive('tooltip', vTooltip)
     app.directive('tooltip-overflow', vTooltipOverflow)
+
+    // Desktop app skips the marketing landing page and opens directly on the canvas.
+    if (isTauri()) {
+      router.beforeEach((to) => {
+        if (to.path === '/') return '/app'
+      })
+    }
   }
 )

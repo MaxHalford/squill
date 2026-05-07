@@ -3,8 +3,12 @@ import { ref, watch } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import { useDialog } from '../composables/useDialog'
+import { isTauri } from '../utils/tauri'
+import BigQueryOAuthModal from './BigQueryOAuthModal.vue'
 
 const { confirm } = useDialog()
+const isDesktop = isTauri()
+const showBigQueryOAuthModal = ref(false)
 
 defineProps<{
   show: boolean
@@ -432,6 +436,24 @@ const handleResetAll = async () => {
               </div>
             </div>
 
+            <div
+              v-if="isDesktop"
+              class="settings-section"
+            >
+              <div class="setting-header">
+                Google OAuth (BigQuery)
+              </div>
+              <div class="setting-description">
+                Use your own Google OAuth client if your organization restricts third-party apps from signing in to BigQuery.
+              </div>
+              <button
+                class="action-button"
+                @click="showBigQueryOAuthModal = true"
+              >
+                Configure OAuth client...
+              </button>
+            </div>
+
             <div class="settings-section settings-section-danger">
               <div class="setting-header">
                 Reset
@@ -451,6 +473,12 @@ const handleResetAll = async () => {
       </div>
     </Transition>
   </Teleport>
+
+  <BigQueryOAuthModal
+    v-if="isDesktop"
+    :show="showBigQueryOAuthModal"
+    @close="showBigQueryOAuthModal = false"
+  />
 </template>
 
 <style scoped>

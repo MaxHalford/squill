@@ -664,6 +664,39 @@ pub async fn authenticated_mcp_handler(
     State(state): State<AppState>,
     req: axum::extract::Request,
 ) -> Response {
+    // RFC 9728 / draft-ietf-oauth-resource-metadata: clients discover the
+    // authorization server by following this header on a 401.
+    let unauthorized = |description: &str| -> Response {
+        let host = req
+            .headers()
+            .get("host")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("localhost");
+        let scheme = req
+            .headers()
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                if host.starts_with("localhost") || host.starts_with("127.0.0.1") {
+                    "http".into()
+                } else {
+                    "https".into()
+                }
+            });
+        let resource_metadata = format!("{scheme}://{host}/.well-known/oauth-protected-resource");
+        let www_authenticate = format!(
+            "Bearer resource_metadata=\"{resource_metadata}\", error=\"invalid_token\", error_description=\"{description}\""
+        );
+        (
+            StatusCode::UNAUTHORIZED,
+            [(http::header::WWW_AUTHENTICATE, www_authenticate)],
+            axum::Json(json!({"error": "unauthorized", "error_description": description})),
+        )
+            .into_response()
+    };
+
     // Extract Bearer token from Authorization header
     let token = match req
         .headers()
@@ -673,11 +706,7 @@ pub async fn authenticated_mcp_handler(
     {
         Some(t) => t.to_string(),
         None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                axum::Json(json!({"error": "unauthorized", "error_description": "Missing or invalid Authorization header"})),
-            )
-                .into_response();
+            return unauthorized("Missing or invalid Authorization header");
         }
     };
 
@@ -685,11 +714,7 @@ pub async fn authenticated_mcp_handler(
     let claims = match verify_session_token(&token, &state.config.jwt_secret) {
         Ok(c) => c,
         Err(_) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                axum::Json(json!({"error": "unauthorized", "error_description": "Invalid or expired token"})),
-            )
-                .into_response();
+            return unauthorized("Invalid or expired token");
         }
     };
 

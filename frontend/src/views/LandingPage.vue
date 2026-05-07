@@ -73,8 +73,8 @@ const proFeatures: ProFeature[] = [
   },
   {
     title: 'MCP server',
-    description: 'Control your canvases from Claude Code and other AI agents.',
-    longDescription: 'Squill exposes an MCP (Model Context Protocol) server that lets AI agents like Claude Code create canvases, add SQL boxes, execute queries, and browse your database schemas — all through your existing connections. Your AI assistant becomes a first-class canvas collaborator.',
+    description: 'Drive your canvases from any MCP-compatible AI agent.',
+    longDescription: 'Squill exposes an MCP (Model Context Protocol) server that lets any compatible AI agent — Claude Code, Claude Desktop, Cursor, Windsurf, custom OpenAI/Anthropic SDK clients, and anything else that speaks MCP — create canvases, add SQL boxes, execute queries, and browse your database schemas through your existing connections.\n\nConnect with the standard streamable-HTTP MCP URL:\n\n    https://backend-production-be4b.up.railway.app/mcp/\n\nThe agent runs OAuth 2.1 against your Squill account, you click Allow in the browser, and it gets a scoped token to drive your canvases. Available to Pro and VIP users; the desktop app also ships an offline MCP server for the local SQLite database.',
     released: true
   }
 ]
@@ -237,7 +237,8 @@ const webApplicationSchema = {
     'Drag and drop CSV file analysis',
     'Schema browser',
     'Go to definition (Cmd+click)',
-    'AI SQL line fixer (Pro)'
+    'AI SQL line fixer (Pro)',
+    'MCP server for AI agents (Pro)'
   ]
 }
 

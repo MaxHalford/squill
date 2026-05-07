@@ -555,8 +555,8 @@ onUnmounted(() => {
 <template>
   <div class="menu-bar">
     <div class="menu-left">
-      <!-- Logo -->
-      <router-link to="/" class="app-name">
+      <!-- Logo (hidden on desktop — feels more like a native app) -->
+      <router-link v-if="!isDesktop" to="/" class="app-name">
         Squill
       </router-link>
 
