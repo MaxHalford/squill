@@ -43,26 +43,29 @@ fn b64url() -> &'static base64::engine::general_purpose::GeneralPurpose {
     &base64::engine::general_purpose::URL_SAFE_NO_PAD
 }
 
-/// Build the externally-visible base URL for the server, honoring
-/// `X-Forwarded-Proto` (Railway and most reverse proxies set it).
-fn issuer_base(req_headers: &http::HeaderMap) -> String {
+/// Build the externally-visible base URL for the server.
+///
+/// Non-loopback hosts always use `https` (OAuth 2.1 requires it, and Railway
+/// edge sometimes leaks the internal `http` scheme via `X-Forwarded-Proto`).
+/// Loopback hosts honor `X-Forwarded-Proto` for local dev behind a proxy,
+/// otherwise default to `http`.
+pub fn issuer_base(req_headers: &http::HeaderMap) -> String {
     let host = req_headers
         .get("host")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("localhost");
-    let scheme = req_headers
-        .get("x-forwarded-proto")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.split(',').next().unwrap_or(s).trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            if host.starts_with("localhost") || host.starts_with("127.0.0.1") {
-                "http".into()
-            } else {
-                "https".into()
-            }
-        });
+    let is_loopback = host.starts_with("localhost") || host.starts_with("127.0.0.1");
+    let scheme = if is_loopback {
+        req_headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.split(',').next().unwrap_or(s).trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "http".into())
+    } else {
+        "https".into()
+    };
     format!("{scheme}://{host}")
 }
 

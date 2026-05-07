@@ -27,6 +27,7 @@ use rmcp::schemars;
 use rmcp::schemars::JsonSchema;
 
 use crate::auth::jwt::verify_session_token;
+use crate::routes::mcp_oauth::issuer_base;
 use crate::services::ws_manager::WsManager;
 use crate::AppState;
 
@@ -667,25 +668,8 @@ pub async fn authenticated_mcp_handler(
     // RFC 9728 / draft-ietf-oauth-resource-metadata: clients discover the
     // authorization server by following this header on a 401.
     let unauthorized = |description: &str| -> Response {
-        let host = req
-            .headers()
-            .get("host")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("localhost");
-        let scheme = req
-            .headers()
-            .get("x-forwarded-proto")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.split(',').next().unwrap_or(s).trim().to_string())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| {
-                if host.starts_with("localhost") || host.starts_with("127.0.0.1") {
-                    "http".into()
-                } else {
-                    "https".into()
-                }
-            });
-        let resource_metadata = format!("{scheme}://{host}/.well-known/oauth-protected-resource");
+        let base = issuer_base(req.headers());
+        let resource_metadata = format!("{base}/.well-known/oauth-protected-resource");
         let www_authenticate = format!(
             "Bearer resource_metadata=\"{resource_metadata}\", error=\"invalid_token\", error_description=\"{description}\""
         );
