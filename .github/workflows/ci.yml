@@ -19,14 +19,11 @@ jobs:
       - name: Install frontend dependencies
         run: cd frontend && bun install --frozen-lockfile
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+      - name: Type check
+        run: cd frontend && bun run type-check
 
-      - name: Install prek
-        run: uv tool install prek
-
-      - name: Run prek
-        run: prek run --all-files
+      - name: Lint
+        run: cd frontend && bun run lint
 
   frontend-tests:
     name: Frontend tests
