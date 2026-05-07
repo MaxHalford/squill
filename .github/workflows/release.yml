@@ -99,11 +99,17 @@ jobs:
             echo
             echo '## Install'
             echo
-            echo '**macOS** — the `.dmg` is unsigned. On first launch, right-click the app → Open, then confirm. One-time step.'
+            echo '**macOS** — the `.dmg` is unsigned. After dragging Squill to `/Applications`, remove the Gatekeeper quarantine attribute once:'
             echo
-            echo '**Windows** — the `.msi` is unsigned. SmartScreen may warn — click "More info" → "Run anyway".'
+            echo '```sh'
+            echo 'xattr -dr com.apple.quarantine /Applications/Squill.app'
+            echo '```'
             echo
-            echo '**Linux** — `.AppImage` is portable (chmod +x and run). `.deb` / `.rpm` for system install.'
+            echo 'Or, no terminal: double-click Squill, hit Cancel, then **System Settings → Privacy & Security → Open Anyway**.'
+            echo
+            echo '**Windows** — the `.msi` is unsigned. SmartScreen may warn — click **More info** → **Run anyway**.'
+            echo
+            echo '**Linux** — `.AppImage` is portable (`chmod +x` and run). `.deb` / `.rpm` for system install.'
             echo 'RELEASE_BODY_EOF'
           } >> "$GITHUB_OUTPUT"
 
