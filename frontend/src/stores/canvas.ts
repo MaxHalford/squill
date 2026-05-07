@@ -10,6 +10,7 @@ import { loadItem, saveItem, deleteItem } from '../utils/storage'
 import {
   LocalPersistence,
   SyncedPersistence,
+  migrateLocalToSynced,
   type CanvasPersistence,
 } from '../utils/canvasPersistence'
 import type { CanvasWSEvent } from '../utils/canvasWebSocket'
@@ -283,7 +284,21 @@ export const useCanvasStore = defineStore('canvas', () => {
     await initPersistence()
 
     // Load index (from API for Pro, IDB for free)
-    const index = await persistence.loadIndex()
+    let index = await persistence.loadIndex()
+
+    // First-time Pro upgrade: push existing IDB canvases up to the backend so
+    // they're available to MCP tools and other devices. Only when the backend
+    // is empty — we don't try to merge once the user is already syncing.
+    if (persistence.isSynced && (!index || index.canvases.length === 0)) {
+      const { useUserStore } = await import('./user')
+      const userStore = useUserStore()
+      if (userStore.sessionToken) {
+        const result = await migrateLocalToSynced(userStore.sessionToken)
+        if (result.migrated > 0) {
+          index = await persistence.loadIndex()
+        }
+      }
+    }
 
     if (index && index.canvases.length > 0) {
       canvasIndex.value = index.canvases

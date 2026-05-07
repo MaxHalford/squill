@@ -25,6 +25,7 @@ import {
   deleteBox as apiDeleteBox,
   deleteBoxesBatch as apiDeleteBoxesBatch,
   createServerCanvas,
+  importCanvasState,
 } from '../services/canvas'
 import { BACKEND_URL } from '@/services/backend'
 
@@ -329,4 +330,44 @@ export class SyncedPersistence implements CanvasPersistence {
     this.pendingUpdates.clear()
     this.disconnectFromCanvas()
   }
+}
+
+// ---------------------------------------------------------------------------
+// One-shot migration: push IDB-only canvases up to the backend the first time
+// a user transitions to Pro. Both endpoints below are idempotent (createCanvas
+// returns the existing row, importCanvasState skips when boxes exist), so
+// re-running on partial failure is safe.
+// ---------------------------------------------------------------------------
+
+export async function migrateLocalToSynced(
+  token: string,
+): Promise<{ migrated: number; failed: number }> {
+  const indexRaw = await loadItem<MultiCanvasIndex>('canvas:index')
+  const index = indexRaw && MultiCanvasIndexSchema.safeParse(indexRaw)
+  if (!index || !index.success || index.data.canvases.length === 0) {
+    return { migrated: 0, failed: 0 }
+  }
+
+  let migrated = 0
+  let failed = 0
+  for (const meta of index.data.canvases) {
+    try {
+      const dataRaw = await loadItem<CanvasData>(`canvas:${meta.id}`)
+      const parsed = dataRaw && CanvasDataSchema.safeParse(dataRaw)
+      if (!parsed || !parsed.success) continue
+      const data = parsed.data
+      await createServerCanvas(meta.id, meta.name, token)
+      await importCanvasState(
+        meta.id,
+        data.boxes as unknown as Record<string, unknown>[],
+        data.nextBoxId,
+        token,
+      )
+      migrated++
+    } catch (err) {
+      console.error(`Failed to migrate canvas ${meta.id}:`, err)
+      failed++
+    }
+  }
+  return { migrated, failed }
 }

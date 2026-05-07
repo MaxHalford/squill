@@ -72,9 +72,13 @@ export const useUserStore = defineStore('user', () => {
         console.error('Failed to get desktop token:', err)
       }
     } else if (sessionToken.value) {
-      fetchProfile().catch(err => {
+      // Awaited so callers of `ready` see the live plan/VIP state — the canvas
+      // store reads isPro at startup to pick Local vs Synced persistence.
+      try {
+        await fetchProfile()
+      } catch (err) {
         console.error('Failed to fetch profile on init:', err)
-      })
+      }
     }
   }
 
