@@ -144,6 +144,16 @@ export const UserSchema = z.object({
 export type UserData = z.infer<typeof UserSchema>
 
 // ============================================
+// OAuth settings schema (BYO Google OAuth client for desktop)
+// ============================================
+export const OAuthSettingsSchema = z.object({
+  googleClientId: z.string(),
+  googleClientSecret: z.string(),
+}).partial()
+
+export type OAuthSettingsData = z.infer<typeof OAuthSettingsSchema>
+
+// ============================================
 // Query history schema
 // ============================================
 const DatabaseEngineSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'snowflake'])

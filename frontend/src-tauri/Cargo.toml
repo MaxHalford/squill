@@ -1,6 +1,6 @@
 [package]
 name = "squill"
-version = "0.1.1"
+version = "0.2.1"
 edition = "2021"
 description = "Squill Desktop — local-first SQL workbench"
 
@@ -22,6 +22,7 @@ urlencoding = "2"
 tracing = "0.1"
 dotenvy = "0.15"
 axum = "0.8"
+reqwest = { version = "0.12", features = ["json"] }
 
 # Embedded backend server
 squill-server = { path = "../../backend" }

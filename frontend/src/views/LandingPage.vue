@@ -93,9 +93,14 @@ const desktopFeatures: DesktopFeature[] = [
     longDescription: 'The desktop app stores your database credentials in your operating system\'s native keychain — macOS Keychain, Windows Credential Manager, or the Linux secret service. Your secrets are encrypted at rest and protected by your OS login. There is no interaction with Squill\'s infrastructure at all.',
   },
   {
-    title: 'Native releases',
-    description: 'A stable app so you can focus on your work.',
-    longDescription: 'Squill Desktop ships as a native app for macOS, Windows, and Linux. You get lower memory usage, no browser tab to manage, and offline access to DuckDB. Each release is built and published on GitHub — download the .dmg, .exe, or .AppImage and you\'re set. The tradeoff: without a server, there\'s no collaboration, no cloud saves, and no syncing across devices. Everything stays on your machine.',
+    title: 'Stable releases',
+    description: 'Versioned downloads — no surprise changes underneath you.',
+    longDescription: 'The web app ships continuously — every change merged to main goes live within minutes. That\'s great for getting new features fast, but it also means the UI you used yesterday might behave differently today, and the occasional regression can slip through.\n\nSquill Desktop is the opposite. Each release is tagged, tested, and published as a versioned binary on GitHub for macOS, Windows, and Linux. You decide when to update. If a new version breaks something in your workflow, stay on the previous one until it\'s fixed. The tradeoff is you don\'t get brand-new features the moment they\'re written — in exchange, your workbench doesn\'t change underneath you.',
+  },
+  {
+    title: 'Bring your own OAuth',
+    description: 'Works inside locked-down Google Workspace orgs.',
+    longDescription: 'BigQuery sign-in uses a Google OAuth client. By default Squill ships a bundled one, which works for most users. But if your Google Workspace admin restricts third-party OAuth apps (a common security policy after incidents like the Vercel breach), the bundled client gets blocked and sign-in fails. To support this, Squill Desktop lets you supply your own OAuth client — same pattern as gcloud, the Google Workspace CLI, DBeaver, and Postman.\n\nYou create a Desktop-app OAuth client in your own GCP project, then either paste the client ID and secret into the Connection menu → BigQuery → settings cog, or set the SQUILL_GOOGLE_CLIENT_ID and SQUILL_GOOGLE_CLIENT_SECRET environment variables (useful for IT-managed rollouts). Env vars take precedence over the in-app values; in-app values take precedence over the bundled default.\n\nThe tradeoff: you have to maintain an OAuth client in your own GCP project. The upside: the consent screen shows your organization\'s name instead of Squill, your admin can scope the client to internal users only, and you can revoke access at any time without depending on Squill\'s infrastructure.',
   },
 ]
 
@@ -154,7 +159,7 @@ const faqs = [
 ]
 
 // Desktop download
-const DESKTOP_VERSION = '0.2.0'
+const DESKTOP_VERSION = '0.2.1'
 const RELEASE_BASE = 'https://github.com/MaxHalford/squill/releases/latest/download'
 const RELEASES_PAGE = 'https://github.com/MaxHalford/squill/releases/latest'
 
@@ -1793,6 +1798,7 @@ const latestChangelogHtml = latestChangelog ? renderMarkdown(latestChangelog.con
   margin: 0 0 var(--space-5) 0;
   line-height: var(--line-height-relaxed);
   color: var(--text-primary);
+  white-space: pre-line;
 }
 
 .modal-details {

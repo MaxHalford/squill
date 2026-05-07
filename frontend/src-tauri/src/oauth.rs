@@ -168,3 +168,27 @@ async fn write_html_response<W: AsyncWriteExt + Unpin>(
     stream.flush().await?;
     Ok(())
 }
+
+
+/// Read OAuth client credential overrides from environment variables.
+///
+/// Set `SQUILL_GOOGLE_CLIENT_ID` and/or `SQUILL_GOOGLE_CLIENT_SECRET` to
+/// override the bundled OAuth client without going through the settings UI.
+/// Useful for IT-managed deployments where the credentials are provisioned
+/// by configuration management rather than by the end user.
+#[derive(Debug, Serialize)]
+pub struct OAuthEnvOverrides {
+    pub google_client_id: Option<String>,
+    pub google_client_secret: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_oauth_env_overrides() -> OAuthEnvOverrides {
+    fn read(name: &str) -> Option<String> {
+        std::env::var(name).ok().filter(|v| !v.trim().is_empty())
+    }
+    OAuthEnvOverrides {
+        google_client_id: read("SQUILL_GOOGLE_CLIENT_ID"),
+        google_client_secret: read("SQUILL_GOOGLE_CLIENT_SECRET"),
+    }
+}

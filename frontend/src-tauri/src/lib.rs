@@ -2,7 +2,7 @@ mod cli_executor;
 mod oauth;
 mod secure_store;
 
-use oauth::start_oauth_flow;
+use oauth::{get_oauth_env_overrides, start_oauth_flow};
 use secure_store::{delete_secret, load_secret, save_secret};
 use squill_server::rate_limit::RateLimiter;
 use squill_server::services::ws_manager::WsManager;
@@ -80,6 +80,7 @@ fn start_backend_server(app_data_dir: std::path::PathBuf) {
                 encryption: None,
                 http_client: reqwest::Client::new(),
                 rate_limiter: Arc::new(RateLimiter::new(20, 60)),
+                general_rate_limiter: Arc::new(RateLimiter::new(200, 60)),
             };
 
             let app = squill_server::build_app(state);
@@ -98,6 +99,7 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             start_oauth_flow,
+            get_oauth_env_overrides,
             save_secret,
             load_secret,
             delete_secret,

@@ -14,8 +14,6 @@ export type {
 } from '../services/bigquery/types'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
-const GOOGLE_DESKTOP_CLIENT_ID = import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_ID || GOOGLE_CLIENT_ID
-const GOOGLE_DESKTOP_CLIENT_SECRET = import.meta.env.VITE_GOOGLE_DESKTOP_CLIENT_SECRET || ''
 const OAUTH_STATE_KEY = 'squill-oauth-state'
 import { BACKEND_URL } from '@/services/backend'
 
@@ -87,10 +85,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   }
 
   const signInWithGoogle = async (): Promise<void> => {
-    if (!GOOGLE_CLIENT_ID) {
-      throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
-    }
-
     const tauriDetected = isTauri()
     console.log('[BigQuery] signInWithGoogle — isTauri():', tauriDetected,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -101,8 +95,14 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       '| __TAURI_IPC__:', !!(window as any).__TAURI_IPC__)
 
     if (tauriDetected) {
+      const { getGoogleOAuthConfig } = await import('../services/oauth/googleClientConfig')
+      const { clientId, clientSecret, source } = await getGoogleOAuthConfig()
+      if (!clientId || !clientSecret) {
+        throw new Error('Google OAuth client is not configured. Open Settings → Google OAuth (BigQuery) to add a client ID and secret, or set the SQUILL_GOOGLE_CLIENT_ID and SQUILL_GOOGLE_CLIENT_SECRET environment variables.')
+      }
+      console.log('[BigQuery] Using OAuth client from:', source)
       const { runDesktopGoogleAuth } = await import('../services/oauth/desktopGoogle')
-      const tokens = await runDesktopGoogleAuth(GOOGLE_DESKTOP_CLIENT_ID, GOOGLE_DESKTOP_CLIENT_SECRET, BIGQUERY_SCOPES)
+      const tokens = await runDesktopGoogleAuth(clientId, clientSecret, BIGQUERY_SCOPES)
       console.log('[BigQuery] Desktop OAuth complete, creating connection for', tokens.email)
 
       const connectionId = connectionsStore.addBigQueryConnection(
@@ -119,6 +119,9 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     // Web: incremental auth via the Squill backend.
     // If user isn't logged in, chain full login first; otherwise request
     // only the BigQuery scopes on top of existing grants.
+    if (!GOOGLE_CLIENT_ID) {
+      throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
+    }
     const { useUserStore } = await import('./user')
     const userStore = useUserStore()
 

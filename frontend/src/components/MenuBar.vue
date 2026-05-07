@@ -30,6 +30,7 @@ import { isTauri } from '../utils/tauri'
 // Web-only features (accounts, billing) are hidden in the desktop app.
 const isWebApp = !isTauri()
 import SettingsPanel from './SettingsPanel.vue'
+import BigQueryOAuthModal from './BigQueryOAuthModal.vue'
 import CopyButton from './CopyButton.vue'
 import { BACKEND_URL } from '@/services/backend'
 
@@ -87,6 +88,10 @@ const showSnowflakeModal = ref(false)
 
 // Settings panel state
 const showSettingsPanel = ref(false)
+
+// BigQuery OAuth modal state (desktop only)
+const showBigQueryOAuthModal = ref(false)
+const isDesktop = isTauri()
 
 // Delayed expired state - prevents flash when tokens are being refreshed
 // Only show "(Expired)" after the token has been expired for 2 seconds
@@ -691,6 +696,30 @@ onUnmounted(() => {
                   @click.stop
                 >
                   <button
+                    v-if="connection.type === 'bigquery' && isDesktop"
+                    v-tooltip="'OAuth client settings'"
+                    class="reconnect-btn"
+                    @click="showBigQueryOAuthModal = true"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="3"
+                      />
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                  </button>
+                  <button
                     v-if="connection.type === 'bigquery'"
                     v-tooltip="shouldShowExpired(connection.id) ? 'Reconnect' : 'Re-login'"
                     class="reconnect-btn"
@@ -766,17 +795,43 @@ onUnmounted(() => {
                 :class="{ open: addDatabaseMenuOpen }"
                 @click.stop
               >
-                <button
-                  class="dropdown-item flyout-item"
-                  @click="handleAddDatabase('bigquery')"
-                >
-                  <img
-                    :src="DATABASE_INFO.bigquery.logo"
-                    :alt="DATABASE_INFO.bigquery.name"
-                    class="db-icon"
+                <div class="flyout-item-wrapper">
+                  <button
+                    class="dropdown-item flyout-item"
+                    @click="handleAddDatabase('bigquery')"
                   >
-                  {{ DATABASE_INFO.bigquery.name }}
-                </button>
+                    <img
+                      :src="DATABASE_INFO.bigquery.logo"
+                      :alt="DATABASE_INFO.bigquery.name"
+                      class="db-icon"
+                    >
+                    {{ DATABASE_INFO.bigquery.name }}
+                  </button>
+                  <button
+                    v-if="isDesktop"
+                    v-tooltip="'OAuth client settings'"
+                    class="flyout-cog"
+                    @click.stop="showBigQueryOAuthModal = true"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="3"
+                      />
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                  </button>
+                </div>
                 <button
                   class="dropdown-item flyout-item"
                   @click="handleAddDatabase('clickhouse')"
@@ -1091,6 +1146,13 @@ onUnmounted(() => {
 
   <!-- Settings Panel -->
   <SettingsPanel :show="showSettingsPanel" @close="showSettingsPanel = false" />
+
+  <!-- BigQuery OAuth client modal (desktop) -->
+  <BigQueryOAuthModal
+    v-if="isDesktop"
+    :show="showBigQueryOAuthModal"
+    @close="showBigQueryOAuthModal = false"
+  />
 </template>
 
 <style scoped>
@@ -1571,6 +1633,32 @@ html.dark .provider-icon-invert {
 
 .flyout-item:hover {
   background: var(--surface-secondary);
+}
+
+.flyout-item-wrapper {
+  display: flex;
+  align-items: stretch;
+}
+
+.flyout-item-wrapper .flyout-item {
+  flex: 1;
+}
+
+.flyout-cog {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.flyout-cog:hover {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
 }
 
 .db-icon {
