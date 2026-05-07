@@ -652,6 +652,12 @@ onUnmounted(() => {
           class="menu-button"
           @click.stop="toggleDropdown('connection')"
         >
+          <img
+            v-if="connectionsStore.activeConnection"
+            :src="DATABASE_INFO[connectionsStore.activeConnection.type].logo"
+            :alt="DATABASE_INFO[connectionsStore.activeConnection.type].name"
+            class="menu-db-icon"
+          >
           <span class="menu-text">Connection</span>
           <span v-if="activeConnectionHasIssue" class="connection-warning" v-tooltip="'Connection issue'">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1247,6 +1253,13 @@ onUnmounted(() => {
   justify-content: center;
   opacity: 0.6;
   font-size: 10px;
+}
+
+.menu-db-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-right: var(--space-1);
 }
 
 .token-expired-indicator {
