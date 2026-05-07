@@ -12,14 +12,14 @@ export ADMIN_PASSWORD_HASH=$(caddy hash-password --plaintext "$ADMIN_PASSWORD")
 # Extract file path from DATABASE_URL (e.g. "sqlite:///data/squill.db" -> "/data/squill.db")
 DB_PATH="${DATABASE_URL#sqlite:}"
 
-# Start sqlite-web on loopback only (Caddy handles external access with basicauth)
+# Start sqlite-web on loopback only — Caddy basicauth gates /admin, so the
+# inner -P prompt is redundant (and crashes without a TTY).
 /opt/sqlite-web/bin/sqlite_web "$DB_PATH" \
     --host 127.0.0.1 \
     --port 8001 \
     --url-prefix /admin \
     --no-browser \
     --foreign-keys \
-    -P \
     &
 
 # Start the Rust backend on internal port
