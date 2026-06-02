@@ -4,10 +4,12 @@ import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import { useDialog } from '../composables/useDialog'
 import { isTauri } from '../utils/tauri'
+import { SHOW_PREMIUM } from '../constants/features'
 import BigQueryOAuthModal from './BigQueryOAuthModal.vue'
 
 const { confirm } = useDialog()
 const isDesktop = isTauri()
+const showPremium = SHOW_PREMIUM
 const showBigQueryOAuthModal = ref(false)
 
 defineProps<{
@@ -175,7 +177,7 @@ const handleResetAll = async () => {
               </div>
             </div>
 
-            <div class="settings-section">
+            <div v-if="showPremium" class="settings-section">
               <div class="setting-header">
                 Hex remover
                 <span

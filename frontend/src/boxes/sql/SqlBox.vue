@@ -22,6 +22,7 @@ import { DATABASE_INFO } from '../../types/database'
 import { hasCTEs } from '../../utils/cteParser'
 import { useSqlGlotStore } from '../../stores/sqlglot'
 import { useUserStore } from '../../stores/user'
+import { SHOW_PREMIUM } from '../../constants/features'
 
 const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()
@@ -29,6 +30,7 @@ const sqlglotStore = useSqlGlotStore()
 const queryHistoryStore = useQueryHistoryStore()
 const settingsStore = useSettingsStore()
 const userStore = useUserStore()
+const showPremium = SHOW_PREMIUM
 
 // Inject box executor registry for recursive dependency execution
 const registerBoxExecutor = inject<((boxId: number, runFn: () => Promise<void>) => void) | null>('registerBoxExecutor', null)
@@ -509,6 +511,7 @@ defineExpose({
 
       <!-- Wand (AI spell) -->
       <button
+        v-if="showPremium"
         v-tooltip="wandButtonTooltip"
         class="header-action-btn"
         :class="{ active: panelShowSpellInput, casting: panelIsCastingSpell }"

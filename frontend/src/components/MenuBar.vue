@@ -26,9 +26,12 @@ import { refreshSchemaCache } from '../utils/schemaAdapter'
 import ClickHouseConnectionModal from './ClickHouseConnectionModal.vue'
 import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
 import { isTauri } from '../utils/tauri'
+import { SHOW_PREMIUM } from '../constants/features'
 
 // Web-only features (accounts, billing) are hidden in the desktop app.
 const isWebApp = !isTauri()
+// Premium UI (sign-in, Pro badge, MCP, Share) is hidden for the public launch.
+const showPremium = SHOW_PREMIUM
 import SettingsPanel from './SettingsPanel.vue'
 import BigQueryOAuthModal from './BigQueryOAuthModal.vue'
 import CopyButton from './CopyButton.vue'
@@ -590,15 +593,17 @@ onUnmounted(() => {
               :disabled="!canvasStore.activeCanvasId"
               @click="handleRenameActive"
             >Rename canvas...</button>
-            <div class="dropdown-divider"></div>
-            <button
-              class="dropdown-item"
-              :disabled="!userStore.isPro || !canvasStore.activeCanvasId"
-              @click="showShareDialog = true; activeDropdown = null"
-            >
-              Share...
-              <span v-if="!userStore.isPro" class="item-hint">(Pro)</span>
-            </button>
+            <template v-if="showPremium">
+              <div class="dropdown-divider"></div>
+              <button
+                class="dropdown-item"
+                :disabled="!userStore.isPro || !canvasStore.activeCanvasId"
+                @click="showShareDialog = true; activeDropdown = null"
+              >
+                Share...
+                <span v-if="!userStore.isPro" class="item-hint">(Pro)</span>
+              </button>
+            </template>
             <div class="dropdown-divider"></div>
             <button
               class="dropdown-item dropdown-item-danger"
@@ -960,7 +965,11 @@ onUnmounted(() => {
         </button>
         <Transition name="dropdown">
           <div v-if="activeDropdown === 'tools'" class="dropdown os-dropdown">
-            <button class="dropdown-item" @click="showMcpModal = true; activeDropdown = null">
+            <button
+              v-if="showPremium"
+              class="dropdown-item"
+              @click="showMcpModal = true; activeDropdown = null"
+            >
               Connect via MCP...
             </button>
             <button class="dropdown-item" @click="handleRefreshSchemas">Refresh schemas</button>
@@ -979,11 +988,11 @@ onUnmounted(() => {
 
     <div class="menu-right">
       <!-- Pro Badge -->
-      <span v-if="userStore.isPro" class="pro-badge menu-pro-badge">Pro</span>
+      <span v-if="showPremium && userStore.isPro" class="pro-badge menu-pro-badge">Pro</span>
 
       <!-- User Menu (web only — desktop has no Squill accounts) -->
       <div
-        v-if="userStore.isLoggedIn && isWebApp"
+        v-if="showPremium && userStore.isLoggedIn && isWebApp"
         class="menu-item user-menu-item"
       >
         <button
@@ -1027,7 +1036,7 @@ onUnmounted(() => {
 
       <!-- Sign In Dropdown (web only — desktop has no Squill accounts) -->
       <div
-        v-else-if="isWebApp"
+        v-else-if="showPremium && isWebApp"
         class="menu-item sign-in-menu-item"
       >
         <button
@@ -1088,12 +1097,13 @@ onUnmounted(() => {
 
   <!-- Share Dialog (Pro only) -->
   <ShareDialog
+    v-if="showPremium"
     :show="showShareDialog"
     @close="showShareDialog = false"
   />
 
   <!-- MCP Setup Modal -->
-  <Teleport to="body">
+  <Teleport v-if="showPremium" to="body">
     <Transition name="dropdown">
       <div v-if="showMcpModal" class="modal-overlay" @click.self="showMcpModal = false">
         <div class="modal-content mcp-modal">
