@@ -82,8 +82,8 @@ const createShare = async (permission: 'read' | 'write') => {
     const share = await res.json()
     shares.value.push(share)
     canvasStore.setCanvasShared(canvasId.value!, true)
-    // Start collaboration immediately so the current IDB state is pushed to Hocuspocus.
-    // Only needed on first share — if already collaborative, Yjs is already live.
+    // Start collaboration immediately so the current IDB state is pushed to the server.
+    // Only needed on first share — if already collaborative, the WS sync is already live.
     if (canvasStore.persistenceMode !== 'synced' && userStore.sessionToken) {
       canvasStore.enableSync(canvasId.value!)
     }

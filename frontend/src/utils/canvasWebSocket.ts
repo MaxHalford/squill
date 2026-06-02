@@ -1,6 +1,5 @@
 /**
- * WebSocket client for real-time canvas sync.
- * Replaces HocuspocusProvider with a simpler JSON-based protocol.
+ * WebSocket client for real-time canvas sync. Simple JSON-based protocol.
  */
 
 export interface CanvasWSEvent {

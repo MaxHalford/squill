@@ -405,7 +405,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     // Flush pending saves before switching (IDB only)
     if (persistenceMode.value === 'local') debouncedSaveState.flush()
 
-    // Save current canvas (IDB only; Hocuspocus handles collaborative saves)
+    // Save current canvas (IDB only; the WS sync layer handles collaborative saves)
     if (activeCanvasId.value && persistenceMode.value === 'local') {
       saveCanvasData(activeCanvasId.value)
     }
