@@ -5,6 +5,7 @@ import { useHead } from '@unhead/vue'
 import { renderMarkdown } from '../utils/markdown'
 import { DATABASE_ENGINES, DATABASE_INFO, type DatabaseEngine, type DatabaseInfo } from '../types/database'
 import { changelog } from '../data/changelog'
+import { SHOW_PREMIUM } from '../constants/features'
 
 const router = useRouter()
 
@@ -127,18 +128,12 @@ const closeProFeatureModal = () => {
 }
 
 // FAQ data (database-specific entries removed - now shown in database modal)
-const faqs = [
+const baseFaqs = [
   {
     question: 'Is my data safe?',
-    answer: 'Yes. All queries run client-side — directly from your browser to the database API. Your data and results never pass through Squill servers. The web app stores credentials in browser storage (IndexedDB). For stronger security, Squill Desktop stores credentials in your OS keychain (macOS Keychain / Windows Credential Manager), which is encrypted at rest and protected by your OS login.'
-  },
-  {
-    question: 'Why would I want Squill Desktop?',
-    answer: 'Squill Desktop stores credentials in your OS keychain instead of browser storage — the same approach used by DataGrip and DBeaver. You also get native performance, lower memory usage, and no browser tab to manage.'
-  },
-  {
-    question: 'Do I need to create an account?',
-    answer: 'No, you can start querying right away without an account. Creating an account lets you upgrade to Squill Pro for cloud saves, collaboration, and AI features. You do not need an account to process CSV files and play with DuckDB.'
+    answer: SHOW_PREMIUM
+      ? 'Yes. All queries run client-side — directly from your browser to the database API. Your data and results never pass through Squill servers. The web app stores credentials in browser storage (IndexedDB). For stronger security, Squill Desktop stores credentials in your OS keychain (macOS Keychain / Windows Credential Manager), which is encrypted at rest and protected by your OS login.'
+      : 'Yes. All queries run client-side — directly from your browser to the database API. Your data and results never pass through Squill servers. Credentials are stored in browser storage (IndexedDB) on your machine.'
   },
   {
     question: 'Can I query CSV files with SQL?',
@@ -151,12 +146,25 @@ const faqs = [
   {
     question: 'Is Squill open source?',
     answer: 'Yes, Squill is fully open source under the AGPL license. You can inspect the code, contribute, or self-host it. The source code is available on GitHub.'
+  }
+]
+
+const premiumFaqs = [
+  {
+    question: 'Why would I want Squill Desktop?',
+    answer: 'Squill Desktop stores credentials in your OS keychain instead of browser storage — the same approach used by DataGrip and DBeaver. You also get native performance, lower memory usage, and no browser tab to manage.'
+  },
+  {
+    question: 'Do I need to create an account?',
+    answer: 'No, you can start querying right away without an account. Creating an account lets you upgrade to Squill Pro for cloud saves, collaboration, and AI features. You do not need an account to process CSV files and play with DuckDB.'
   },
   {
     question: 'Why 8€/month for Pro?',
     answer: 'The paid features involve compute costs: LLM tokens for fixing queries, storage costs for saving canvases, and server costs for collaboration. There are no vanity features.'
   }
 ]
+
+const faqs = SHOW_PREMIUM ? [...baseFaqs, ...premiumFaqs] : baseFaqs
 
 // Desktop download
 const DESKTOP_VERSION = '0.2.1'
@@ -203,30 +211,27 @@ const webApplicationSchema = {
   '@type': 'WebApplication',
   name: 'Squill',
   url: 'https://squill.dev',
-  description: 'Open source SQL canvas in the browser. Query CSV files with DuckDB, connect to BigQuery, ClickHouse, and Snowflake. All queries run client-side. Infinite canvas, drag-and-drop CSV, AI query fixer. No install needed.',
+  description: 'Open source SQL canvas in the browser. Query CSV files with DuckDB, connect to BigQuery, ClickHouse, and Snowflake. All queries run client-side. Infinite canvas, drag-and-drop CSV. No install needed.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Any',
   browserRequirements: 'Requires JavaScript, WebAssembly support',
-  offers: [
-    {
-      '@type': 'Offer',
-      price: '0',
-      priceCurrency: 'EUR',
-      name: 'Free'
-    },
-    {
-      '@type': 'Offer',
-      price: '8',
-      priceCurrency: 'EUR',
-      name: 'Pro',
-      priceSpecification: {
-        '@type': 'UnitPriceSpecification',
-        price: '8',
-        priceCurrency: 'EUR',
-        billingDuration: 'P1M'
-      }
-    }
-  ],
+  offers: SHOW_PREMIUM
+    ? [
+        { '@type': 'Offer', price: '0', priceCurrency: 'EUR', name: 'Free' },
+        {
+          '@type': 'Offer',
+          price: '8',
+          priceCurrency: 'EUR',
+          name: 'Pro',
+          priceSpecification: {
+            '@type': 'UnitPriceSpecification',
+            price: '8',
+            priceCurrency: 'EUR',
+            billingDuration: 'P1M'
+          }
+        }
+      ]
+    : [{ '@type': 'Offer', price: '0', priceCurrency: 'EUR', name: 'Free' }],
   featureList: [
     'Infinite canvas for SQL queries',
     'DuckDB WebAssembly support',
@@ -237,8 +242,7 @@ const webApplicationSchema = {
     'Drag and drop CSV file analysis',
     'Schema browser',
     'Go to definition (Cmd+click)',
-    'AI SQL line fixer (Pro)',
-    'MCP server for AI agents (Pro)'
+    ...(SHOW_PREMIUM ? ['AI SQL line fixer (Pro)', 'MCP server for AI agents (Pro)'] : [])
   ]
 }
 
@@ -261,7 +265,9 @@ useHead({
   meta: [
     {
       name: 'description',
-      content: 'Open source SQL editor that runs in your browser. Query CSV files with DuckDB, connect to BigQuery, ClickHouse, and Snowflake. All queries run client-side. Infinite canvas, drag-and-drop CSV, schema browser, AI query fixer. No install needed.'
+      content: SHOW_PREMIUM
+        ? 'Open source SQL editor that runs in your browser. Query CSV files with DuckDB, connect to BigQuery, ClickHouse, and Snowflake. All queries run client-side. Infinite canvas, drag-and-drop CSV, schema browser, AI query fixer. No install needed.'
+        : 'Open source SQL editor that runs in your browser. Query CSV files with DuckDB, connect to BigQuery, ClickHouse, and Snowflake. All queries run client-side. Infinite canvas, drag-and-drop CSV, schema browser. No install needed.'
     },
     // Open Graph
     { property: 'og:title', content: 'Squill - Open Source SQL Canvas' },
@@ -844,7 +850,7 @@ const latestChangelogHtml = latestChangelog ? renderMarkdown(latestChangelog.con
     </Teleport>
 
     <!-- Desktop Section -->
-    <section class="section desktop">
+    <section v-if="SHOW_PREMIUM" class="section desktop">
       <h2 class="section-title">
         SQUILL DESKTOP
       </h2>
@@ -919,7 +925,7 @@ const latestChangelogHtml = latestChangelog ? renderMarkdown(latestChangelog.con
     </Teleport>
 
     <!-- Pro Section -->
-    <section class="section section-inverted pro">
+    <section v-if="SHOW_PREMIUM" class="section section-inverted pro">
       <div class="pro-container">
         <h2 class="section-title">
           SQUILL PRO

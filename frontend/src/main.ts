@@ -5,6 +5,7 @@ import App from './App.vue'
 import type { RouteRecordRaw } from 'vue-router'
 import { vTooltip, vTooltipOverflow } from './directives/tooltip'
 import { isTauri } from './utils/tauri'
+import { SHOW_PREMIUM } from './constants/features'
 import './boxes' // Register all box modules
 
 // Eagerly load landing page for fast initial render
@@ -69,6 +70,16 @@ export const createApp = ViteSSG(
     if (isTauri()) {
       router.beforeEach((to) => {
         if (to.path === '/') return '/app'
+      })
+    }
+
+    // Premium-only routes (Squill account, MCP consent) are hidden during the
+    // public launch. /auth/callback is intentionally not blocked — BigQuery's
+    // OAuth flow shares the same callback. Redirect any direct hits to the app.
+    if (!SHOW_PREMIUM) {
+      const premiumOnlyPaths = new Set(['/account', '/oauth/consent'])
+      router.beforeEach((to) => {
+        if (premiumOnlyPaths.has(to.path)) return '/app'
       })
     }
   }
