@@ -1,15 +1,8 @@
 //! OAuth 2.1 + PKCE endpoints for MCP clients.
 //!
-//! Two operating modes share the same routes:
-//!
-//! * **Production** (`config.desktop_mode == false`): real OAuth. Pro/VIP users
-//!   complete a consent flow in the browser; the issued JWT is scoped to their
-//!   actual user_id, and refresh tokens rotate per OAuth 2.1 (RFC 6749 §10.4).
-//!
-//! * **Desktop** (`config.desktop_mode == true`, Tauri loopback): the
-//!   `authorize` and `token` handlers short-circuit to issue a JWT for
-//!   `config.mcp_user_id` without consent — the original null-auth shim,
-//!   safe because the server only listens on loopback.
+//! Pro/VIP users complete a consent flow in the browser; the issued JWT is
+//! scoped to their actual user_id, and refresh tokens rotate per OAuth 2.1
+//! (RFC 6749 §10.4).
 //!
 //! All `/oauth/*` and `/.well-known/*` responses use the RFC 6749 §5.2 error
 //! envelope `{error, error_description}` so MCP clients can parse failures.
@@ -339,68 +332,8 @@ pub async fn authorize_get(
         );
     };
 
-    // Desktop short-circuit: validate loopback redirect_uri, mint code for the
-    // local user, redirect immediately. No consent UI, no client lookup.
-    if state.config.desktop_mode {
-        let parsed = match redirect_uri.parse::<http::Uri>() {
-            Ok(u) => u,
-            Err(_) => {
-                return oauth_error(
-                    http::StatusCode::BAD_REQUEST,
-                    "invalid_request",
-                    "redirect_uri is not a valid URI",
-                );
-            }
-        };
-        let host = parsed.host().unwrap_or("");
-        if !is_loopback_host(host) {
-            return oauth_error(
-                http::StatusCode::BAD_REQUEST,
-                "invalid_request",
-                "redirect_uri must be a loopback address in desktop mode",
-            );
-        }
-        // Ensure a placeholder client row exists so the FK on oauth_codes holds.
-        let _ = sqlx::query(
-            "INSERT OR IGNORE INTO oauth_clients (client_id, client_name, redirect_uris, token_endpoint_auth_method, created_at) VALUES (?, ?, ?, 'none', datetime('now'))",
-        )
-        .bind(&client_id)
-        .bind("Desktop MCP Client")
-        .bind(serde_json::to_string(&[redirect_uri.clone()]).unwrap_or_else(|_| "[]".into()))
-        .execute(&state.db)
-        .await;
-
-        let code = Uuid::new_v4().to_string();
-        if let Err(e) = sqlx::query(
-            "INSERT INTO oauth_codes (code, user_id, client_id, redirect_uri, code_challenge, code_challenge_method, scope, expires_at, used) VALUES (?, ?, ?, ?, ?, 'S256', ?, ?, 0)",
-        )
-        .bind(&code)
-        .bind(&state.config.mcp_user_id)
-        .bind(&client_id)
-        .bind(&redirect_uri)
-        .bind(&code_challenge)
-        .bind(params.scope.as_deref())
-        .bind(now_plus_secs_sqlite(AUTH_CODE_TTL_SECS))
-        .execute(&state.db)
-        .await
-        {
-            tracing::error!("oauth_codes insert (desktop) failed: {e}");
-            return oauth_error(
-                http::StatusCode::INTERNAL_SERVER_ERROR,
-                "server_error",
-                "failed to issue authorization code",
-            );
-        }
-
-        let mut redirect = format!("{}?code={}", redirect_uri, code);
-        if let Some(s) = params.state.as_deref() {
-            redirect.push_str(&format!("&state={}", urlencoding::encode_minimal(s)));
-        }
-        return Redirect::temporary(&redirect).into_response();
-    }
-
-    // Production: load registered client, validate redirect_uri, persist a
-    // pending request, redirect to the frontend consent page.
+    // Load registered client, validate redirect_uri, persist a pending request,
+    // redirect to the frontend consent page.
     let redirect_uris_json: Option<String> = match sqlx::query_scalar(
         "SELECT redirect_uris FROM oauth_clients WHERE client_id = ?",
     )
@@ -488,13 +421,6 @@ pub async fn pending_get(
     AuthUser(_user): AuthUser,
     Path(request_id): Path<String>,
 ) -> Response {
-    if state.config.desktop_mode {
-        return oauth_error(
-            http::StatusCode::NOT_FOUND,
-            "not_found",
-            "endpoint disabled in desktop mode",
-        );
-    }
     let pending: Option<PendingRow> = match sqlx::query_as(
         "SELECT client_id, redirect_uri, scope, expires_at FROM oauth_pending_requests WHERE request_id = ?",
     )
@@ -585,14 +511,6 @@ pub async fn authorize_confirm(
     AuthUser(user): AuthUser,
     Json(body): Json<ConfirmRequest>,
 ) -> Response {
-    if state.config.desktop_mode {
-        return oauth_error(
-            http::StatusCode::NOT_FOUND,
-            "not_found",
-            "endpoint disabled in desktop mode",
-        );
-    }
-
     let mut tx = match state.db.begin().await {
         Ok(t) => t,
         Err(e) => {
@@ -904,27 +822,25 @@ async fn token_authorization_code(state: AppState, body: TokenRequest) -> Respon
         );
     }
 
-    // For prod (real users), enforce Pro/VIP at exchange time too — plan
-    // could have changed between consent and exchange.
-    if !state.config.desktop_mode {
-        let plan_check: Option<(String, i64)> = sqlx::query_as(
-            "SELECT plan, is_vip FROM users WHERE id = ?",
-        )
-        .bind(&row.user_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .ok()
-        .flatten();
-        match plan_check {
-            Some((plan, is_vip)) if plan == "pro" || is_vip != 0 => {}
-            _ => {
-                let _ = tx.commit().await;
-                return oauth_error(
-                    http::StatusCode::FORBIDDEN,
-                    "access_denied",
-                    "Pro subscription required",
-                );
-            }
+    // Enforce Pro/VIP at exchange time — plan could have changed between
+    // consent and exchange.
+    let plan_check: Option<(String, i64)> = sqlx::query_as(
+        "SELECT plan, is_vip FROM users WHERE id = ?",
+    )
+    .bind(&row.user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .ok()
+    .flatten();
+    match plan_check {
+        Some((plan, is_vip)) if plan == "pro" || is_vip != 0 => {}
+        _ => {
+            let _ = tx.commit().await;
+            return oauth_error(
+                http::StatusCode::FORBIDDEN,
+                "access_denied",
+                "Pro subscription required",
+            );
         }
     }
 
@@ -960,11 +876,8 @@ async fn token_authorization_code(state: AppState, body: TokenRequest) -> Respon
         }
     };
 
-    // Issue a refresh token (skipped in desktop mode where the local user
-    // never needs one — they can just rerun the auth flow).
-    let refresh = if state.config.desktop_mode {
-        None
-    } else {
+    // Issue a refresh token.
+    let refresh = {
         let token = random_token_b64url(32);
         let hash = sha256_hex(&token);
         if let Err(e) = sqlx::query(
@@ -1018,13 +931,6 @@ struct RefreshRow {
 }
 
 async fn token_refresh(state: AppState, body: TokenRequest) -> Response {
-    if state.config.desktop_mode {
-        return oauth_error(
-            http::StatusCode::BAD_REQUEST,
-            "unsupported_grant_type",
-            "refresh_token grant not supported in desktop mode",
-        );
-    }
     let Some(presented) = body.refresh_token.clone() else {
         return oauth_error(
             http::StatusCode::BAD_REQUEST,

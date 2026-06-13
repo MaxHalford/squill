@@ -2,9 +2,8 @@
  * Snowflake store — manages connections, queries, and schema browsing.
  *
  * Queries run client-side via Snowflake SQL REST API.
- * Passwords are NEVER stored in IndexedDB:
- *   - Web: stored encrypted on Squill backend, fetched on-demand
- *   - Desktop: stored in OS keychain (macOS Keychain / Windows Credential Manager)
+ * Passwords are NEVER stored in IndexedDB — they live encrypted on the Squill
+ * backend and are fetched on-demand for Pro users.
  */
 
 import { defineStore } from 'pinia'
@@ -21,7 +20,6 @@ import {
   type SnowflakeColumnInfo,
 } from '../services/snowflake/restClient'
 import type { TableMetadataInfo } from '../types/database'
-import { isTauri } from '../utils/tauri'
 import { BACKEND_URL } from '@/services/backend'
 
 export type {
@@ -73,20 +71,13 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
       throw new Error('Snowflake connection not found')
     }
 
-    let password: string
-
-    if (isTauri()) {
-      const { loadSecret } = await import('../services/secureStore')
-      password = (await loadSecret(`conn:snowflake:${connectionId}`)) ?? ''
-    } else {
-      const response = await fetch(
-        `${BACKEND_URL}/snowflake/connections/${connectionId}/credentials`,
-        { headers: await getAuthHeaders() },
-      )
-      if (!response.ok) throw new Error('Failed to fetch credentials')
-      const data = await response.json()
-      password = data.password
-    }
+    const response = await fetch(
+      `${BACKEND_URL}/snowflake/connections/${connectionId}/credentials`,
+      { headers: await getAuthHeaders() },
+    )
+    if (!response.ok) throw new Error('Failed to fetch credentials')
+    const data = await response.json()
+    const password: string = data.password
 
     const credentials: SnowflakeCredentials = {
       account: conn.snowflakeAccount!,
@@ -136,31 +127,23 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
   ): Promise<string> => {
     isConnecting.value = true
     try {
-      let id: string
-
-      if (isTauri()) {
-        id = `snowflake-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        const { saveSecret } = await import('../services/secureStore')
-        await saveSecret(`conn:snowflake:${id}`, password)
-      } else {
-        const response = await fetch(`${BACKEND_URL}/snowflake/connections`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
-          body: JSON.stringify({
-            name, account, username, password,
-            warehouse: warehouse || undefined,
-            database: database || undefined,
-            schema_name: schemaName || undefined,
-            role: role || undefined,
-          }),
-        })
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.detail || 'Failed to create connection')
-        }
-        const data = await response.json()
-        id = data.id
+      const response = await fetch(`${BACKEND_URL}/snowflake/connections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
+        body: JSON.stringify({
+          name, account, username, password,
+          warehouse: warehouse || undefined,
+          database: database || undefined,
+          schema_name: schemaName || undefined,
+          role: role || undefined,
+        }),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Failed to create connection')
       }
+      const data = await response.json()
+      const id: string = data.id
 
       connectionsStore.upsertConnection({
         id,
@@ -330,17 +313,12 @@ export const useSnowflakeStore = defineStore('snowflake', () => {
   const deleteConnection = async (connectionId: string): Promise<void> => {
     clearConnectionCache(connectionId)
 
-    if (isTauri()) {
-      const { deleteSecret } = await import('../services/secureStore')
-      await deleteSecret(`conn:snowflake:${connectionId}`)
-    } else {
-      try {
-        await fetch(`${BACKEND_URL}/snowflake/connections/${connectionId}`, {
-          method: 'DELETE',
-          headers: await getAuthHeaders(),
-        })
-      } catch { /* best-effort */ }
-    }
+    try {
+      await fetch(`${BACKEND_URL}/snowflake/connections/${connectionId}`, {
+        method: 'DELETE',
+        headers: await getAuthHeaders(),
+      })
+    } catch { /* best-effort */ }
 
     connectionsStore.removeConnection(connectionId)
   }

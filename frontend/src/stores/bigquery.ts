@@ -2,7 +2,6 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useConnectionsStore } from './connections'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
-import { isTauri } from '../utils/tauri'
 import { createBigQueryClient } from '../services/bigquery'
 import type { BigQueryClient, DryRunResult } from '../services/bigquery'
 import type { BigQueryProject } from '../types/bigquery'
@@ -85,38 +84,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   }
 
   const signInWithGoogle = async (): Promise<void> => {
-    const tauriDetected = isTauri()
-    console.log('[BigQuery] signInWithGoogle — isTauri():', tauriDetected,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      '| __TAURI_INTERNALS__:', !!(window as any).__TAURI_INTERNALS__,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      '| __TAURI__:', !!(window as any).__TAURI__,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      '| __TAURI_IPC__:', !!(window as any).__TAURI_IPC__)
-
-    if (tauriDetected) {
-      const { getGoogleOAuthConfig } = await import('../services/oauth/googleClientConfig')
-      const { clientId, clientSecret, source } = await getGoogleOAuthConfig()
-      if (!clientId || !clientSecret) {
-        throw new Error('Google OAuth client is not configured. Open Settings → Google OAuth (BigQuery) to add a client ID and secret, or set the SQUILL_GOOGLE_CLIENT_ID and SQUILL_GOOGLE_CLIENT_SECRET environment variables.')
-      }
-      console.log('[BigQuery] Using OAuth client from:', source)
-      const { runDesktopGoogleAuth } = await import('../services/oauth/desktopGoogle')
-      const tokens = await runDesktopGoogleAuth(clientId, clientSecret, BIGQUERY_SCOPES)
-      console.log('[BigQuery] Desktop OAuth complete, creating connection for', tokens.email)
-
-      const connectionId = connectionsStore.addBigQueryConnection(
-        tokens.email,
-        tokens.accessToken,
-        tokens.expiresIn,
-      )
-      console.log('[BigQuery] Connection created:', connectionId, '| active:', connectionsStore.activeConnectionId)
-      await fetchDefaultProject()
-      console.log('[BigQuery] Default project:', projectId.value)
-      return
-    }
-
-    // Web: incremental auth via the Squill backend.
+    // Incremental auth via the Squill backend.
     // If user isn't logged in, chain full login first; otherwise request
     // only the BigQuery scopes on top of existing grants.
     if (!GOOGLE_CLIENT_ID) {
@@ -163,21 +131,15 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     deleteItem('bigquery-project').catch(console.error)
 
     if (email) {
-      if (isTauri()) {
-        // Desktop: discard the locally-stored refresh token
-        const { forgetDesktopGoogleAuth } = await import('../services/oauth/desktopGoogle')
-        await forgetDesktopGoogleAuth(email).catch(console.warn)
-      } else {
-        // Web: tell the Squill backend to revoke the server-held refresh token
-        try {
-          await fetch(`${BACKEND_URL}/auth/logout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-          })
-        } catch (err) {
-          console.warn('Failed to revoke refresh token:', err)
-        }
+      // Tell the Squill backend to revoke the server-held refresh token
+      try {
+        await fetch(`${BACKEND_URL}/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        })
+      } catch (err) {
+        console.warn('Failed to revoke refresh token:', err)
       }
     }
   }

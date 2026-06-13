@@ -721,24 +721,3 @@ pub async fn logout(
     Ok(Json(json!({"status": "ok"})))
 }
 
-// ---------------------------------------------------------------------------
-// Desktop token (local/embedded mode only)
-// ---------------------------------------------------------------------------
-
-/// Issue a JWT for the local desktop user without credentials.
-/// Only available when the server runs in test/desktop mode.
-pub async fn desktop_token(_: RateLimited, State(state): State<AppState>) -> impl IntoResponse {
-    let config = &state.config;
-    match create_session_token(
-        &config.mcp_user_id,
-        "local@squill.desktop",
-        &config.jwt_secret,
-        config.jwt_expiration_days,
-    ) {
-        Ok(token) => (StatusCode::OK, Json(json!({"session_token": token}))),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
-        ),
-    }
-}

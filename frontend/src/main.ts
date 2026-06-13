@@ -4,7 +4,6 @@ import './style.css'
 import App from './App.vue'
 import type { RouteRecordRaw } from 'vue-router'
 import { vTooltip, vTooltipOverflow } from './directives/tooltip'
-import { isTauri } from './utils/tauri'
 import { SHOW_PREMIUM } from './constants/features'
 import './boxes' // Register all box modules
 
@@ -65,13 +64,6 @@ export const createApp = ViteSSG(
     app.use(pinia)
     app.directive('tooltip', vTooltip)
     app.directive('tooltip-overflow', vTooltipOverflow)
-
-    // Desktop app skips the marketing landing page and opens directly on the canvas.
-    if (isTauri()) {
-      router.beforeEach((to) => {
-        if (to.path === '/') return '/app'
-      })
-    }
 
     // Premium-only routes (Squill account, MCP consent) are hidden during the
     // public launch. /auth/callback is intentionally not blocked — BigQuery's

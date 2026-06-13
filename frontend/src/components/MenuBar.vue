@@ -25,15 +25,11 @@ import {
 import { refreshSchemaCache } from '../utils/schemaAdapter'
 import ClickHouseConnectionModal from './ClickHouseConnectionModal.vue'
 import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
-import { isTauri } from '../utils/tauri'
 import { SHOW_PREMIUM } from '../constants/features'
 
-// Web-only features (accounts, billing) are hidden in the desktop app.
-const isWebApp = !isTauri()
 // Premium UI (sign-in, Pro badge, MCP, Share) is hidden for the public launch.
 const showPremium = SHOW_PREMIUM
 import SettingsPanel from './SettingsPanel.vue'
-import BigQueryOAuthModal from './BigQueryOAuthModal.vue'
 import CopyButton from './CopyButton.vue'
 import { BACKEND_URL } from '@/services/backend'
 
@@ -91,10 +87,6 @@ const showSnowflakeModal = ref(false)
 
 // Settings panel state
 const showSettingsPanel = ref(false)
-
-// BigQuery OAuth modal state (desktop only)
-const showBigQueryOAuthModal = ref(false)
-const isDesktop = isTauri()
 
 // Delayed expired state - prevents flash when tokens are being refreshed
 // Only show "(Expired)" after the token has been expired for 2 seconds
@@ -348,9 +340,8 @@ const handleAddDatabase = async (databaseType: string) => {
   addDatabaseMenuOpen.value = false
   activeDropdown.value = null
 
-  // Require Squill login for server-proxied connection types (web only).
-  // In Tauri, BigQuery authenticates directly with Google — no Squill account needed.
-  if (!isTauri() && connectionRequiresAuth(databaseType as ConnectionType) && !userStore.isLoggedIn) {
+  // Require Squill login for server-proxied connection types.
+  if (connectionRequiresAuth(databaseType as ConnectionType) && !userStore.isLoggedIn) {
     await userStore.loginWithGoogle()
     if (!userStore.isLoggedIn) return
   }
@@ -558,8 +549,7 @@ onUnmounted(() => {
 <template>
   <div class="menu-bar">
     <div class="menu-left">
-      <!-- Logo (hidden on desktop — feels more like a native app) -->
-      <router-link v-if="!isDesktop" to="/" class="app-name">
+      <router-link to="/" class="app-name">
         Squill
       </router-link>
 
@@ -707,30 +697,6 @@ onUnmounted(() => {
                   @click.stop
                 >
                   <button
-                    v-if="connection.type === 'bigquery' && isDesktop"
-                    v-tooltip="'OAuth client settings'"
-                    class="reconnect-btn"
-                    @click="showBigQueryOAuthModal = true"
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <circle
-                        cx="12"
-                        cy="12"
-                        r="3"
-                      />
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                  </button>
-                  <button
                     v-if="connection.type === 'bigquery'"
                     v-tooltip="shouldShowExpired(connection.id) ? 'Reconnect' : 'Re-login'"
                     class="reconnect-btn"
@@ -817,30 +783,6 @@ onUnmounted(() => {
                       class="db-icon"
                     >
                     {{ DATABASE_INFO.bigquery.name }}
-                  </button>
-                  <button
-                    v-if="isDesktop"
-                    v-tooltip="'OAuth client settings'"
-                    class="flyout-cog"
-                    @click.stop="showBigQueryOAuthModal = true"
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <circle
-                        cx="12"
-                        cy="12"
-                        r="3"
-                      />
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
                   </button>
                 </div>
                 <button
@@ -990,9 +932,9 @@ onUnmounted(() => {
       <!-- Pro Badge -->
       <span v-if="showPremium && userStore.isPro" class="pro-badge menu-pro-badge">Pro</span>
 
-      <!-- User Menu (web only — desktop has no Squill accounts) -->
+      <!-- User Menu -->
       <div
-        v-if="showPremium && userStore.isLoggedIn && isWebApp"
+        v-if="showPremium && userStore.isLoggedIn"
         class="menu-item user-menu-item"
       >
         <button
@@ -1034,9 +976,9 @@ onUnmounted(() => {
         </Transition>
       </div>
 
-      <!-- Sign In Dropdown (web only — desktop has no Squill accounts) -->
+      <!-- Sign In Dropdown -->
       <div
-        v-else-if="showPremium && isWebApp"
+        v-else-if="showPremium"
         class="menu-item sign-in-menu-item"
       >
         <button
@@ -1162,13 +1104,6 @@ onUnmounted(() => {
 
   <!-- Settings Panel -->
   <SettingsPanel :show="showSettingsPanel" @close="showSettingsPanel = false" />
-
-  <!-- BigQuery OAuth client modal (desktop) -->
-  <BigQueryOAuthModal
-    v-if="isDesktop"
-    :show="showBigQueryOAuthModal"
-    @close="showBigQueryOAuthModal = false"
-  />
 </template>
 
 <style scoped>

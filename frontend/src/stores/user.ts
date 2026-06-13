@@ -4,7 +4,6 @@ import type { User } from '../types/user'
 import { createCheckoutSession, openPolarCheckout } from '../services/billing'
 import { UserSchema } from '../utils/storageSchemas'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
-import { isTauri } from '../utils/tauri'
 import { BACKEND_URL } from '@/services/backend'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || ''
@@ -47,31 +46,7 @@ export const useUserStore = defineStore('user', () => {
       console.error('Failed to load user state:', err)
     }
 
-    // Desktop auto-login: fetch a local JWT so the app uses SyncedPersistence
-    // and shares the same SQLite database as the MCP server.
-    // This must complete before `ready` resolves so that canvas initPersistence()
-    // sees isPro=true and picks SyncedPersistence (with WebSocket for MCP updates).
-    if (isTauri()) {
-      try {
-        const res = await fetch(`${BACKEND_URL}/auth/desktop-token`)
-        if (res.ok) {
-          const data = await res.json()
-          sessionToken.value = data.session_token
-          user.value = {
-            id: '00000000-0000-0000-0000-000000000001',
-            email: 'local@squill.desktop',
-            firstName: 'Local',
-            lastName: 'User',
-            plan: 'pro',
-            isVip: true,
-            planExpiresAt: null,
-            subscriptionCancelAtPeriodEnd: false,
-          }
-        }
-      } catch (err) {
-        console.error('Failed to get desktop token:', err)
-      }
-    } else if (sessionToken.value) {
+    if (sessionToken.value) {
       // Awaited so callers of `ready` see the live plan/VIP state — the canvas
       // store reads isPro at startup to pick Local vs Synced persistence.
       try {

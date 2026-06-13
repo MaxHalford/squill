@@ -39,11 +39,8 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::create_pool(&config.database_url).await?;
     tracing::info!("Database ready, migrations applied");
 
-    db::ensure_mcp_local_user(&pool, &config.mcp_user_id).await?;
-    tracing::info!("MCP local user ensured: {}", config.mcp_user_id);
-
     let encryption = if config.token_encryption_key.is_empty() {
-        if config.test_mode || config.desktop_mode {
+        if config.test_mode {
             tracing::warn!(
                 "TOKEN_ENCRYPTION_KEY is not set — credential storage endpoints will reject requests."
             );

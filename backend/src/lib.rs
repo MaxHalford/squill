@@ -155,12 +155,10 @@ pub fn build_app(state: AppState) -> Router {
         app = app
             .route("/test/seed-user", axum::routing::post(routes::test_helpers::seed_user))
             .route("/test/reset", axum::routing::post(routes::test_helpers::reset_db))
-            .route("/auth/test-login", axum::routing::post(routes::test_helpers::test_login))
-            .route("/auth/desktop-token", axum::routing::get(routes::auth::desktop_token));
+            .route("/auth/test-login", axum::routing::post(routes::test_helpers::test_login));
     }
 
-    // OAuth 2.1 + PKCE for MCP. Always exposed; the handlers branch on
-    // `config.desktop_mode` for the loopback null-auth short-circuit.
+    // OAuth 2.1 + PKCE for MCP.
     app = app
         .route("/.well-known/oauth-authorization-server", axum::routing::get(routes::mcp_oauth::metadata))
         .route("/.well-known/oauth-protected-resource", axum::routing::get(routes::mcp_oauth::protected_resource))

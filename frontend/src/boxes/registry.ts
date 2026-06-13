@@ -1,7 +1,6 @@
 import type { Component } from 'vue'
 import type { BoxType } from '../types/canvas.d'
 import type { DatabaseEngine } from '../types/database'
-import { isTauri } from '../utils/tauri'
 
 export interface BoxDefinition {
   type: BoxType
@@ -14,7 +13,6 @@ export interface BoxDefinition {
   component: Component
   showInNewMenu: boolean
   menuOrder?: number
-  platforms?: ('web' | 'desktop')[]
   /** Which database engines this box supports. Omit for all engines. */
   supportedEngines?: DatabaseEngine[]
   /** The prop name used to pass box.query data to the component */
@@ -36,10 +34,8 @@ export function getAllBoxDefinitions(): BoxDefinition[] {
 }
 
 export function getMenuBoxDefinitions(): BoxDefinition[] {
-  const platform = isTauri() ? 'desktop' : 'web'
   return getAllBoxDefinitions()
     .filter(d => d.showInNewMenu)
-    .filter(d => !d.platforms || d.platforms.includes(platform))
     .sort((a, b) => (a.menuOrder ?? 99) - (b.menuOrder ?? 99))
 }
 

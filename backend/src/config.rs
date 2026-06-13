@@ -44,12 +44,6 @@ pub struct Config {
 
     // Test mode
     pub test_mode: bool,
-
-    // MCP local user ID (for desktop app — bypasses OAuth)
-    pub mcp_user_id: String,
-
-    // Desktop mode: enables MCP null-auth OAuth endpoints (localhost only)
-    pub desktop_mode: bool,
 }
 
 impl Config {
@@ -102,24 +96,6 @@ impl Config {
             test_mode: env::var("SQUILL_TEST_MODE")
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false),
-
-            mcp_user_id: env::var("MCP_USER_ID")
-                .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000001".to_string()),
-
-            desktop_mode: false,
         }
-    }
-
-    /// Create config with explicit overrides for desktop embedding.
-    pub fn from_env_with_overrides(database_url: &str, test_mode: bool) -> Self {
-        let mut config = Self::from_env();
-        config.database_url = database_url.to_string();
-        config.test_mode = test_mode;
-        config.desktop_mode = true;
-        // Desktop mode: add localhost with the embedded port to CORS origins
-        if !config.cors_origins.iter().any(|o| o.contains("18222")) {
-            config.cors_origins.push("http://localhost:18222".to_string());
-        }
-        config
     }
 }

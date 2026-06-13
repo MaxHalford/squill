@@ -2,9 +2,8 @@
  * ClickHouse store — manages connections, queries, and schema browsing.
  *
  * Queries run client-side via ClickHouse HTTP API.
- * Passwords are NEVER stored in IndexedDB:
- *   - Web: stored encrypted on Squill backend, fetched on-demand
- *   - Desktop: stored in OS keychain (macOS Keychain / Windows Credential Manager)
+ * Passwords are NEVER stored in IndexedDB — they live encrypted on the Squill
+ * backend and are fetched on-demand for Pro users.
  */
 
 import { defineStore } from 'pinia'
@@ -20,7 +19,6 @@ import {
   type ClickHouseColumnInfo,
 } from '../services/clickhouse/httpClient'
 import type { TableMetadataInfo } from '../types/database'
-import { isTauri } from '../utils/tauri'
 import { BACKEND_URL } from '@/services/backend'
 
 export type {
@@ -67,7 +65,7 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
 
   /**
    * Get credentials for a connection.
-   * Checks in-memory cache first, then fetches from backend (web) or keychain (desktop).
+   * Checks in-memory cache first, then fetches from backend.
    */
   async function getCredentials(connectionId: string): Promise<ClickHouseCredentials> {
     const cached = credentialsCache.value.get(connectionId)
@@ -78,22 +76,13 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
       throw new Error('ClickHouse connection not found')
     }
 
-    let password: string
-
-    if (isTauri()) {
-      // Desktop: load password from OS keychain
-      const { loadSecret } = await import('../services/secureStore')
-      password = (await loadSecret(`conn:clickhouse:${connectionId}`)) ?? ''
-    } else {
-      // Web: fetch password from backend
-      const response = await fetch(
-        `${BACKEND_URL}/clickhouse/connections/${connectionId}/credentials`,
-        { headers: await getAuthHeaders() },
-      )
-      if (!response.ok) throw new Error('Failed to fetch credentials')
-      const data = await response.json()
-      password = data.password
-    }
+    const response = await fetch(
+      `${BACKEND_URL}/clickhouse/connections/${connectionId}/credentials`,
+      { headers: await getAuthHeaders() },
+    )
+    if (!response.ok) throw new Error('Failed to fetch credentials')
+    const data = await response.json()
+    const password: string = data.password
 
     const credentials: ClickHouseCredentials = {
       host: conn.clickhouseHost!,
@@ -137,9 +126,7 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
 
   /**
    * Create a new connection.
-   * Web: stores encrypted password on backend.
-   * Desktop: stores password in OS keychain.
-   * Both: stores non-secret metadata in IndexedDB.
+   * Stores encrypted password on the Squill backend; non-secret metadata in IndexedDB.
    */
   const createConnection = async (
     name: string,
@@ -152,27 +139,17 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
   ): Promise<string> => {
     isConnecting.value = true
     try {
-      let id: string
-
-      if (isTauri()) {
-        // Desktop: generate ID locally, store password in OS keychain
-        id = `clickhouse-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        const { saveSecret } = await import('../services/secureStore')
-        await saveSecret(`conn:clickhouse:${id}`, password)
-      } else {
-        // Web: POST to backend, get back server-generated ID
-        const response = await fetch(`${BACKEND_URL}/clickhouse/connections`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
-          body: JSON.stringify({ name, host, port, username, password, database: database || undefined, secure }),
-        })
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.detail || 'Failed to create connection')
-        }
-        const data = await response.json()
-        id = data.id
+      const response = await fetch(`${BACKEND_URL}/clickhouse/connections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
+        body: JSON.stringify({ name, host, port, username, password, database: database || undefined, secure }),
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Failed to create connection')
       }
+      const data = await response.json()
+      const id: string = data.id
 
       // Store non-secret metadata in IndexedDB (NO password)
       connectionsStore.upsertConnection({
@@ -328,18 +305,12 @@ export const useClickHouseStore = defineStore('clickhouse', () => {
   const deleteConnection = async (connectionId: string): Promise<void> => {
     clearConnectionCache(connectionId)
 
-    if (isTauri()) {
-      const { deleteSecret } = await import('../services/secureStore')
-      await deleteSecret(`conn:clickhouse:${connectionId}`)
-    } else {
-      // Web: delete from backend (ignore errors if connection doesn't exist there)
-      try {
-        await fetch(`${BACKEND_URL}/clickhouse/connections/${connectionId}`, {
-          method: 'DELETE',
-          headers: await getAuthHeaders(),
-        })
-      } catch { /* best-effort */ }
-    }
+    try {
+      await fetch(`${BACKEND_URL}/clickhouse/connections/${connectionId}`, {
+        method: 'DELETE',
+        headers: await getAuthHeaders(),
+      })
+    } catch { /* best-effort */ }
 
     connectionsStore.removeConnection(connectionId)
   }

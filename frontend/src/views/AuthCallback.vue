@@ -206,15 +206,6 @@ const handleBigQueryFlow = async (code: string): Promise<void> => {
 }
 
 onMounted(async () => {
-  // The desktop app handles OAuth inline (no server callback). If we
-  // somehow land here in Tauri, redirect home instead of hitting the backend.
-  const { isTauri } = await import('../utils/tauri')
-  if (isTauri()) {
-    console.warn('AuthCallback loaded in Tauri — redirecting to /app')
-    router.push('/app')
-    return
-  }
-
   const urlParams = new URLSearchParams(window.location.search)
   const code = urlParams.get('code')
   const state = urlParams.get('state')
