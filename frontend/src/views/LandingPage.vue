@@ -1090,7 +1090,11 @@ const latestChangelogHtml = latestChangelog ? renderMarkdown(latestChangelog.con
           Made by a data scientist, for data people
         </p>
         <p class="footer-tagline">
-          Funky birds drawn by Lina
+          Funky birds drawn by <a
+            href="https://lili-lines.github.io/fr/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >Lili</a>
         </p>
       </div>
       <img
@@ -2357,6 +2361,11 @@ button.pro-feature {
   margin: 0;
   font-size: var(--font-size-body-sm);
   opacity: 0.6;
+}
+
+.footer-tagline a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .footer-bird {
