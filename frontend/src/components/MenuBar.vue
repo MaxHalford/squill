@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useCanvasStore } from '../stores/canvas'
-
-const ShareDialog = defineAsyncComponent(() => import('./ShareDialog.vue'))
 import { useConnectionsStore } from '../stores/connections'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useClickHouseStore } from '../stores/clickhouse'
@@ -150,7 +148,6 @@ onUnmounted(() => {
 
 // Single dropdown state - opening one closes others
 const activeDropdown = ref<string | null>(null) // 'canvas', 'connection', 'new', 'tools', 'user'
-const showShareDialog = ref(false)
 const showMcpModal = ref(false)
 
 const mcpUrl = computed(() => `${BACKEND_URL}/mcp/`)
@@ -587,17 +584,6 @@ onUnmounted(() => {
               :disabled="!canvasStore.activeCanvasId"
               @click="handleRenameActive"
             >Rename canvas...</button>
-            <template v-if="showPremium">
-              <div class="dropdown-divider"></div>
-              <button
-                class="dropdown-item"
-                :disabled="!userStore.isPro || !canvasStore.activeCanvasId"
-                @click="showShareDialog = true; activeDropdown = null"
-              >
-                Share...
-                <span v-if="!userStore.isPro" class="item-hint">(Pro)</span>
-              </button>
-            </template>
             <div class="dropdown-divider"></div>
             <button
               class="dropdown-item dropdown-item-danger"
@@ -1058,13 +1044,6 @@ onUnmounted(() => {
     :show="showSnowflakeModal"
     @close="showSnowflakeModal = false"
     @connected="handleSnowflakeConnected"
-  />
-
-  <!-- Share Dialog (Pro only) -->
-  <ShareDialog
-    v-if="showPremium"
-    :show="showShareDialog"
-    @close="showShareDialog = false"
   />
 
   <!-- MCP Setup Modal -->

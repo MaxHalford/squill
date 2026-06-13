@@ -1,13 +1,11 @@
-//! Canvas persistence, box CRUD, and sharing endpoints for Pro/VIP users.
+//! Canvas persistence and box CRUD endpoints for Pro/VIP users.
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::auth::middleware::{check_pro_or_vip, AuthUser};
 use crate::error::error_response;
@@ -39,18 +37,6 @@ struct BoxRow {
     canvas_id: String,
     box_id: i64,
     state: String, // JSON stored as TEXT
-}
-
-#[derive(sqlx::FromRow)]
-struct ShareRow {
-    id: String,
-    canvas_id: String,
-    owner_user_id: String,
-    share_token: String,
-    permission: String,
-    email: Option<String>,
-    created_at: String,
-    expires_at: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -133,34 +119,6 @@ struct CanvasSnapshotResponse {
 pub struct CanvasImportRequest {
     boxes: Vec<Value>,
     next_box_id: i64,
-}
-
-#[derive(Deserialize)]
-pub struct ShareCreateRequest {
-    permission: String,
-    email: Option<String>,
-    expires_at: Option<String>,
-}
-
-#[derive(Serialize)]
-struct ShareResponse {
-    id: String,
-    share_token: String,
-    permission: String,
-    email: Option<String>,
-    created_at: String,
-    expires_at: Option<String>,
-}
-
-#[derive(Serialize)]
-struct ShareListResponse {
-    shares: Vec<ShareResponse>,
-}
-
-#[derive(Serialize)]
-struct ShareValidateResponse {
-    canvas_id: String,
-    permission: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -838,162 +796,3 @@ async fn build_snapshot_response(
     }))
 }
 
-// ---------------------------------------------------------------------------
-// Share links
-// ---------------------------------------------------------------------------
-
-pub async fn create_share(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(canvas_id): Path<String>,
-    Json(body): Json<ShareCreateRequest>,
-) -> Result<Response, Response> {
-    check_pro_or_vip(&user)?;
-
-    if body.permission != "read" && body.permission != "write" {
-        return Err(error_response(
-            StatusCode::BAD_REQUEST,
-            "permission must be 'read' or 'write'",
-        ));
-    }
-
-    let _canvas = get_owned_canvas(&state.db, &canvas_id, &user.id).await?;
-
-    let share_id = Uuid::new_v4().to_string();
-    let share_token = Uuid::new_v4().as_simple().to_string(); // 32-char hex
-    let now = now_sqlite();
-
-    sqlx::query(
-        "INSERT INTO canvas_shares (id, canvas_id, owner_user_id, share_token, permission, email, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&share_id)
-    .bind(&canvas_id)
-    .bind(&user.id)
-    .bind(&share_token)
-    .bind(&body.permission)
-    .bind(&body.email)
-    .bind(&now)
-    .bind(&body.expires_at)
-    .execute(&state.db)
-    .await
-    .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ShareResponse {
-            id: share_id,
-            share_token,
-            permission: body.permission,
-            email: body.email,
-            created_at: now,
-            expires_at: body.expires_at,
-        }),
-    )
-        .into_response())
-}
-
-pub async fn list_shares(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(canvas_id): Path<String>,
-) -> Result<impl IntoResponse, Response> {
-    check_pro_or_vip(&user)?;
-
-    // If the canvas doesn't exist server-side, return empty list (not 404)
-    let canvas_exists: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM canvases WHERE id = ? AND user_id = ?")
-            .bind(&canvas_id)
-            .bind(&user.id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    if canvas_exists.is_none() {
-        return Ok(Json(ShareListResponse { shares: vec![] }));
-    }
-
-    let shares = sqlx::query_as::<_, ShareRow>(
-        "SELECT id, canvas_id, owner_user_id, share_token, permission, email, created_at, expires_at
-         FROM canvas_shares WHERE canvas_id = ? ORDER BY created_at DESC",
-    )
-    .bind(&canvas_id)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    Ok(Json(ShareListResponse {
-        shares: shares
-            .into_iter()
-            .map(|s| ShareResponse {
-                id: s.id,
-                share_token: s.share_token,
-                permission: s.permission,
-                email: s.email,
-                created_at: s.created_at,
-                expires_at: s.expires_at,
-            })
-            .collect(),
-    }))
-}
-
-pub async fn revoke_share(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(token): Path<String>,
-) -> Result<impl IntoResponse, Response> {
-    check_pro_or_vip(&user)?;
-
-    let share = sqlx::query_as::<_, ShareRow>(
-        "SELECT id, canvas_id, owner_user_id, share_token, permission, email, created_at, expires_at
-         FROM canvas_shares WHERE share_token = ?",
-    )
-    .bind(&token)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "Share not found"))?;
-
-    if share.owner_user_id != user.id {
-        return Err(error_response(StatusCode::NOT_FOUND, "Share not found"));
-    }
-
-    sqlx::query("DELETE FROM canvas_shares WHERE id = ?")
-        .bind(&share.id)
-        .execute(&state.db)
-        .await
-        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// Validate a share token (PUBLIC endpoint, no auth required).
-pub async fn validate_share(
-    State(state): State<AppState>,
-    Path(token): Path<String>,
-) -> Result<impl IntoResponse, Response> {
-    let share = sqlx::query_as::<_, ShareRow>(
-        "SELECT id, canvas_id, owner_user_id, share_token, permission, email, created_at, expires_at
-         FROM canvas_shares WHERE share_token = ?",
-    )
-    .bind(&token)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "Share link not found"))?;
-
-    // Check expiry
-    if let Some(ref expires_at_str) = share.expires_at {
-        if let Ok(expires_at) = NaiveDateTime::parse_from_str(expires_at_str, "%Y-%m-%d %H:%M:%S")
-        {
-            if expires_at < chrono::Utc::now().naive_utc() {
-                return Err(error_response(StatusCode::GONE, "Share link has expired"));
-            }
-        }
-    }
-
-    Ok(Json(ShareValidateResponse {
-        canvas_id: share.canvas_id,
-        permission: share.permission,
-    }))
-}

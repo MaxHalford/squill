@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, provide, computed, watch, defineAsyncComponent } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
@@ -32,9 +31,6 @@ import { loadItem, saveItem } from '../utils/storage'
 import { useToast } from '../composables/useToast'
 
 const { showToast } = useToast()
-
-const route = useRoute()
-const router = useRouter()
 
 const canvasStore = useCanvasStore()
 const userStore = useUserStore()
@@ -1084,15 +1080,6 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 }
 
-/**
- * Enable Yjs collaboration for Pro users, or handle share links.
- *
- * Called after all stores are ready:
- * - If URL has ?share=TOKEN: validate token, connect as viewer/editor
- * - Else if user is Pro: connect own active canvas
- */
-const shareError = ref<string | null>(null)
-
 // Cursor awareness — must match --palette-* vars in style.css
 const CURSOR_COLORS = ['#9333ea', '#f87171', '#81d4fa', '#aed581', '#ffcc80']
 const guestColorIndex = Math.floor(Math.random() * CURSOR_COLORS.length)
@@ -1114,23 +1101,17 @@ const handleCursorLeave = () => {
 }
 
 /**
- * Returns true if the current user should connect as the canvas owner
- * (Pro user with session token who set up the share themselves).
- * Recipients — even Pro users visiting someone else's share — have meta.isShared undefined
- * because that flag is only set when the local user creates a share.
+ * Enable real-time canvas sync for the active canvas when the user is Pro.
+ * Sharing has been removed, so there is no recipient/permission path —
+ * Pro users own and sync their own canvases via the same backend.
  */
-const treatAsOwner = (meta: { isShared?: boolean } | undefined) =>
-  !!(userStore.isPro && userStore.sessionToken && meta?.isShared)
-
-/**
- * Re-register the canvas on the server then enable collaboration as the owner.
- */
-const enableAsOwner = async (canvasId: string, meta: { name: string }) => {
+const enableSyncIfPro = async (canvasId: string, meta?: { name: string }) => {
+  if (!userStore.isPro || !userStore.sessionToken) return
   try {
     await fetch(`${BACKEND_URL}/canvas`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userStore.sessionToken}` },
-      body: JSON.stringify({ id: canvasId, name: meta.name }),
+      body: JSON.stringify({ id: canvasId, name: meta?.name ?? 'Canvas' }),
     })
   } catch (err) {
     console.warn('[collab] Failed to register canvas on server:', err)
@@ -1139,99 +1120,17 @@ const enableAsOwner = async (canvasId: string, meta: { name: string }) => {
 }
 
 const initCollaboration = async () => {
-  const shareToken = route.query.share as string | undefined
-
-  // ── Path A: share token in URL (first visit via share link) ──────────────────
-  if (shareToken) {
-    try {
-      const res = await fetch(`${BACKEND_URL}/share/${shareToken}`)
-      if (!res.ok) {
-        shareError.value = res.status === 410 ? 'This share link has expired.' : 'Invalid share link.'
-        return
-      }
-      const { canvas_id, permission } = await res.json()
-
-      if (permission === 'write' && !userStore.isLoggedIn) {
-        sessionStorage.setItem('pending-share-token', shareToken)
-      }
-
-      // Load or create a local meta entry for this canvas
-      const existingMeta = canvasStore.canvasIndex.find(c => c.id === canvas_id)
-      if (!existingMeta) {
-        canvasStore.canvasIndex.push({ id: canvas_id, name: 'Shared canvas', createdAt: Date.now(), updatedAt: Date.now() })
-        canvasStore.activeCanvasId = canvas_id
-      } else if (canvasStore.activeCanvasId !== canvas_id) {
-        await canvasStore.switchCanvas(canvas_id)
-      }
-
-      const asOwner = treatAsOwner(existingMeta)
-      if (asOwner) {
-        // Owner visiting their own share link — use owner path, don't overwrite meta
-        await enableAsOwner(canvas_id, existingMeta ?? { name: 'Canvas' })
-      } else {
-        // Recipient: persist token so future navigations auto-reconnect
-        canvasStore.setShareToken(canvas_id, shareToken, permission)
-        canvasStore.isReadOnly = permission === 'read'
-        canvasStore.enableSync(canvas_id)
-        // Keep ?share= in URL so it's easy to re-copy; also triggers auto-reconnect logic
-        router.replace({ path: '/app', query: { share: shareToken } })
-      }
-    } catch (err) {
-      console.error('[collab] Failed to load shared canvas:', err)
-      shareError.value = 'Failed to load the shared canvas.'
-    }
-    return
-  }
-
-  // ── Path B: returning recipient (share token stored in IDB, no URL param) ────
   const activeId = canvasStore.activeCanvasId
   if (activeId) {
     const meta = canvasStore.canvasIndex.find(c => c.id === activeId)
-    if (meta?.shareToken && !treatAsOwner(meta)) {
-      canvasStore.isReadOnly = meta.sharePermission === 'read'
-      canvasStore.enableSync(activeId)
-      router.replace({ path: '/app', query: { share: meta.shareToken } })
-      return
-    }
-
-    // ── Path C: owner with shared canvas ───────────────────────────────────────
-    if (meta?.isShared && userStore.isPro && userStore.sessionToken) {
-      await enableAsOwner(activeId, meta)
-    }
+    await enableSyncIfPro(activeId, meta)
   }
 }
 
-// Re-enable collaboration and sync URL whenever the active canvas changes.
-// initCollaboration() handles the very first canvas on mount; this watcher
-// handles all subsequent canvas switches (menu bar, new canvas, etc.).
 watch(() => canvasStore.activeCanvasId, async (newId, oldId) => {
-  // Skip the initial load — initCollaboration() owns that case
   if (!oldId || !newId) return
-
   const meta = canvasStore.canvasIndex.find(c => c.id === newId)
-  const asOwner = treatAsOwner(meta)
-
-  // ── URL sync ──────────────────────────────────────────────────────────────────
-  // Recipients: surface the share token so the URL is always shareable / copy-able.
-  // Owners and non-shared canvases: clean URL (no ?share=).
-  if (meta?.shareToken && !asOwner) {
-    router.replace({ path: '/app', query: { share: meta.shareToken } })
-  } else if (route.query.share) {
-    router.replace({ path: '/app', query: {} })
-  }
-
-  // ── Collaboration re-init ──────────────────────────────────────────────────────
-  // Recipient: has a stored share token (and is not the owner of this canvas)
-  if (meta?.shareToken && !asOwner) {
-    canvasStore.isReadOnly = meta.sharePermission === 'read'
-    canvasStore.enableSync(newId)
-    return
-  }
-
-  // Owner: their shared canvas
-  if (meta?.isShared && userStore.isPro && userStore.sessionToken) {
-    await enableAsOwner(newId, meta)
-  }
+  await enableSyncIfPro(newId, meta)
 })
 
 onMounted(async () => {

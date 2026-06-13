@@ -73,25 +73,12 @@ async fn main() -> anyhow::Result<()> {
         general_rate_limiter,
     };
 
-    // Background task: clean up expired share tokens and revoked JWT entries every hour
+    // Background task: clean up revoked JWT entries and expired OAuth state every hour
     let cleanup_pool = state.db.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
         loop {
             interval.tick().await;
-            // Clean up expired share tokens
-            match sqlx::query(
-                "DELETE FROM canvas_shares WHERE expires_at IS NOT NULL AND expires_at < datetime('now')",
-            )
-            .execute(&cleanup_pool)
-            .await
-            {
-                Ok(r) if r.rows_affected() > 0 => {
-                    tracing::info!("Cleaned up {} expired share tokens", r.rows_affected());
-                }
-                Err(e) => tracing::warn!("Share token cleanup failed: {e}"),
-                _ => {}
-            }
             // Clean up expired revoked tokens
             match token_revocation::cleanup_expired_revocations(&cleanup_pool).await {
                 Ok(n) if n > 0 => tracing::info!("Cleaned up {n} expired revoked tokens"),

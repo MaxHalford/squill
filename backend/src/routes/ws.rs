@@ -3,7 +3,6 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
-use chrono::{NaiveDateTime, Utc};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -36,16 +35,6 @@ struct BoxRow {
     state: String,
 }
 
-#[derive(sqlx::FromRow)]
-struct ShareRow {
-    canvas_id: String,
-    #[allow(dead_code)]
-    share_token: String,
-    permission: String,
-    email: Option<String>,
-    expires_at: Option<String>,
-}
-
 // ---------------------------------------------------------------------------
 // Auth result
 // ---------------------------------------------------------------------------
@@ -56,124 +45,52 @@ struct WsAuth {
     permission: String,
 }
 
-/// Authenticate a WebSocket connection via query-param token.
-///
-/// 1. Try JWT: verify token, load user, check canvas ownership -> write
-/// 2. If JWT user exists but doesn't own canvas: check email-based CanvasShare
-/// 3. If JWT fails: try as share_token -> anonymous with share permission
+/// Authenticate a WebSocket connection: verify the JWT and check that the
+/// authenticated user owns the canvas. Share-link recipients are no longer
+/// supported — sharing was removed.
 async fn authenticate(
     db: &sqlx::SqlitePool,
     jwt_secret: &str,
     canvas_id: &str,
     token: &str,
 ) -> Result<WsAuth, &'static str> {
-    // --- Attempt JWT auth ---
-    if let Ok(claims) = verify_session_token(token, jwt_secret) {
-        // Load user from DB
-        let user: Option<UserRow> = sqlx::query_as(
-            "SELECT id, email, first_name, last_name, plan, plan_expires_at, is_vip,
-                    polar_customer_id, polar_subscription_id, subscription_cancel_at_period_end
-             FROM users WHERE id = ?",
-        )
-        .bind(&claims.user_id)
-        .fetch_optional(db)
-        .await
-        .ok()
-        .flatten();
+    let claims = verify_session_token(token, jwt_secret).map_err(|_| "Invalid token")?;
 
-        if let Some(user) = user {
-            let display_name = match (&user.first_name, &user.last_name) {
-                (Some(f), Some(l)) if !f.is_empty() => format!("{f} {l}"),
-                (Some(f), _) if !f.is_empty() => f.clone(),
-                _ => user.email.clone(),
-            };
+    let user: UserRow = sqlx::query_as(
+        "SELECT id, email, first_name, last_name, plan, plan_expires_at, is_vip,
+                polar_customer_id, polar_subscription_id, subscription_cancel_at_period_end
+         FROM users WHERE id = ?",
+    )
+    .bind(&claims.user_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .ok_or("User not found")?;
 
-            // Check if user owns the canvas
-            let owns: bool = sqlx::query_scalar(
-                "SELECT COUNT(*) > 0 FROM canvases WHERE id = ? AND user_id = ?",
-            )
+    let display_name = match (&user.first_name, &user.last_name) {
+        (Some(f), Some(l)) if !f.is_empty() => format!("{f} {l}"),
+        (Some(f), _) if !f.is_empty() => f.clone(),
+        _ => user.email.clone(),
+    };
+
+    let owns: bool =
+        sqlx::query_scalar("SELECT COUNT(*) > 0 FROM canvases WHERE id = ? AND user_id = ?")
             .bind(canvas_id)
             .bind(&user.id)
             .fetch_one(db)
             .await
             .unwrap_or(false);
 
-            if owns {
-                return Ok(WsAuth {
-                    user_id: Some(user.id),
-                    user_name: display_name,
-                    permission: "write".to_string(),
-                });
-            }
-
-            // Not the owner — check email-based shares
-            let share: Option<ShareRow> = sqlx::query_as(
-                "SELECT canvas_id, share_token, permission, email, expires_at
-                 FROM canvas_shares WHERE canvas_id = ? AND email = ?",
-            )
-            .bind(canvas_id)
-            .bind(&user.email)
-            .fetch_optional(db)
-            .await
-            .ok()
-            .flatten();
-
-            if let Some(share) = share {
-                if !is_expired(&share.expires_at) {
-                    return Ok(WsAuth {
-                        user_id: Some(user.id),
-                        user_name: display_name,
-                        permission: share.permission,
-                    });
-                }
-            }
-
-            return Err("No access to this canvas");
-        }
+    if !owns {
+        return Err("No access to this canvas");
     }
 
-    // --- JWT failed or user not found: try as share_token ---
-    let share: Option<ShareRow> = sqlx::query_as(
-        "SELECT canvas_id, share_token, permission, email, expires_at
-         FROM canvas_shares WHERE share_token = ?",
-    )
-    .bind(token)
-    .fetch_optional(db)
-    .await
-    .ok()
-    .flatten();
-
-    match share {
-        Some(share) => {
-            // Verify this share is for the right canvas
-            if share.canvas_id != canvas_id {
-                return Err("Share token does not match canvas");
-            }
-            // Check expiry
-            if is_expired(&share.expires_at) {
-                return Err("Share link has expired");
-            }
-            // Email-restricted shares cannot be used anonymously
-            if share.email.is_some() {
-                return Err("This share link requires authentication");
-            }
-            Ok(WsAuth {
-                user_id: None,
-                user_name: "Anonymous".to_string(),
-                permission: share.permission,
-            })
-        }
-        None => Err("Invalid token"),
-    }
-}
-
-fn is_expired(expires_at: &Option<String>) -> bool {
-    if let Some(s) = expires_at {
-        if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-            return dt < Utc::now().naive_utc();
-        }
-    }
-    false
+    Ok(WsAuth {
+        user_id: Some(user.id),
+        user_name: display_name,
+        permission: "write".to_string(),
+    })
 }
 
 // ---------------------------------------------------------------------------

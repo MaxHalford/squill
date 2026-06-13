@@ -95,14 +95,6 @@ pub fn build_app(state: AppState) -> Router {
         .route("/canvas/{canvas_id}/boxes/batch-delete", axum::routing::post(routes::canvas::delete_boxes_batch))
         // Import
         .route("/canvas/{canvas_id}/import", axum::routing::post(routes::canvas::import_canvas_state))
-        // Shares
-        .route("/canvas/{canvas_id}/share", axum::routing::post(routes::canvas::create_share))
-        .route("/canvas/{canvas_id}/shares", axum::routing::get(routes::canvas::list_shares))
-        .route(
-            "/share/{token}",
-            axum::routing::get(routes::canvas::validate_share)
-                .delete(routes::canvas::revoke_share),
-        )
         // User (GET + DELETE on same path)
         .route(
             "/user/me",

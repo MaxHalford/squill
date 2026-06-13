@@ -542,29 +542,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     saveIndex()
   }
 
-  const setCanvasShared = (canvasId: string, isShared: boolean) => {
-    const meta = canvasIndex.value.find(c => c.id === canvasId)
-    if (!meta) return
-    meta.isShared = isShared
-    saveIndex()
-  }
-
-  const setShareToken = (canvasId: string, token: string, permission: 'read' | 'write') => {
-    const meta = canvasIndex.value.find(c => c.id === canvasId)
-    if (!meta) return
-    meta.shareToken = token
-    meta.sharePermission = permission
-    saveIndex()
-  }
-
-  const clearShareToken = (canvasId: string) => {
-    const meta = canvasIndex.value.find(c => c.id === canvasId)
-    if (!meta) return
-    delete meta.shareToken
-    delete meta.sharePermission
-    saveIndex()
-  }
-
   const getCanvasList = (): CanvasMeta[] => {
     return [...canvasIndex.value].sort((a, b) => b.updatedAt - a.updatedAt)
   }
@@ -1023,9 +1000,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     deleteCanvas,
     duplicateCanvas,
     renameCanvas,
-    setCanvasShared,
-    setShareToken,
-    clearShareToken,
     getCanvasList,
 
     // Current canvas state

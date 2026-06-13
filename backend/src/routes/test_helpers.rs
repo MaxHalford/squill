@@ -58,7 +58,6 @@ pub async fn reset_db(State(state): State<AppState>) -> impl IntoResponse {
     // Order matters: children before parents to respect foreign key constraints.
     let statements: &[&str] = &[
         "DELETE FROM boxes",
-        "DELETE FROM canvas_shares",
         "DELETE FROM canvases",
         "DELETE FROM clickhouse_connections",
         "DELETE FROM snowflake_connections",
