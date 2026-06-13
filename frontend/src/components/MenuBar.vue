@@ -11,7 +11,6 @@ import { useUserStore } from '../stores/user'
 import type { BoxType } from '../types/canvas'
 import { getMenuBoxDefinitions, isBoxSupportedForEngine } from '../boxes'
 import type { BoxDefinition } from '../boxes'
-import type { ConnectionType } from '../types/connection'
 import { DATABASE_INFO } from '../types/database'
 import { useDialog } from '../composables/useDialog'
 
@@ -340,12 +339,6 @@ const handleSetBillingProject = (projectId: string, event: Event) => {
 const handleAddDatabase = async (databaseType: string) => {
   addDatabaseMenuOpen.value = false
   activeDropdown.value = null
-
-  // Require Squill login for server-proxied connection types.
-  if (connectionRequiresAuth(databaseType as ConnectionType) && !userStore.isLoggedIn) {
-    await userStore.loginWithGoogle()
-    if (!userStore.isLoggedIn) return
-  }
 
   if (databaseType === 'bigquery') {
     try {

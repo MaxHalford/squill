@@ -17,7 +17,8 @@ export const CONNECTION_METADATA: Record<ConnectionType, {
 }> = {
   bigquery: {
     displayName: DATABASE_INFO.bigquery.name,
-    requiresAuth: true,
+    // BigQuery uses client-side PKCE against Google directly — no Squill account needed.
+    requiresAuth: false,
     hasProjects: true
   },
   duckdb: {
