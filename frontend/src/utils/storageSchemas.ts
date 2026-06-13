@@ -99,6 +99,7 @@ const ConnectionSchema = z.object({
   name: z.string(),
   createdAt: z.number(),
   email: z.string().optional(),
+  bigqueryRefreshToken: z.string().optional(),
   projectId: z.string().optional(),
   schemaProjectIds: z.array(z.string()).optional(),
   database: z.string().optional(),
@@ -142,6 +143,16 @@ export const UserSchema = z.object({
 })
 
 export type UserData = z.infer<typeof UserSchema>
+
+// ============================================
+// OAuth settings schema (BYO Google OAuth client for BigQuery)
+// ============================================
+export const OAuthSettingsSchema = z.object({
+  googleClientId: z.string(),
+  googleClientSecret: z.string(),
+}).partial()
+
+export type OAuthSettingsData = z.infer<typeof OAuthSettingsSchema>
 
 // ============================================
 // Query history schema

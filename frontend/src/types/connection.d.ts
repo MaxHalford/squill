@@ -18,6 +18,9 @@ export interface Connection {
   // Session info (for remote connections like BigQuery)
   email?: string
 
+  // BigQuery: Google refresh token (stored client-side; PKCE flow)
+  bigqueryRefreshToken?: string
+
   // Context within the connection
   // For BigQuery: the billing/active project for query execution
   projectId?: string

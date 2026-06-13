@@ -4,9 +4,11 @@ import { useSettingsStore } from '../stores/settings'
 import { useUserStore } from '../stores/user'
 import { useDialog } from '../composables/useDialog'
 import { SHOW_PREMIUM } from '../constants/features'
+import BigQueryOAuthModal from './BigQueryOAuthModal.vue'
 
 const { confirm } = useDialog()
 const showPremium = SHOW_PREMIUM
+const showBigQueryOAuthModal = ref(false)
 
 defineProps<{
   show: boolean
@@ -434,6 +436,21 @@ const handleResetAll = async () => {
               </div>
             </div>
 
+            <div class="settings-section">
+              <div class="setting-header">
+                Google OAuth (BigQuery)
+              </div>
+              <div class="setting-description">
+                Use your own Google OAuth client if your organization restricts third-party apps from signing in to BigQuery. Credentials are stored only in this browser.
+              </div>
+              <button
+                class="action-button"
+                @click="showBigQueryOAuthModal = true"
+              >
+                Configure OAuth client...
+              </button>
+            </div>
+
             <div class="settings-section settings-section-danger">
               <div class="setting-header">
                 Reset
@@ -453,6 +470,11 @@ const handleResetAll = async () => {
       </div>
     </Transition>
   </Teleport>
+
+  <BigQueryOAuthModal
+    :show="showBigQueryOAuthModal"
+    @close="showBigQueryOAuthModal = false"
+  />
 </template>
 
 <style scoped>

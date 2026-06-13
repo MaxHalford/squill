@@ -8,7 +8,8 @@ import {
 } from '../services/connections'
 import { clearSchemaCache } from '../utils/schemaAdapter'
 import { loadItem, saveItem } from '../utils/storage'
-import { BACKEND_URL } from '@/services/backend'
+import { refreshBigQueryAccessToken } from '../services/oauth/bigqueryAuth'
+import { getGoogleOAuthConfig } from '../services/oauth/googleClientConfig'
 
 /**
  * Convert backend ConnectionData to frontend Connection format.
@@ -119,37 +120,42 @@ export const useConnectionsStore = defineStore('connections', () => {
     return entry.token
   }
 
-  // Get email for a connection (for token refresh)
-  const getConnectionEmail = (connectionId: string): string | null => {
-    const connection = connections.value.find(c => c.id === connectionId)
-    return connection?.email || null
-  }
-
+  /**
+   * Refresh a BigQuery access token directly against Google's token endpoint.
+   * The refresh token lives in IndexedDB on the Connection record — the
+   * Squill backend is not involved.
+   */
   const refreshAccessToken = async (connectionId: string): Promise<string> => {
-    const email = getConnectionEmail(connectionId)
-    if (!email) {
-      throw new Error('No email found for connection')
+    const connection = connections.value.find(c => c.id === connectionId)
+    if (!connection) {
+      throw new Error('Connection not found')
+    }
+    if (connection.type !== 'bigquery') {
+      throw new Error('refreshAccessToken is only supported for BigQuery connections')
+    }
+    const refreshToken = connection.bigqueryRefreshToken
+    if (!refreshToken) {
+      removeConnection(connectionId)
+      throw new Error('Session expired. Please sign in again.')
     }
 
-    // Refresh via the Squill backend (which holds the refresh token)
-    const response = await fetch(`${BACKEND_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
-    })
+    const { clientId, clientSecret } = await getGoogleOAuthConfig()
+    if (!clientId) {
+      throw new Error('Google OAuth client is not configured.')
+    }
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      if (errorData.detail?.error === 'no_refresh_token') {
+    try {
+      const { accessToken, expiresIn } = await refreshBigQueryAccessToken(clientId, clientSecret, refreshToken)
+      setAccessToken(connectionId, accessToken, expiresIn)
+      return accessToken
+    } catch (err) {
+      const e = err as Error & { refreshRevoked?: boolean }
+      if (e.refreshRevoked) {
         removeConnection(connectionId)
-        throw new Error('Session expired. Please sign in again.')
+        throw new Error('Session expired. Please sign in again.', { cause: err })
       }
-      throw new Error(errorData.detail?.message || 'Failed to refresh token')
+      throw err
     }
-
-    const data = await response.json()
-    setAccessToken(connectionId, data.access_token, data.expires_in)
-    return data.access_token
   }
 
   // Add or activate a connection. If a connection with the same ID already
@@ -164,11 +170,12 @@ export const useConnectionsStore = defineStore('connections', () => {
     return connection.id
   }
 
-  // Add or update BigQuery connection (called from AuthCallback after OAuth)
+  // Add or update BigQuery connection (called from the PKCE OAuth callback)
   const addBigQueryConnection = (
     email: string,
     accessToken: string,
-    expiresIn: number
+    expiresIn: number,
+    refreshToken: string,
   ): string => {
     // BigQuery deduplicates by email rather than ID, since the ID
     // is generated client-side and may differ across sessions.
@@ -178,6 +185,9 @@ export const useConnectionsStore = defineStore('connections', () => {
 
     if (existing) {
       activeConnectionId.value = existing.id
+      connections.value = connections.value.map(c =>
+        c.id === existing.id ? { ...c, bigqueryRefreshToken: refreshToken } : c,
+      )
       setAccessToken(existing.id, accessToken, expiresIn)
       saveState()
       return existing.id
@@ -188,7 +198,8 @@ export const useConnectionsStore = defineStore('connections', () => {
       type: 'bigquery',
       email,
       name: email,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      bigqueryRefreshToken: refreshToken,
     })
 
     setAccessToken(connectionId, accessToken, expiresIn)
@@ -394,7 +405,6 @@ export const useConnectionsStore = defineStore('connections', () => {
     saveState,
     setAccessToken,
     getAccessToken,
-    getConnectionEmail,
     refreshAccessToken,
     upsertConnection,
     addBigQueryConnection,

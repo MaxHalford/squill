@@ -188,22 +188,16 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /**
-   * Login with Google OAuth (email scope only).
-   * This implements incremental authorization - only email permission is requested.
-   * BigQuery permissions are requested separately when adding a BigQuery connection.
-   *
-   * @param chainBigQuery - If true, after login completes, automatically start BigQuery OAuth
+   * Login to Squill with Google OAuth (email scope only).
+   * Separate from BigQuery OAuth, which runs entirely client-side via PKCE.
    */
-  const loginWithGoogle = async (chainBigQuery: boolean = false): Promise<void> => {
+  const loginWithGoogle = async (): Promise<void> => {
     if (!GOOGLE_CLIENT_ID) {
       throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
     }
 
-    // Generate and store state for CSRF protection
-    // Format: {csrf_token}:{flow_type} or {csrf_token}:{flow_type}:{chain_action}
     const csrfToken = generateOAuthState()
-    const flowType = chainBigQuery ? 'login:then-bigquery' : 'login'
-    const state = `${csrfToken}:${flowType}`
+    const state = `${csrfToken}:login`
     sessionStorage.setItem(OAUTH_STATE_KEY, state)
 
     // Build OAuth URL - only request email scope for login

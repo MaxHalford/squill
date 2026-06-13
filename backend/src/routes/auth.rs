@@ -1,15 +1,13 @@
-//! OAuth authentication endpoints.
+//! OAuth authentication endpoints for Squill sign-in.
 //!
-//! Seven routes matching the Python backend:
 //!   POST /auth/google/login
-//!   POST /auth/google/callback
 //!   POST /auth/github/login
 //!   POST /auth/microsoft/login
-//!   POST /auth/refresh
-//!   GET  /auth/user/{email}
 //!   POST /auth/logout
+//!
+//! BigQuery OAuth runs client-side via PKCE and does not touch this backend.
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -53,31 +51,6 @@ struct LoginResponse {
     user: UserPayload,
 }
 
-#[derive(Serialize)]
-struct CallbackResponse {
-    access_token: String,
-    expires_in: i64,
-    session_token: String,
-    user: UserPayload,
-}
-
-#[derive(Deserialize)]
-pub struct RefreshRequest {
-    email: String,
-}
-
-#[derive(Serialize)]
-struct RefreshResponse {
-    access_token: String,
-    expires_in: i64,
-}
-
-#[derive(Serialize)]
-struct UserCheckResponse {
-    email: String,
-    has_valid_refresh_token: bool,
-}
-
 #[derive(Deserialize)]
 pub struct LogoutRequest {
     email: String,
@@ -97,24 +70,9 @@ struct UserRow {
     is_vip: bool,
 }
 
-#[derive(sqlx::FromRow)]
-struct BqConnectionRow {
-    #[allow(dead_code)]
-    id: String,
-    #[allow(dead_code)]
-    user_id: String,
-    email: String,
-    refresh_token_encrypted: Vec<u8>,
-    encryption_iv: Vec<u8>,
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn error_response_json(status: StatusCode, detail: Value) -> Response {
-    (status, Json(json!({"detail": detail}))).into_response()
-}
 
 fn user_payload(row: &UserRow) -> UserPayload {
     UserPayload {
@@ -200,10 +158,6 @@ fn value_as_str<'a>(map: &'a std::collections::HashMap<String, Value>, key: &str
     map.get(key).and_then(|v| v.as_str())
 }
 
-fn value_as_i64(map: &std::collections::HashMap<String, Value>, key: &str) -> Option<i64> {
-    map.get(key).and_then(|v| v.as_i64())
-}
-
 // ---------------------------------------------------------------------------
 // POST /auth/google/login
 // ---------------------------------------------------------------------------
@@ -268,128 +222,6 @@ pub async fn google_login(
     .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("JWT error: {e}")))?;
 
     Ok(Json(LoginResponse {
-        session_token,
-        user: user_payload(&user),
-    }))
-}
-
-// ---------------------------------------------------------------------------
-// POST /auth/google/callback
-// ---------------------------------------------------------------------------
-
-pub async fn google_callback(
-    State(state): State<AppState>,
-    Json(body): Json<OAuthCodeRequest>,
-) -> Result<impl IntoResponse, Response> {
-    let google = GoogleOAuthService::new(
-        &state.config.google_client_id,
-        &state.config.google_client_secret,
-        state.config.test_mode,
-        state.http_client.clone(),
-    );
-
-    // Exchange code for tokens
-    let tokens = google
-        .exchange_code(&body.code, &body.redirect_uri)
-        .await
-        .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("Failed to exchange code: {e}")))?;
-
-    let access_token = value_as_str(&tokens, "access_token")
-        .ok_or_else(|| error_response(StatusCode::BAD_REQUEST, "No access token received"))?
-        .to_string();
-    let refresh_token = value_as_str(&tokens, "refresh_token").map(|s| s.to_string());
-    let expires_in = value_as_i64(&tokens, "expires_in").unwrap_or(3600);
-
-    // Get user info
-    let mut user_info = google
-        .get_user_info(&access_token)
-        .await
-        .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("Failed to get user info: {e}")))?;
-
-    // In test mode, override email from the code
-    if state.config.test_mode && body.code.starts_with("test-") {
-        let email = body.code.strip_prefix("test-").unwrap_or(&body.code);
-        user_info.insert("email".into(), Value::String(email.to_string()));
-    }
-
-    let email = value_as_str(&user_info, "email")
-        .ok_or_else(|| error_response(StatusCode::BAD_REQUEST, "No email in user info"))?;
-    let first_name = value_as_str(&user_info, "given_name");
-    let last_name = value_as_str(&user_info, "family_name");
-
-    let user = upsert_user(&state, email, first_name, last_name).await?;
-
-    // Upsert BigQuery connection with encrypted refresh token (in a transaction)
-    let mut tx = state.db.begin().await
-        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    let existing_bq: Option<BqConnectionRow> = sqlx::query_as(
-        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE user_id = ? AND email = ?",
-    )
-    .bind(&user.id)
-    .bind(email)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    if let Some(rt) = &refresh_token {
-        let enc = state.encryption.as_ref()
-            .ok_or_else(|| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Encryption not configured"))?;
-        let (ciphertext, iv) = enc
-            .encrypt(rt)
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Encryption error: {e}")))?;
-
-        let now = now_sqlite();
-
-        if existing_bq.is_some() {
-            sqlx::query(
-                "UPDATE bigquery_connections SET refresh_token_encrypted = ?, encryption_iv = ?, updated_at = ? WHERE user_id = ? AND email = ?",
-            )
-            .bind(&ciphertext)
-            .bind(&iv)
-            .bind(&now)
-            .bind(&user.id)
-            .bind(email)
-            .execute(&mut *tx)
-            .await
-            .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-        } else {
-            let bq_id = Uuid::new_v4().to_string();
-            sqlx::query(
-                "INSERT INTO bigquery_connections (id, user_id, email, refresh_token_encrypted, encryption_iv, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&bq_id)
-            .bind(&user.id)
-            .bind(email)
-            .bind(&ciphertext)
-            .bind(&iv)
-            .bind(&now)
-            .bind(&now)
-            .execute(&mut *tx)
-            .await
-            .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-        }
-    } else if existing_bq.is_none() {
-        return Err(error_response(
-            StatusCode::BAD_REQUEST,
-            "No refresh token received and no existing connection. Please try signing in again.",
-        ));
-    }
-
-    tx.commit().await
-        .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    let session_token = create_session_token(
-        &user.id,
-        &user.email,
-        &state.config.jwt_secret,
-        state.config.jwt_expiration_days,
-    )
-    .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("JWT error: {e}")))?;
-
-    Ok(Json(CallbackResponse {
-        access_token,
-        expires_in,
         session_token,
         user: user_payload(&user),
     }))
@@ -545,122 +377,6 @@ pub async fn microsoft_login(
 }
 
 // ---------------------------------------------------------------------------
-// POST /auth/refresh (auth required)
-// ---------------------------------------------------------------------------
-
-pub async fn refresh_token(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Json(body): Json<RefreshRequest>,
-) -> Result<impl IntoResponse, Response> {
-    if body.email != user.email {
-        return Err(error_response(StatusCode::FORBIDDEN, "Email does not match authenticated user"));
-    }
-
-    let google = GoogleOAuthService::new(
-        &state.config.google_client_id,
-        &state.config.google_client_secret,
-        state.config.test_mode,
-        state.http_client.clone(),
-    );
-
-    // Find BQ connection by user_id + email
-    let bq: BqConnectionRow = sqlx::query_as(
-        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE user_id = ? AND email = ?",
-    )
-    .bind(&user.id)
-    .bind(&body.email)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-    .ok_or_else(|| {
-        error_response_json(
-            StatusCode::UNAUTHORIZED,
-            json!({
-                "error": "no_refresh_token",
-                "message": "No BigQuery connection found. Please re-authenticate."
-            }),
-        )
-    })?;
-
-    // Decrypt refresh token
-    let enc = state.encryption.as_ref().ok_or_else(|| {
-        error_response_json(
-            StatusCode::UNAUTHORIZED,
-            json!({
-                "error": "decrypt_failed",
-                "message": "Encryption not configured."
-            }),
-        )
-    })?;
-
-    let rt = enc
-        .decrypt(&bq.refresh_token_encrypted, &bq.encryption_iv)
-        .map_err(|_| {
-            error_response_json(
-                StatusCode::UNAUTHORIZED,
-                json!({
-                    "error": "decrypt_failed",
-                    "message": "Failed to decrypt refresh token."
-                }),
-            )
-        })?;
-
-    // Refresh with Google
-    let tokens = google.refresh_access_token(&rt).await.map_err(|e| {
-        error_response_json(
-            StatusCode::UNAUTHORIZED,
-            json!({
-                "error": "refresh_failed",
-                "message": format!("Failed to refresh token: {e}")
-            }),
-        )
-    })?;
-
-    let access_token = value_as_str(&tokens, "access_token")
-        .unwrap_or("")
-        .to_string();
-    let expires_in = value_as_i64(&tokens, "expires_in").unwrap_or(3600);
-
-    Ok(Json(RefreshResponse {
-        access_token,
-        expires_in,
-    }))
-}
-
-// ---------------------------------------------------------------------------
-// GET /auth/user/{email} (auth required)
-// ---------------------------------------------------------------------------
-
-pub async fn get_user_by_email(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(email): Path<String>,
-) -> Result<impl IntoResponse, Response> {
-    if email != user.email {
-        return Err(error_response(StatusCode::FORBIDDEN, "Can only check your own connections"));
-    }
-
-    let bq: Option<BqConnectionRow> = sqlx::query_as(
-        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE user_id = ? AND email = ?",
-    )
-    .bind(&user.id)
-    .bind(&email)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    let bq = bq.ok_or_else(|| {
-        error_response(StatusCode::NOT_FOUND, "No BigQuery connection found")
-    })?;
-
-    Ok(Json(UserCheckResponse {
-        email: bq.email,
-        has_valid_refresh_token: true,
-    }))
-}
-
-// ---------------------------------------------------------------------------
 // POST /auth/logout (auth required)
 // ---------------------------------------------------------------------------
 
@@ -684,38 +400,6 @@ pub async fn logout(
                 let _ = token_revocation::revoke_token(&state.db, token, &expires_at).await;
             }
         }
-    }
-
-    let bq: Option<BqConnectionRow> = sqlx::query_as(
-        "SELECT id, user_id, email, refresh_token_encrypted, encryption_iv FROM bigquery_connections WHERE user_id = ? AND email = ?",
-    )
-    .bind(&user.id)
-    .bind(&body.email)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
-
-    if let Some(bq) = bq {
-        // Try to revoke with Google (best effort)
-        if let Some(enc) = state.encryption.as_ref() {
-            if let Ok(rt) = enc.decrypt(&bq.refresh_token_encrypted, &bq.encryption_iv) {
-                let google = GoogleOAuthService::new(
-                    &state.config.google_client_id,
-                    &state.config.google_client_secret,
-                    state.config.test_mode,
-                    state.http_client.clone(),
-                );
-                let _ = google.revoke_token(&rt).await;
-            }
-        }
-
-        // Delete the BQ connection
-        sqlx::query("DELETE FROM bigquery_connections WHERE user_id = ? AND email = ?")
-            .bind(&user.id)
-            .bind(&body.email)
-            .execute(&state.db)
-            .await
-            .map_err(|_| error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
     }
 
     Ok(Json(json!({"status": "ok"})))

@@ -1,14 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useConnectionsStore } from '../stores/connections'
-import { useBigQueryStore } from '../stores/bigquery'
 import { useUserStore } from '../stores/user'
 import { BACKEND_URL } from '@/services/backend'
 
 const router = useRouter()
-const connectionsStore = useConnectionsStore()
-const bigqueryStore = useBigQueryStore()
 const userStore = useUserStore()
 
 const status = ref<'loading' | 'error'>('loading')
@@ -16,21 +12,16 @@ const errorMessage = ref('')
 
 /**
  * Parse the OAuth state to extract CSRF token and flow type.
- * State format: {csrf_token}:{flow_type} or {csrf_token}:{flow_type}:{chain_action}
- * Examples:
- * - "abc123:login" -> login flow
- * - "abc123:login:then-bigquery" -> login flow, then chain BigQuery auth
- * - "abc123:bigquery" -> BigQuery connection flow
+ * State format: {csrf_token}:{flow_type}
  */
-const parseOAuthState = (state: string): { csrfToken: string; flowType: string; chainAction?: string } => {
+const parseOAuthState = (state: string): { csrfToken: string; flowType: string } => {
   const parts = state.split(':')
   if (parts.length < 2) {
-    return { csrfToken: state, flowType: 'bigquery' } // Legacy format - assume BigQuery flow
+    return { csrfToken: state, flowType: 'login' }
   }
   return {
     csrfToken: parts[0],
     flowType: parts[1],
-    chainAction: parts[2]
   }
 }
 
@@ -137,74 +128,6 @@ const handleMicrosoftLoginFlow = async (code: string): Promise<void> => {
   }, data.session_token)
 }
 
-/**
- * Handle BigQuery connection OAuth flow.
- * Creates BigQuery connection with refresh token.
- */
-const handleBigQueryFlow = async (code: string): Promise<void> => {
-  const response = await fetch(`${BACKEND_URL}/auth/google/callback`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      code,
-      redirect_uri: `${window.location.origin}/auth/callback`,
-    }),
-  })
-
-  if (!response.ok) {
-    const errorData = await response.json()
-    throw new Error(errorData.detail || 'Failed to authenticate')
-  }
-
-  const data = await response.json()
-
-  // Store user account info and session token (also syncs connections for Pro/VIP)
-  await userStore.setUser({
-    id: data.user.id,
-    email: data.user.email,
-    firstName: data.user.first_name ?? null,
-    lastName: data.user.last_name ?? null,
-    plan: data.user.plan,
-    isVip: data.user.is_vip ?? false,
-    planExpiresAt: data.user.plan_expires_at ?? null,
-    subscriptionCancelAtPeriodEnd: data.user.subscription_cancel_at_period_end ?? false,
-    authProvider: 'google',
-  }, data.session_token)
-
-  // Add connection with access token (stored in memory)
-  const connectionId = connectionsStore.addBigQueryConnection(
-    data.user.email,
-    data.access_token,
-    data.expires_in
-  )
-
-  // Fetch projects, restore previous selection or pick first, and load schemas
-  try {
-    await bigqueryStore.ready
-    const projects = await bigqueryStore.fetchProjects()
-    if (projects.length > 0) {
-      // Prefer the previously selected project if it still exists
-      const savedProjectId = bigqueryStore.projectId
-      const targetProjectId = savedProjectId && projects.some(p => p.projectId === savedProjectId)
-        ? savedProjectId
-        : projects[0].projectId
-      bigqueryStore.setProjectId(targetProjectId)
-      connectionsStore.setConnectionProjectId(connectionId, targetProjectId)
-      connectionsStore.addSchemaProject(connectionId, targetProjectId)
-
-      // Populate schema store so SQL autocompletion works immediately
-      try {
-        await bigqueryStore.fetchAllSchemas(targetProjectId)
-      } catch (schemaErr) {
-        console.warn('Could not fetch schemas:', schemaErr)
-      }
-    }
-  } catch (err) {
-    console.warn('Could not auto-select project:', err)
-    // Continue anyway - user can manually select
-  }
-}
-
 onMounted(async () => {
   const urlParams = new URLSearchParams(window.location.search)
   const code = urlParams.get('code')
@@ -233,7 +156,7 @@ onMounted(async () => {
   }
 
   // Parse the state to determine flow type
-  const { csrfToken, flowType, chainAction } = parseOAuthState(savedState)
+  const { csrfToken, flowType } = parseOAuthState(savedState)
   const receivedCsrf = state ? parseOAuthState(state).csrfToken : null
 
   // Validate CSRF token
@@ -253,30 +176,15 @@ onMounted(async () => {
   if (next) sessionStorage.removeItem('squill-login-next')
 
   try {
-    // Route to appropriate handler based on flow type
-    if (flowType === 'login' && chainAction === 'then-bigquery') {
-      // Login flow with BigQuery chain (incremental auth for new users adding BigQuery)
-      await handleLoginFlow(code)
-      // After login completes, automatically start BigQuery OAuth flow
-      await bigqueryStore.signInWithGoogle()
-      // Note: signInWithGoogle redirects to Google, so we won't reach here
-    } else if (flowType === 'login') {
-      // Login-only flow (user just wants to sign in without adding BigQuery)
-      await handleLoginFlow(code)
-      router.push(postLoginTarget)
-    } else if (flowType === 'github-login') {
-      // GitHub OAuth login flow
+    if (flowType === 'github-login') {
       await handleGitHubLoginFlow(code)
-      router.push(postLoginTarget)
     } else if (flowType === 'microsoft-login') {
-      // Microsoft OAuth login flow
       await handleMicrosoftLoginFlow(code)
-      router.push(postLoginTarget)
     } else {
-      // BigQuery connection flow (default, including legacy states)
-      await handleBigQueryFlow(code)
-      router.push(postLoginTarget)
+      // Default: Google sign-in flow
+      await handleLoginFlow(code)
     }
+    router.push(postLoginTarget)
   } catch (err: unknown) {
     status.value = 'error'
     errorMessage.value = err instanceof Error ? err.message : 'Authentication failed'

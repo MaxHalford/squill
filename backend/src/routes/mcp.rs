@@ -133,12 +133,6 @@ struct BoxRow {
 }
 
 #[derive(sqlx::FromRow)]
-struct BigQueryRow {
-    email: String,
-    created_at: String,
-}
-
-#[derive(sqlx::FromRow)]
 struct ClickHouseRow {
     id: String,
     name: String,
@@ -588,19 +582,14 @@ impl SquillMcpHandler {
     }
 
     /// List all database connections for the current user.
+    ///
+    /// BigQuery is omitted intentionally: it runs client-side via PKCE so the
+    /// backend has no record of BigQuery connections.
     #[tool(description = "List all database connections for the current user")]
     async fn list_connections(
         &self,
         #[allow(unused_variables)] Parameters(_params): Parameters<ListConnectionsParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let bq = sqlx::query_as::<_, BigQueryRow>(
-            "SELECT email, created_at FROM bigquery_connections WHERE user_id = ?",
-        )
-        .bind(&self.user_id)
-        .fetch_all(&self.db)
-        .await
-        .unwrap_or_default();
-
         let ch = sqlx::query_as::<_, ClickHouseRow>(
             "SELECT id, name, database FROM clickhouse_connections WHERE user_id = ?",
         )
@@ -619,17 +608,6 @@ impl SquillMcpHandler {
 
         let mut connections: Vec<serde_json::Value> = Vec::new();
 
-        for row in bq {
-            let millis = chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
-                .map(|dt| dt.and_utc().timestamp_millis())
-                .unwrap_or(0);
-            connections.push(serde_json::json!({
-                "id": format!("bigquery-{}-{}", row.email, millis),
-                "flavor": "bigquery",
-                "name": row.email,
-                "email": row.email,
-            }));
-        }
         for row in ch {
             connections.push(serde_json::json!({
                 "id": row.id,

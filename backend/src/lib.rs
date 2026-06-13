@@ -131,13 +131,10 @@ pub fn build_app(state: AppState) -> Router {
             "/snowflake/connections/{connection_id}",
             axum::routing::delete(routes::snowflake::delete_connection),
         )
-        // Auth / OAuth
+        // Auth / OAuth (Squill sign-in only; BigQuery OAuth is client-side PKCE)
         .route("/auth/google/login", axum::routing::post(routes::auth::google_login))
-        .route("/auth/google/callback", axum::routing::post(routes::auth::google_callback))
         .route("/auth/github/login", axum::routing::post(routes::auth::github_login))
         .route("/auth/microsoft/login", axum::routing::post(routes::auth::microsoft_login))
-        .route("/auth/refresh", axum::routing::post(routes::auth::refresh_token))
-        .route("/auth/user/{email}", axum::routing::get(routes::auth::get_user_by_email))
         .route("/auth/logout", axum::routing::post(routes::auth::logout))
         // Billing
         .route("/billing/checkout-session", axum::routing::post(routes::billing::checkout_session))

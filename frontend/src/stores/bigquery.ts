@@ -5,29 +5,14 @@ import { loadItem, saveItem, deleteItem } from '../utils/storage'
 import { createBigQueryClient } from '../services/bigquery'
 import type { BigQueryClient, DryRunResult } from '../services/bigquery'
 import type { BigQueryProject } from '../types/bigquery'
+import { startBigQueryAuth, revokeBigQueryRefreshToken } from '../services/oauth/bigqueryAuth'
+import { getGoogleOAuthConfig } from '../services/oauth/googleClientConfig'
 
 export type {
   BigQueryQueryResult,
   BigQueryPaginatedQueryResult,
   DryRunResult,
 } from '../services/bigquery/types'
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
-const OAUTH_STATE_KEY = 'squill-oauth-state'
-import { BACKEND_URL } from '@/services/backend'
-
-const generateOAuthState = (): string => {
-  const array = new Uint8Array(32)
-  crypto.getRandomValues(array)
-  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
-}
-
-// email scope is needed by the Squill backend to identify the user
-const BIGQUERY_SCOPES = [
-  'https://www.googleapis.com/auth/userinfo.email',
-  'https://www.googleapis.com/auth/bigquery.readonly',
-  'https://www.googleapis.com/auth/cloud-platform.read-only'
-]
 
 interface DryRunCacheEntry {
   result: DryRunResult
@@ -84,36 +69,11 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   }
 
   const signInWithGoogle = async (): Promise<void> => {
-    // Incremental auth via the Squill backend.
-    // If user isn't logged in, chain full login first; otherwise request
-    // only the BigQuery scopes on top of existing grants.
-    if (!GOOGLE_CLIENT_ID) {
-      throw new Error('Google Client ID not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file')
+    const { clientId } = await getGoogleOAuthConfig()
+    if (!clientId) {
+      throw new Error('Google OAuth client is not configured. Open Settings → Google OAuth (BigQuery) to add credentials, or ask your admin to set VITE_GOOGLE_CLIENT_ID at build time.')
     }
-    const { useUserStore } = await import('./user')
-    const userStore = useUserStore()
-
-    if (!userStore.isLoggedIn) {
-      await userStore.loginWithGoogle(true) // chainBigQuery = true
-      return
-    }
-
-    const csrfToken = generateOAuthState()
-    const state = `${csrfToken}:bigquery`
-    sessionStorage.setItem(OAUTH_STATE_KEY, state)
-
-    const params = new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      redirect_uri: `${window.location.origin}/auth/callback`,
-      response_type: 'code',
-      scope: BIGQUERY_SCOPES.join(' '),
-      access_type: 'offline',
-      prompt: 'consent',
-      include_granted_scopes: 'true',
-      state
-    })
-
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+    await startBigQueryAuth(clientId)
   }
 
   const reconnectConnection = async (_connectionId: string): Promise<void> => {
@@ -121,23 +81,21 @@ export const useBigQueryStore = defineStore('bigquery', () => {
   }
 
   const signOut = async () => {
-    const email = connectionsStore.activeConnection?.email
+    const activeId = connectionsStore.activeConnectionId
+    const activeConn = activeId ? connectionsStore.connections.find(c => c.id === activeId) : null
+    const refreshToken = activeConn?.bigqueryRefreshToken
 
-    if (connectionsStore.activeConnectionId) {
-      connectionsStore.removeConnection(connectionsStore.activeConnectionId)
+    if (activeId) {
+      connectionsStore.removeConnection(activeId)
     }
 
     projectId.value = null
     deleteItem('bigquery-project').catch(console.error)
 
-    if (email) {
-      // Tell the Squill backend to revoke the server-held refresh token
+    if (refreshToken) {
+      // Best-effort revoke directly against Google (no backend involved)
       try {
-        await fetch(`${BACKEND_URL}/auth/logout`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
-        })
+        await revokeBigQueryRefreshToken(refreshToken)
       } catch (err) {
         console.warn('Failed to revoke refresh token:', err)
       }

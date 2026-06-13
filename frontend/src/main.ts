@@ -17,6 +17,7 @@ const TermsOfService = () => import('./views/TermsOfService.vue')
 const RefundPolicy = () => import('./views/RefundPolicy.vue')
 const Workbench = () => import('./views/Workbench.vue')
 const AuthCallback = () => import('./views/AuthCallback.vue')
+const OAuthBigQueryCallback = () => import('./views/OAuthBigQueryCallback.vue')
 const AccountPage = () => import('./views/AccountPage.vue')
 const Changelog = () => import('./views/Changelog.vue')
 const NotFound = () => import('./views/NotFound.vue')
@@ -26,6 +27,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/', component: LandingPage },
   { path: '/app', component: Home },
   { path: '/auth/callback', component: AuthCallback },
+  { path: '/oauth/bigquery/callback', component: OAuthBigQueryCallback },
   { path: '/oauth/consent', component: OAuthConsent },
   { path: '/account', component: AccountPage },
   { path: '/privacy-policy', component: PrivacyPolicy },

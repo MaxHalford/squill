@@ -60,7 +60,6 @@ pub async fn reset_db(State(state): State<AppState>) -> impl IntoResponse {
         "DELETE FROM boxes",
         "DELETE FROM canvas_shares",
         "DELETE FROM canvases",
-        "DELETE FROM bigquery_connections",
         "DELETE FROM clickhouse_connections",
         "DELETE FROM snowflake_connections",
         "DELETE FROM revoked_tokens",
