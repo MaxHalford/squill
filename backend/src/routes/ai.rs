@@ -6,7 +6,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 
-use crate::auth::middleware::AuthUser;
+use crate::auth::middleware::{check_pro_or_vip, AuthUser};
 use crate::error::error_response;
 use crate::services::openai::{
     self, AiCache, FixResponse as FixServiceResponse, SpellResponse as SpellServiceResponse,
@@ -57,9 +57,12 @@ pub struct RemoveHexRequest {
 
 pub async fn cast_spell(
     State(state): State<AppState>,
-    AuthUser(_user): AuthUser,
+    AuthUser(user): AuthUser,
     Json(body): Json<CastSpellRequest>,
 ) -> Response {
+    if let Err(resp) = check_pro_or_vip(&user) {
+        return resp;
+    }
     let client = &state.http_client;
     let service_request = openai::SpellRequest {
         query: body.query,
@@ -80,9 +83,12 @@ pub async fn cast_spell(
 
 pub async fn remove_hex(
     State(state): State<AppState>,
-    AuthUser(_user): AuthUser,
+    AuthUser(user): AuthUser,
     Json(body): Json<RemoveHexRequest>,
 ) -> Response {
+    if let Err(resp) = check_pro_or_vip(&user) {
+        return resp;
+    }
     let client = &state.http_client;
     let service_request = openai::FixRequest {
         query: body.query,

@@ -592,7 +592,7 @@ const handleAcceptSuggestion = () => {
 }
 
 const handleCastSpell = async (instruction: string, selectedText: string) => {
-  if (!userStore.sessionToken) return
+  if (!userStore.isPro || !userStore.sessionToken) return
   isCastingSpell.value = true
   try {
     const query = editorRef.value?.getQuery() || queryText.value
