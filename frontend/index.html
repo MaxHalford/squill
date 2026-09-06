@@ -3,15 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://bigquery.googleapis.com https://cloudresourcemanager.googleapis.com https://cdn.jsdelivr.net https://files.pythonhosted.org ws://localhost:* http://localhost:*; img-src 'self' data: https://*.googleusercontent.com; frame-src https://accounts.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-DPjKEqDeQi0Af+DWILryLTPQ+ODOMj1qaKcHudfVflM=' https://accounts.google.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://bigquery.googleapis.com https://cloudresourcemanager.googleapis.com https://cdn.jsdelivr.net https://files.pythonhosted.org ws://localhost:* http://localhost:*; img-src 'self' data: https://*.googleusercontent.com; frame-src https://accounts.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐦</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
     <meta name="format-detection" content="telephone=no" />
+    <meta name="robots" content="index, follow" />
     <meta name="google-site-verification" content="7DfdWB8AILKs4joDJC7JWoPQt06z3RMXAb-OpQMt0_k" />
-    <meta name="description" content="Squill is a static, local-first SQL canvas for exploring data in your browser with DuckDB and connected data warehouses." />
+    <meta name="description" content="Squill is a free, open-source SQL canvas for connected queries, schema browsing, notes, and column analytics. Run DuckDB locally or query BigQuery directly from your browser." />
     <meta name="keywords" content="SQL canvas, browser SQL, local-first SQL editor, DuckDB, BigQuery" />
     <meta name="author" content="Max Halford" />
     <meta name="application-name" content="Squill" />
@@ -34,7 +35,35 @@
     <meta name="twitter:description" content="A local-first SQL canvas that runs entirely in your browser." />
     <meta name="twitter:image" content="https://maxhalford.github.io/squill/og-image.png" />
     <meta name="twitter:image:alt" content="Squill - local-first SQL canvas" />
-    <title>Squill | SQL editor</title>
+    <link rel="canonical" href="https://maxhalford.github.io/squill/" />
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Squill",
+  "url": "https://maxhalford.github.io/squill/",
+  "description": "A free, open-source, local-first SQL canvas for DuckDB and BigQuery.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Any",
+  "browserRequirements": "Requires JavaScript and WebAssembly",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "EUR"
+  },
+  "featureList": [
+    "Connected SQL query canvas",
+    "DuckDB in the browser",
+    "Direct BigQuery access",
+    "Schema browser",
+    "Column analytics",
+    "Local browser storage"
+  ],
+  "codeRepository": "https://github.com/MaxHalford/squill",
+  "license": "https://www.gnu.org/licenses/agpl-3.0.html"
+}
+    </script>
+    <title>Squill — Local-first SQL canvas</title>
   </head>
   <body>
     <div id="app"></div>
