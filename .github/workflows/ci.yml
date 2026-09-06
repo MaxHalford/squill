@@ -32,11 +32,11 @@ jobs:
         if: github.event_name != 'pull_request'
         run: test -n "$VITE_GOOGLE_CLIENT_ID"
         env:
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || vars.VITE_GOOGLE_CLIENT_ID }}
       - run: bun run build
         working-directory: frontend
         env:
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || vars.VITE_GOOGLE_CLIENT_ID }}
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3
