@@ -38,7 +38,7 @@ The workflow in `.github/workflows/ci.yml` builds and deploys `frontend/dist` on
 Configure the repository before the first deployment:
 
 1. Set Pages **Source** to **GitHub Actions**.
-2. Add an Actions repository variable named `GOOGLE_CLIENT_ID` (the workflow also accepts `VITE_GOOGLE_CLIENT_ID`).
+2. Add `GOOGLE_CLIENT_ID` as an Actions repository variable or secret (the workflow also accepts `VITE_GOOGLE_CLIENT_ID`).
 3. Add the production origin, such as `https://squill.dev`, to the OAuth client's authorized JavaScript origins.
 4. If you do not use `squill.dev`, change or remove `frontend/public/CNAME` and adjust Vite's base path as needed.
 
