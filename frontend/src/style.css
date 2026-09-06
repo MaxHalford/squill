@@ -165,6 +165,7 @@
   --modal-overlay-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);
   --modal-overlay-blur: 8px;
   --modal-z-index: 10001;
+  --dialog-z-index: 10003;
 
   /* Resize Handles */
   --handle-size: 8px;
@@ -429,6 +430,11 @@ body.resizing-column * {
   justify-content: center;
   z-index: var(--modal-z-index);
   padding: var(--space-4);
+}
+
+/* Confirmation and prompt dialogs can be opened from inside another modal. */
+.dialog-overlay {
+  z-index: var(--dialog-z-index);
 }
 
 /* Demo fill button for connection modals */

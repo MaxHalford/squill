@@ -43,7 +43,7 @@ const handleKeydown = (e: KeyboardEvent) => {
     <Transition name="modal-fade">
       <div
         v-if="active"
-        class="modal-overlay"
+        class="modal-overlay dialog-overlay"
         role="dialog"
         aria-modal="true"
         @click.self="handleCancel"
