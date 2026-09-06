@@ -131,7 +131,11 @@ export const useConnectionsStore = defineStore('connections', () => {
     if (!GOOGLE_CLIENT_ID) {
       throw new Error('Google OAuth is not configured. Set the GOOGLE_CLIENT_ID GitHub Actions variable.')
     }
-    const authorization = await authorizeBigQuery(GOOGLE_CLIENT_ID, { selectAccount: true })
+    // For the first connection, an empty prompt lets Google reuse an existing
+    // grant/account and only show UI when consent is actually needed. Adding a
+    // second account still opens the account chooser explicitly.
+    const hasBigQueryConnection = connections.value.some(connection => connection.type === 'bigquery')
+    const authorization = await authorizeBigQuery(GOOGLE_CLIENT_ID, { selectAccount: hasBigQueryConnection })
     return addBigQueryConnection(authorization.email, authorization.accessToken, authorization.expiresIn)
   }
 
