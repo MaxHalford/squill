@@ -8,7 +8,7 @@ import { vTooltip, vTooltipOverflow } from './directives/tooltip'
 import './boxes'
 
 const router = createRouter({
-  history: createWebHashHistory(import.meta.env.BASE_URL),
+  history: createWebHashHistory(`${import.meta.env.BASE_URL}app/`),
   routes: [
     { path: '/', component: Home },
     { path: '/privacy-policy', component: () => import('./views/PrivacyPolicy.vue') },
@@ -19,7 +19,7 @@ const router = createRouter({
 
 router.afterEach((to) => {
   const titles: Record<string, string> = {
-    '/': 'Squill — Local-first SQL canvas',
+    '/': 'Squill — SQL canvas',
     '/privacy-policy': 'Privacy Policy — Squill',
     '/terms-of-service': 'Terms of Service — Squill',
   }

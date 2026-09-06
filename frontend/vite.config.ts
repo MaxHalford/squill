@@ -11,6 +11,12 @@ export default defineConfig(({ command }) => ({
   build: {
     chunkSizeWarningLimit: 1000,
     sourcemap: false,
+    rollupOptions: {
+      input: {
+        landing: path.resolve(__dirname, 'index.html'),
+        app: path.resolve(__dirname, 'app/index.html'),
+      },
+    },
   },
   optimizeDeps: {
     exclude: ['@duckdb/duckdb-wasm'],

@@ -45,7 +45,7 @@ Configure the repository before the first deployment:
 2. Add `GOOGLE_CLIENT_ID` as an Actions repository variable or secret (the workflow also accepts `VITE_GOOGLE_CLIENT_ID`).
 3. Add `https://maxhalford.github.io` to the OAuth client's authorized JavaScript origins. OAuth origins do not include the `/squill/` path.
 
-The production URL is `https://maxhalford.github.io/squill/`.
+The production landing page is `https://maxhalford.github.io/squill/`. The SQL canvas is at `https://maxhalford.github.io/squill/app/`.
 
 ## Quality checks
 

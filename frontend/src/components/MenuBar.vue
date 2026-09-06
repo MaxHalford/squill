@@ -232,6 +232,9 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
           <span class="menu-caret">▾</span>
         </button>
         <div v-if="openMenu === 'help'" class="dropdown os-dropdown dropdown-right">
+          <a class="dropdown-item" href="../" @click="closeMenus">
+            <span class="item-text">About Squill</span>
+          </a>
           <button class="dropdown-item" @click="emit('show-shortcuts'); closeMenus()">
             <span class="item-text">Keyboard shortcuts</span>
           </button>
