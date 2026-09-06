@@ -2,204 +2,42 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://bigquery.googleapis.com https://cloudresourcemanager.googleapis.com https://cdn.jsdelivr.net https://files.pythonhosted.org ws://localhost:* http://localhost:*; img-src 'self' data: https://*.googleusercontent.com; frame-src https://accounts.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐦</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#f4f2ed" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#171717" media="(prefers-color-scheme: dark)" />
+    <meta name="format-detection" content="telephone=no" />
     <meta name="google-site-verification" content="7DfdWB8AILKs4joDJC7JWoPQt06z3RMXAb-OpQMt0_k" />
-    <meta name="description" content="Squill is a free, open-source SQL canvas for exploring data locally with DuckDB or directly in BigQuery. No backend or Squill account required." />
+    <meta name="description" content="Squill is a static, local-first SQL canvas for exploring data in your browser with DuckDB and connected data warehouses." />
+    <meta name="keywords" content="SQL canvas, browser SQL, local-first SQL editor, DuckDB, BigQuery" />
     <meta name="author" content="Max Halford" />
     <meta name="application-name" content="Squill" />
+
+    <!-- Open Graph / Social -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Squill — Local-first SQL canvas" />
-    <meta property="og:description" content="Explore data with connected SQL queries, schemas, notes, and column analytics. Everything runs in your browser." />
+    <meta property="og:title" content="Squill - Local-first SQL Canvas" />
+    <meta property="og:description" content="A local-first SQL canvas that runs entirely in your browser." />
     <meta property="og:url" content="https://maxhalford.github.io/squill/" />
     <meta property="og:site_name" content="Squill" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:image" content="https://maxhalford.github.io/squill/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Squill, a local-first SQL canvas" />
+    <meta property="og:image:alt" content="Squill - local-first SQL canvas" />
+
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Squill — Local-first SQL canvas" />
-    <meta name="twitter:description" content="Explore data with connected SQL queries, schemas, notes, and column analytics. Everything runs in your browser." />
+    <meta name="twitter:title" content="Squill - Local-first SQL Canvas" />
+    <meta name="twitter:description" content="A local-first SQL canvas that runs entirely in your browser." />
     <meta name="twitter:image" content="https://maxhalford.github.io/squill/og-image.png" />
-    <link rel="canonical" href="https://maxhalford.github.io/squill/" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐦</text></svg>" />
-    <link rel="stylesheet" href="/src/landing.css" />
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "Squill",
-        "url": "https://maxhalford.github.io/squill/",
-        "description": "A free, open-source, local-first SQL canvas for DuckDB and BigQuery.",
-        "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "Any",
-        "browserRequirements": "Requires JavaScript and WebAssembly",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "EUR"
-        },
-        "featureList": [
-          "Connected SQL query canvas",
-          "DuckDB in the browser",
-          "Direct BigQuery access",
-          "Schema browser",
-          "Column analytics",
-          "Local browser storage"
-        ],
-        "codeRepository": "https://github.com/MaxHalford/squill",
-        "license": "https://www.gnu.org/licenses/agpl-3.0.html"
-      }
-    </script>
-    <title>Squill — Local-first SQL canvas</title>
+    <meta name="twitter:image:alt" content="Squill - local-first SQL canvas" />
+    <title>Squill | SQL editor</title>
   </head>
   <body>
-    <header class="site-header">
-      <a class="wordmark" href="./" aria-label="Squill home">SQUILL</a>
-      <nav aria-label="Main navigation">
-        <a href="#features">Features</a>
-        <a href="#privacy">Privacy</a>
-        <a href="https://github.com/MaxHalford/squill">GitHub</a>
-        <a class="button button-small" href="./app/">Open canvas</a>
-      </nav>
-    </header>
-
-    <main>
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-copy">
-          <p class="eyebrow">Open source · Local first · No Squill account</p>
-          <h1 id="hero-title">SQL works better<br />
-            on a canvas.</h1>
-          <p class="hero-summary">
-            Explore data with connected queries, schemas, notes, and column analytics.
-            Run SQL locally with DuckDB or directly in BigQuery—without sending your data through a Squill server.
-          </p>
-          <div class="hero-actions">
-            <a class="button" href="./app/">Open the canvas <span aria-hidden="true">→</span></a>
-            <a class="text-link" href="https://github.com/MaxHalford/squill">View source</a>
-          </div>
-          <p class="hero-footnote">Free forever. Your work stays in this browser.</p>
-        </div>
-
-        <div class="canvas-preview" aria-label="Example SQL canvas">
-          <article class="preview-box query-box">
-            <header>monthly_revenue.sql</header>
-            <pre><span>SELECT</span> month,
-       <span>SUM</span>(revenue) <span>AS</span> revenue
-<span>FROM</span> orders
-<span>GROUP BY</span> month</pre>
-            <footer>Run <kbd>⌘ ↵</kbd></footer>
-          </article>
-          <svg class="connector" viewBox="0 0 120 70" aria-hidden="true">
-            <path d="M4 8 C62 8, 58 62, 116 62" />
-            <path d="m109 56 7 6-8 5" />
-          </svg>
-          <article class="preview-box result-box">
-            <header>results</header>
-            <table>
-              <thead><tr><th>month</th><th>revenue</th></tr></thead>
-              <tbody>
-                <tr><td>2026-07</td><td>€48,210</td></tr>
-                <tr><td>2026-08</td><td>€51,840</td></tr>
-                <tr><td>2026-09</td><td>€57,120</td></tr>
-              </tbody>
-            </table>
-          </article>
-          <aside class="preview-note">Check the<br />September jump!</aside>
-        </div>
-      </section>
-
-      <section class="principles" aria-label="Product principles">
-        <p><strong>Static.</strong> Hosted on GitHub Pages.</p>
-        <p><strong>Private.</strong> No Squill backend.</p>
-        <p><strong>Deliberate.</strong> Queries run only when you ask.</p>
-      </section>
-
-      <section id="features" class="section">
-        <div class="section-heading">
-          <p class="eyebrow">The useful bits</p>
-          <h2>A focused SQL workbench</h2>
-          <p>No dashboards, subscriptions, or surprise automation. Just the tools needed to follow a question through your data.</p>
-        </div>
-        <div class="feature-grid">
-          <article>
-            <span class="feature-number">01</span>
-            <h3>Connected queries</h3>
-            <p>Arrange SQL in boxes, reuse earlier results, and keep the shape of an analysis visible.</p>
-          </article>
-          <article>
-            <span class="feature-number">02</span>
-            <h3>DuckDB, locally</h3>
-            <p>Run SQL in WebAssembly. The engine and your cached results stay on your device.</p>
-          </article>
-          <article>
-            <span class="feature-number">03</span>
-            <h3>BigQuery, directly</h3>
-            <p>Send read-only queries from your browser to Google using short-lived OAuth access.</p>
-          </article>
-          <article>
-            <span class="feature-number">04</span>
-            <h3>Explore the result</h3>
-            <p>Browse schemas, inspect rows, analyze columns, and explain query plans without leaving the canvas.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="privacy" class="section privacy-section">
-        <div>
-          <p class="eyebrow">No middleman</p>
-          <h2>Your queries do not pass through us.</h2>
-        </div>
-        <div class="privacy-copy">
-          <p>Squill has no application backend, user account, analytics service, or server-side credential store.</p>
-          <p>Canvases, settings, history, schemas, and cached results are stored by your browser. Google access tokens are short-lived and kept in memory only.</p>
-          <a class="text-link" href="./privacy-policy.html">Read the privacy policy</a>
-        </div>
-      </section>
-
-      <section class="section faq-section">
-        <div class="section-heading">
-          <p class="eyebrow">Questions, answered</p>
-          <h2>No surprises</h2>
-        </div>
-        <div class="faq-list">
-          <details>
-            <summary>Do I need an account?</summary>
-            <p>No. DuckDB works immediately. BigQuery uses your Google account only to authorize requests sent directly to Google.</p>
-          </details>
-          <details>
-            <summary>Can Squill run queries by itself?</summary>
-            <p>No. Queries run only when you press Run or use the keyboard shortcut, so nothing incurs cost unexpectedly.</p>
-          </details>
-          <details>
-            <summary>Where is my work saved?</summary>
-            <p>In browser storage on this device. Squill does not sync canvases to a server.</p>
-          </details>
-          <details>
-            <summary>Is Squill open source?</summary>
-            <p>Yes. The source is available on GitHub under the AGPL-3.0 license.</p>
-          </details>
-        </div>
-      </section>
-
-      <section class="final-cta">
-        <p class="eyebrow">Start with a blank canvas</p>
-        <h2>Ask the data yourself.</h2>
-        <a class="button button-inverse" href="./app/">Open Squill <span aria-hidden="true">→</span></a>
-      </section>
-    </main>
-
-    <footer class="site-footer">
-      <span>Squill</span>
-      <div>
-        <a href="./app/">Canvas</a>
-        <a href="https://github.com/MaxHalford/squill">Source</a>
-        <a href="./privacy-policy.html">Privacy</a>
-        <a href="./terms-of-service.html">Terms</a>
-      </div>
-      <span>AGPL-3.0</span>
-    </footer>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
