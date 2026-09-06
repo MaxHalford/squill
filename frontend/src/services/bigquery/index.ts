@@ -13,5 +13,4 @@ export type {
   BigQueryClient,
   BigQueryQueryResult,
   BigQueryPaginatedQueryResult,
-  DryRunResult,
 } from './types'

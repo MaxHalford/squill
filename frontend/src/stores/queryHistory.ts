@@ -1,7 +1,6 @@
 /**
  * Query history store for tracking executed queries
  * - Persists to IndexedDB for history browsing
- * - Provides sample queries as context for the AI fixer
  */
 
 import { defineStore } from 'pinia'
@@ -21,7 +20,6 @@ const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => 
 }
 
 const MAX_HISTORY_ENTRIES = 100
-const MAX_SAMPLE_QUERIES = 5 // For AI fixer compatibility
 
 export interface RecordQueryParams {
   query: string
@@ -50,7 +48,9 @@ export const useQueryHistoryStore = defineStore('queryHistory', () => {
       if (data) {
         const result = QueryHistoryStateSchema.safeParse(data)
         if (result.success) {
-          historyEntries.value = result.data.entries
+          historyEntries.value = result.data.entries.filter(
+            entry => entry.connectionType === 'bigquery' || entry.connectionType === 'duckdb',
+          )
         }
       }
     } catch (err) {
@@ -115,16 +115,6 @@ export const useQueryHistoryStore = defineStore('queryHistory', () => {
     if (historyEntries.value.length > MAX_HISTORY_ENTRIES) {
       historyEntries.value = historyEntries.value.slice(0, MAX_HISTORY_ENTRIES)
     }
-  }
-
-  /**
-   * Returns last 5 successful queries for a connection
-   */
-  function getSampleQueries(connectionId: string): string[] {
-    return historyEntries.value
-      .filter(e => e.connectionId === connectionId && e.success)
-      .slice(0, MAX_SAMPLE_QUERIES)
-      .map(e => e.query)
   }
 
   /**
@@ -207,7 +197,6 @@ export const useQueryHistoryStore = defineStore('queryHistory', () => {
     historyEntries,
     connectionIds,
     recordQuery,
-    getSampleQueries,
     getHistory,
     getEntry,
     deleteEntry,

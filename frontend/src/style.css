@@ -55,8 +55,6 @@
   /* Engine Badge Colors */
   --color-bigquery: #4285f4;
   --color-duckdb: #FFF100;
-  --color-postgres: #336791;
-  --color-snowflake: #29b5e8;
 
   /* Primary action color */
   --color-primary: #4285f4;
@@ -513,9 +511,4 @@ html.dark .canvas-waves {
 /* No pattern (solid background) */
 .canvas-none {
   background-image: none !important;
-}
-
-/* ClickHouse logo is hardcoded near-black; invert it in dark mode. */
-html.dark img[src$="/logos/clickhouse.svg"] {
-  filter: invert(1);
 }

@@ -13,7 +13,6 @@ interface Settings {
   fetchPaginationEnabled: boolean
   paginationSize: number  // Display pagination: rows per page in UI
   panToBoxOnSelect: boolean
-  autofixEnabled: boolean
   themePreference: ThemePreference
   // Code editor settings
   showEditorLineNumbers: boolean
@@ -26,8 +25,6 @@ interface Settings {
   voiceNotifyEnabled: boolean  // Speak query results when tab is backgrounded
   // Layout
   sqlBoxLayout: SqlBoxLayout  // Split direction: vertical (top/bottom) or horizontal (left/right)
-  // Cascade
-  autoRunDownstream: boolean  // Auto-run downstream dependent boxes when upstream completes
 }
 
 // Default settings
@@ -36,7 +33,6 @@ const DEFAULT_SETTINGS: Settings = {
   fetchPaginationEnabled: true,
   paginationSize: 100,  // Display pagination: rows per page in UI
   panToBoxOnSelect: true,
-  autofixEnabled: true,
   themePreference: 'system',
   showEditorLineNumbers: false,
   editorFontSize: 13,  // Default font size in pixels for code editor
@@ -45,7 +41,6 @@ const DEFAULT_SETTINGS: Settings = {
   canvasPattern: 'dots',  // Default canvas pattern
   voiceNotifyEnabled: true,  // Speak query results when tab is backgrounded
   sqlBoxLayout: 'vertical',  // Default: editor on top, results on bottom
-  autoRunDownstream: false  // Default: don't auto-run downstream boxes
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -54,7 +49,6 @@ export const useSettingsStore = defineStore('settings', () => {
   const fetchPaginationEnabled = ref(DEFAULT_SETTINGS.fetchPaginationEnabled)
   const paginationSize = ref(DEFAULT_SETTINGS.paginationSize)
   const panToBoxOnSelect = ref(DEFAULT_SETTINGS.panToBoxOnSelect)
-  const autofixEnabled = ref(DEFAULT_SETTINGS.autofixEnabled)
   const themePreference = ref<ThemePreference>(DEFAULT_SETTINGS.themePreference)
   const showEditorLineNumbers = ref(DEFAULT_SETTINGS.showEditorLineNumbers)
   const editorFontSize = ref(DEFAULT_SETTINGS.editorFontSize)
@@ -63,14 +57,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const canvasPattern = ref<CanvasPattern>(DEFAULT_SETTINGS.canvasPattern)
   const voiceNotifyEnabled = ref(DEFAULT_SETTINGS.voiceNotifyEnabled)
   const sqlBoxLayout = ref<SqlBoxLayout>(DEFAULT_SETTINGS.sqlBoxLayout)
-  const autoRunDownstream = ref(DEFAULT_SETTINGS.autoRunDownstream)
 
   const applySettings = (s: Settings) => {
     fetchBatchSize.value = s.fetchBatchSize
     fetchPaginationEnabled.value = s.fetchPaginationEnabled
     paginationSize.value = s.paginationSize
     panToBoxOnSelect.value = s.panToBoxOnSelect
-    autofixEnabled.value = s.autofixEnabled
     themePreference.value = s.themePreference
     showEditorLineNumbers.value = s.showEditorLineNumbers
     editorFontSize.value = s.editorFontSize
@@ -79,7 +71,6 @@ export const useSettingsStore = defineStore('settings', () => {
     canvasPattern.value = s.canvasPattern
     voiceNotifyEnabled.value = s.voiceNotifyEnabled
     sqlBoxLayout.value = s.sqlBoxLayout
-    autoRunDownstream.value = s.autoRunDownstream
   }
 
   const collectSettings = (): Settings => ({
@@ -87,7 +78,6 @@ export const useSettingsStore = defineStore('settings', () => {
     fetchPaginationEnabled: fetchPaginationEnabled.value,
     paginationSize: paginationSize.value,
     panToBoxOnSelect: panToBoxOnSelect.value,
-    autofixEnabled: autofixEnabled.value,
     themePreference: themePreference.value,
     showEditorLineNumbers: showEditorLineNumbers.value,
     editorFontSize: editorFontSize.value,
@@ -96,7 +86,6 @@ export const useSettingsStore = defineStore('settings', () => {
     canvasPattern: canvasPattern.value,
     voiceNotifyEnabled: voiceNotifyEnabled.value,
     sqlBoxLayout: sqlBoxLayout.value,
-    autoRunDownstream: autoRunDownstream.value,
   })
 
   const loadState = async () => {
@@ -122,7 +111,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const ready = loadState()
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, autofixEnabled, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled, sqlBoxLayout, autoRunDownstream], saveState)
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled, sqlBoxLayout], saveState)
 
   // Reactive system theme tracking
   const systemTheme = ref<'light' | 'dark'>(
@@ -161,10 +150,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const togglePanToBoxOnSelect = () => {
     panToBoxOnSelect.value = !panToBoxOnSelect.value
-  }
-
-  const toggleAutofix = () => {
-    autofixEnabled.value = !autofixEnabled.value
   }
 
   const setThemePreference = (value: ThemePreference) => {
@@ -212,10 +197,6 @@ export const useSettingsStore = defineStore('settings', () => {
     sqlBoxLayout.value = sqlBoxLayout.value === 'vertical' ? 'horizontal' : 'vertical'
   }
 
-  const toggleAutoRunDownstream = () => {
-    autoRunDownstream.value = !autoRunDownstream.value
-  }
-
   const resetToDefaults = () => {
     applySettings(DEFAULT_SETTINGS)
   }
@@ -232,11 +213,9 @@ export const useSettingsStore = defineStore('settings', () => {
     setPaginationSize,
     // Other settings
     panToBoxOnSelect,
-    autofixEnabled,
     themePreference,
     resolvedTheme,
     togglePanToBoxOnSelect,
-    toggleAutofix,
     setThemePreference,
     cycleTheme,
     // Editor settings
@@ -258,9 +237,6 @@ export const useSettingsStore = defineStore('settings', () => {
     // Layout
     sqlBoxLayout,
     toggleSqlBoxLayout,
-    // Cascade
-    autoRunDownstream,
-    toggleAutoRunDownstream,
     resetToDefaults
   }
 })

@@ -2,16 +2,13 @@
  * Shared query execution logic.
  *
  * Encapsulates the "detect engine → dispatch to store → store in DuckDB"
- * pattern used by SqlBox and other box types. Adding a new database engine
- * only requires updating this single file.
+ * pattern used by SqlBox and other box types.
  */
 
 import type { DatabaseEngine } from '../types/database'
 import type { ConnectionType } from '../types/connection'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useBigQueryStore } from '../stores/bigquery'
-import { useSnowflakeStore } from '../stores/snowflake'
-import { useClickHouseStore } from '../stores/clickhouse'
 import { useCanvasStore } from '../stores/canvas'
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
 import { getEffectiveEngine, isLocalConnectionType } from '../utils/queryAnalyzer'
@@ -29,8 +26,6 @@ export interface QueryExecutionResult {
 export function useQueryExecution() {
   const duckdbStore = useDuckDBStore()
   const bigqueryStore = useBigQueryStore()
-  const snowflakeStore = useSnowflakeStore()
-  const clickhouseStore = useClickHouseStore()
   const canvasStore = useCanvasStore()
 
   /**
@@ -42,7 +37,7 @@ export function useQueryExecution() {
   async function executeQuery(
     query: string,
     tableName: string,
-    connectionType?: ConnectionType | string,
+    connectionType?: ConnectionType,
     connectionId?: string,
     options?: { boxId?: number },
   ): Promise<QueryExecutionResult> {
@@ -50,7 +45,7 @@ export function useQueryExecution() {
 
     const availableTables = await duckdbStore.getFreshTableNames()
     const engine = getEffectiveEngine(
-      connectionType as ConnectionType | undefined,
+      connectionType,
       cleanedQuery,
       availableTables,
       connectionId,
@@ -80,18 +75,6 @@ export function useQueryExecution() {
       rowCount = result.rows.length
       columns = result.schema?.map((c: { name: string }) => c.name) || []
       engineStats = result.stats
-    } else if (engine === 'snowflake') {
-      if (!connectionId) throw new Error('No Snowflake connection')
-      const result = await snowflakeStore.runQuery(connectionId, finalQuery)
-      await duckdbStore.storeResults(tableName, result.rows as Record<string, unknown>[], options?.boxId)
-      rowCount = result.rows.length
-      columns = result.rows.length > 0 ? Object.keys(result.rows[0]) : []
-    } else if (engine === 'clickhouse') {
-      if (!connectionId) throw new Error('No ClickHouse connection')
-      const result = await clickhouseStore.runQuery(connectionId, finalQuery)
-      await duckdbStore.storeResults(tableName, result.rows as Record<string, unknown>[], options?.boxId)
-      rowCount = result.rows.length
-      columns = result.rows.length > 0 ? Object.keys(result.rows[0]) : []
     } else {
       throw new Error(`Unsupported engine: ${engine}`)
     }

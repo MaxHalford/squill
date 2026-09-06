@@ -2,26 +2,50 @@
 
 [![CI](https://github.com/MaxHalford/squill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MaxHalford/squill/actions/workflows/ci.yml)
 
-I write a lot of SQL queries. I enjoy the experience provided by canvas tools such as [Count.co](https://count.co/). But they're either too expensive or too feature-bloated for my needs. So I made [Squill](https://squill.dev) — a lightweight, open-source SQL editor and database client that runs (as much as possible) in your browser.
+Squill is a static, local-first BigQuery canvas. It runs on GitHub Pages, sends BigQuery API requests directly from your browser to Google, and stores canvases, settings, history, schema caches, and query-result caches on your device.
 
-## Desktop app
+There is no Squill backend, user account, subscription, server-side credential store, or analytics service.
 
-Native binaries for macOS, Windows, and Linux are published on the [releases page](https://github.com/MaxHalford/squill/releases).
+## Security and authorization
 
-### macOS — first launch
+Squill uses the Google Identity Services browser token flow.
 
-The `.dmg` is unsigned (Squill does not have an Apple Developer ID — that costs $99/yr and there's no open-source exemption). After dragging Squill to `/Applications`, run this once to remove the Gatekeeper quarantine attribute:
+- Google access tokens are short-lived and kept in memory only.
+- Refresh tokens and OAuth client secrets are never used or stored.
+- OAuth access is limited to Google's read-only BigQuery and Cloud Platform scopes.
+- A Google popup can appear when you click Connect, Run, or another action that needs a new token.
+- Google's existing grant normally makes repeat authorization quick.
+- Queries never run automatically. Creating a dependent query or column-analysis box does not execute it.
+
+## Local development
+
+1. Create a Google OAuth 2.0 **Web application** client.
+2. Add `http://localhost:5173` as an authorized JavaScript origin.
+3. Enable the BigQuery API and Cloud Resource Manager API in the Google Cloud project.
+4. Copy `frontend/.env.example` to `frontend/.env.local` and set the client ID.
+5. Run:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/Squill.app
+cd frontend
+bun install
+bun run dev
 ```
 
-If you'd rather not use the terminal, double-click Squill, hit Cancel on the warning, then go to **System Settings → Privacy & Security** and click **Open Anyway** at the bottom.
+## Deploying to GitHub Pages
 
-### Windows
+The workflow in `.github/workflows/ci.yml` builds and deploys `frontend/dist` on pushes to `main`.
 
-The `.msi` is unsigned. SmartScreen may warn — click **More info → Run anyway**.
+Configure the repository before the first deployment:
 
-### Linux
+1. Set Pages **Source** to **GitHub Actions**.
+2. Add an Actions repository variable named `GOOGLE_CLIENT_ID`.
+3. Add the production origin, such as `https://squill.dev`, to the OAuth client's authorized JavaScript origins.
+4. If you do not use `squill.dev`, change or remove `frontend/public/CNAME` and adjust Vite's base path as needed.
 
-`.AppImage` is portable (`chmod +x` and run). `.deb` and `.rpm` are also published for system-level install.
+## Quality checks
+
+```sh
+make check
+```
+
+Squill is licensed under the [AGPL-3.0](LICENSE).

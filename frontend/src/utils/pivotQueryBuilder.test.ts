@@ -51,7 +51,7 @@ const dateField = (name = 'order_date', granularity?: DateGranularity): PivotFie
   dateGranularity: granularity,
 })
 
-const dialects: DatabaseEngine[] = ['duckdb', 'clickhouse', 'bigquery', 'snowflake']
+const dialects: DatabaseEngine[] = ['duckdb', 'bigquery']
 
 // ---------------------------------------------------------------------------
 // quoteIdentifier
@@ -62,10 +62,8 @@ describe('quoteIdentifier', () => {
     expect(quoteIdentifier('col', 'bigquery')).toBe('`col`')
   })
 
-  it('uses double quotes for other dialects', () => {
+  it('uses double quotes for DuckDB', () => {
     expect(quoteIdentifier('col', 'duckdb')).toBe('"col"')
-    expect(quoteIdentifier('col', 'clickhouse')).toBe('"col"')
-    expect(quoteIdentifier('col', 'snowflake')).toBe('"col"')
   })
 })
 
@@ -74,13 +72,9 @@ describe('quoteIdentifier', () => {
 // ---------------------------------------------------------------------------
 
 describe('quoteAlias', () => {
-  it('quotes aliases for Snowflake', () => {
-    expect(quoteAlias('metric_value', 'snowflake')).toBe('"metric_value"')
-  })
-
-  it('returns unquoted for others', () => {
+  it('returns unquoted aliases', () => {
     expect(quoteAlias('metric_value', 'duckdb')).toBe('metric_value')
-    expect(quoteAlias('metric_value', 'clickhouse')).toBe('metric_value')
+    expect(quoteAlias('metric_value', 'bigquery')).toBe('metric_value')
   })
 })
 
@@ -126,24 +120,6 @@ describe('buildDateExpression', () => {
     })
   })
 
-  describe('ClickHouse', () => {
-    it('quarter formats as QX YYYY', () => {
-      const [expr] = buildDateExpression(dateField('d', 'quarter'), 'clickhouse')
-      expect(expr).toContain('toQuarter')
-      expect(expr).toContain('toYear')
-    })
-
-    it('month uses formatDateTime', () => {
-      const [expr] = buildDateExpression(dateField('d', 'month'), 'clickhouse')
-      expect(expr).toBe("formatDateTime(\"d\", '%Y-%m')")
-    })
-
-    it('date uses formatDateTime', () => {
-      const [expr] = buildDateExpression(dateField('d', 'date'), 'clickhouse')
-      expect(expr).toBe("formatDateTime(\"d\", '%Y-%m-%d')")
-    })
-  })
-
   describe('BigQuery', () => {
     it('month uses FORMAT_TIMESTAMP', () => {
       const [expr] = buildDateExpression(dateField('d', 'month'), 'bigquery')
@@ -167,17 +143,6 @@ describe('buildDateExpression', () => {
     })
   })
 
-  describe('Snowflake', () => {
-    it('month uses TO_CHAR', () => {
-      const [expr] = buildDateExpression(dateField('d', 'month'), 'snowflake')
-      expect(expr).toBe("TO_CHAR(\"d\", 'YYYY-MM')")
-    })
-
-    it('date uses TO_CHAR', () => {
-      const [expr] = buildDateExpression(dateField('d', 'date'), 'snowflake')
-      expect(expr).toBe("TO_CHAR(\"d\", 'YYYY-MM-DD')")
-    })
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -445,14 +410,6 @@ describe('buildAggregationQuery', () => {
       expect(sql).toContain('`revenue`')
     })
 
-    it('Snowflake quotes aliases', () => {
-      const config = baseConfig({
-        rowFields: [textField('region')],
-        metrics: [{ field: 'revenue', aggregation: 'sum' }],
-      })
-      const sql = buildAggregationQuery(config, 'snowflake')
-      expect(sql).toContain('"sum_revenue"')
-    })
   })
 
   it('handles multiple row fields', () => {

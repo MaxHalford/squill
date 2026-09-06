@@ -3,8 +3,6 @@
 
 User-agent: *
 Allow: /
-Disallow: /app
-Disallow: /auth/
 
 # Sitemap location
 Sitemap: https://squill.dev/sitemap.xml

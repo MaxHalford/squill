@@ -1,32 +1,14 @@
 /**
- * Client-side BigQuery OAuth via Authorization Code + PKCE (RFC 7636).
+ * Google Identity Services token flow for a browser-only BigQuery client.
  *
- * Runs entirely in the browser — no Squill backend involvement. The refresh
- * token returned by Google is persisted in IndexedDB on the Connection record.
- *
- * Flow:
- *   1. `startBigQueryAuth()` generates a PKCE verifier + S256 challenge,
- *      stores the verifier in sessionStorage keyed by state, and redirects
- *      the browser to Google's auth endpoint.
- *   2. Google redirects to `/oauth/bigquery/callback` with code + state.
- *      `OAuthBigQueryCallback.vue` calls `completeBigQueryAuth()`.
- *   3. `completeBigQueryAuth()` POSTs the code + verifier directly to
- *      Google's token endpoint, fetches the user's email, and returns
- *      tokens for the caller to persist.
- *   4. When the access token expires, `refreshBigQueryAccessToken()` POSTs
- *      the stored refresh_token to Google's token endpoint directly.
- *
- * Google requires `client_secret` for "Web application" OAuth client types
- * even with PKCE. The secret is bundled in the SPA (or user-supplied) and
- * is treated as semi-public — PKCE is the real security boundary.
+ * Access tokens are deliberately kept in memory by the connections store.
+ * Google remembers the user's grant; subsequent token requests normally show
+ * only a short-lived popup and do not repeat the consent screen.
  */
 
-import { generateCodeVerifier, deriveCodeChallenge, generateState } from './pkce'
+import type { GoogleTokenClient, GoogleTokenResponse } from '../../types/google-oauth'
 
-const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth'
-const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
-const USERINFO_ENDPOINT = 'https://www.googleapis.com/oauth2/v2/userinfo'
-const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke'
+const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
 
 export const BIGQUERY_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
@@ -34,151 +16,131 @@ export const BIGQUERY_SCOPES = [
   'https://www.googleapis.com/auth/cloud-platform.read-only',
 ]
 
-const VERIFIER_KEY_PREFIX = 'bq-pkce:'
-
-export interface BigQueryAuthTokens {
+export interface BigQueryAuthorization {
   email: string
   accessToken: string
-  refreshToken: string
   expiresIn: number
 }
 
-function redirectUri(): string {
-  return `${window.location.origin}/oauth/bigquery/callback`
-}
+let scriptPromise: Promise<void> | null = null
+let tokenClient: GoogleTokenClient | null = null
+let tokenClientId = ''
+let pendingRequest: Promise<GoogleTokenResponse> | null = null
+let resolvePending: ((response: GoogleTokenResponse) => void) | null = null
+let rejectPending: ((error: Error) => void) | null = null
 
-/**
- * Begin the BigQuery OAuth flow. Stores a PKCE verifier in sessionStorage
- * and redirects the browser to Google. Returns nothing — the page navigates.
- */
-export async function startBigQueryAuth(clientId: string): Promise<void> {
-  if (!clientId) {
-    throw new Error('Google OAuth client ID is not configured.')
-  }
+export function prepareBigQueryAuth(): Promise<void> {
+  if (window.google?.accounts?.oauth2) return Promise.resolve()
+  if (scriptPromise) return scriptPromise
 
-  const verifier = generateCodeVerifier()
-  const challenge = await deriveCodeChallenge(verifier)
-  const state = generateState()
+  scriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${GIS_SCRIPT_URL}"]`)
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true })
+      existing.addEventListener('error', () => reject(new Error('Failed to load Google authorization.')), { once: true })
+      return
+    }
 
-  sessionStorage.setItem(VERIFIER_KEY_PREFIX + state, verifier)
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    response_type: 'code',
-    scope: BIGQUERY_SCOPES.join(' '),
-    redirect_uri: redirectUri(),
-    state,
-    code_challenge: challenge,
-    code_challenge_method: 'S256',
-    access_type: 'offline',
-    prompt: 'consent',
-    include_granted_scopes: 'true',
+    const script = document.createElement('script')
+    script.src = GIS_SCRIPT_URL
+    script.async = true
+    script.defer = true
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('Failed to load Google authorization.'))
+    document.head.appendChild(script)
+  }).catch((error) => {
+    scriptPromise = null
+    throw error
   })
 
-  window.location.href = `${AUTH_ENDPOINT}?${params.toString()}`
+  return scriptPromise!
 }
 
-/**
- * Complete the BigQuery OAuth flow after Google redirects back to
- * `/oauth/bigquery/callback`. Exchanges the code for tokens against Google's
- * token endpoint and fetches the user's email.
- */
-export async function completeBigQueryAuth(
+function getTokenClient(clientId: string): GoogleTokenClient {
+  const oauth = window.google?.accounts?.oauth2
+  if (!oauth) throw new Error('Google authorization is still loading. Please try again.')
+
+  if (!tokenClient || tokenClientId !== clientId) {
+    tokenClientId = clientId
+    tokenClient = oauth.initTokenClient({
+      client_id: clientId,
+      scope: BIGQUERY_SCOPES.join(' '),
+      callback: (response) => {
+        if (response.error) {
+          rejectPending?.(new Error(response.error_description || response.error))
+        } else {
+          resolvePending?.(response)
+        }
+        pendingRequest = null
+        resolvePending = null
+        rejectPending = null
+      },
+      error_callback: (error) => {
+        rejectPending?.(new Error(error.message || error.type || 'Google authorization was cancelled.'))
+        pendingRequest = null
+        resolvePending = null
+        rejectPending = null
+      },
+    })
+  }
+
+  return tokenClient
+}
+
+async function requestToken(
   clientId: string,
-  clientSecret: string,
-  code: string,
-  state: string,
-): Promise<BigQueryAuthTokens> {
-  const verifier = sessionStorage.getItem(VERIFIER_KEY_PREFIX + state)
-  if (!verifier) {
-    throw new Error('OAuth state mismatch — please try signing in again.')
-  }
-  sessionStorage.removeItem(VERIFIER_KEY_PREFIX + state)
+  options: { prompt?: string; hint?: string } = {},
+): Promise<GoogleTokenResponse> {
+  if (!clientId) throw new Error('Google OAuth client ID is not configured.')
+  await prepareBigQueryAuth()
+  if (pendingRequest) return pendingRequest
 
-  const tokenParams: Record<string, string> = {
-    grant_type: 'authorization_code',
-    code,
-    code_verifier: verifier,
-    client_id: clientId,
-    redirect_uri: redirectUri(),
-  }
-  if (clientSecret) tokenParams.client_secret = clientSecret
-
-  const tokenResponse = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(tokenParams),
+  const client = getTokenClient(clientId)
+  pendingRequest = new Promise((resolve, reject) => {
+    resolvePending = resolve
+    rejectPending = reject
+    client.requestAccessToken({
+      prompt: options.prompt ?? '',
+      hint: options.hint,
+    })
   })
-  if (!tokenResponse.ok) {
-    const detail = await tokenResponse.text().catch(() => '')
-    throw new Error(`Token exchange failed: ${tokenResponse.status} ${detail}`)
-  }
-  const tokens = await tokenResponse.json() as {
-    access_token: string
-    refresh_token?: string
-    expires_in: number
-  }
-  if (!tokens.refresh_token) {
-    throw new Error('Google did not return a refresh_token. Try signing in again with consent re-prompted.')
-  }
+  return pendingRequest
+}
 
-  const userinfoResponse = await fetch(USERINFO_ENDPOINT, {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
+export async function authorizeBigQuery(
+  clientId: string,
+  options: { selectAccount?: boolean; expectedEmail?: string } = {},
+): Promise<BigQueryAuthorization> {
+  const response = await requestToken(clientId, {
+    prompt: options.selectAccount ? 'select_account' : '',
+    hint: options.expectedEmail,
   })
-  if (!userinfoResponse.ok) {
-    throw new Error(`Failed to fetch user info: ${userinfoResponse.status}`)
+
+  const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+    headers: { Authorization: `Bearer ${response.access_token}` },
+  })
+  if (!userInfoResponse.ok) throw new Error('Google authorized BigQuery, but account details could not be read.')
+
+  const userInfo = await userInfoResponse.json() as { email?: string }
+  if (!userInfo.email) throw new Error('Google did not return an email address.')
+  if (options.expectedEmail && userInfo.email.toLowerCase() !== options.expectedEmail.toLowerCase()) {
+    throw new Error(`Authorized ${userInfo.email}, but this connection belongs to ${options.expectedEmail}.`)
   }
-  const userinfo = await userinfoResponse.json() as { email: string }
 
   return {
-    email: userinfo.email,
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
-    expiresIn: tokens.expires_in,
+    email: userInfo.email,
+    accessToken: response.access_token,
+    expiresIn: response.expires_in || 3600,
   }
 }
 
-/**
- * Exchange a stored refresh token for a fresh access token against Google
- * directly. Throws if the refresh token has been revoked — the caller should
- * discard the connection and prompt for re-auth.
- */
-export async function refreshBigQueryAccessToken(
-  clientId: string,
-  clientSecret: string,
-  refreshToken: string,
-): Promise<{ accessToken: string; expiresIn: number; refreshRevoked: boolean }> {
-  const refreshParams: Record<string, string> = {
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-    client_id: clientId,
-  }
-  if (clientSecret) refreshParams.client_secret = clientSecret
-
-  const response = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(refreshParams),
+export function revokeBigQueryAccessToken(accessToken: string): Promise<void> {
+  return new Promise((resolve) => {
+    const revoke = window.google?.accounts?.oauth2?.revoke
+    if (!revoke) {
+      resolve()
+      return
+    }
+    revoke(accessToken, resolve)
   })
-  if (!response.ok) {
-    const refreshRevoked = response.status === 400 || response.status === 401
-    const detail = await response.text().catch(() => '')
-    const err = new Error(`Token refresh failed: ${response.status} ${detail}`) as Error & { refreshRevoked: boolean }
-    err.refreshRevoked = refreshRevoked
-    throw err
-  }
-  const tokens = await response.json() as { access_token: string; expires_in: number }
-  return { accessToken: tokens.access_token, expiresIn: tokens.expires_in, refreshRevoked: false }
-}
-
-/** Best-effort revoke against Google. Safe to call without awaiting. */
-export async function revokeBigQueryRefreshToken(refreshToken: string): Promise<void> {
-  try {
-    await fetch(`${REVOKE_ENDPOINT}?token=${encodeURIComponent(refreshToken)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    })
-  } catch (err) {
-    console.warn('BigQuery token revoke failed (ignored):', err)
-  }
 }

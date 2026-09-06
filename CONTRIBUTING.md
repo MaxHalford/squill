@@ -1,82 +1,38 @@
 # Contributing to Squill
 
-First off, thank you for considering contributing to Squill!
+Squill is a static Vue and TypeScript application. BigQuery is the only external database; DuckDB WebAssembly is used internally for cached results and local transformations.
 
 ## Prerequisites
 
-- [bun](https://bun.sh/) (v1.0+)
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
-- [prek](https://github.com/j178/prek) (pre-commit hooks)
-- Python 3.14+
-- Node.js 18+ (for some tooling)
+- [Bun](https://bun.sh/)
+- A modern browser
+- A Google OAuth Web application client for testing authorization
 
 ## Setup
 
-```bash
-# Clone the repo
+```sh
 git clone https://github.com/MaxHalford/squill
-cd squill
-
-# Frontend dependencies
-cd frontend && bun install && cd ..
-
-# Backend dependencies
-cd backend && uv sync && cd ..
-
-# Environment variables
-cp backend/.env.example backend/.env  # then edit with your config
-
-# Install pre-commit hooks
-prek install
-```
-
-## Running locally
-
-### Frontend
-
-```bash
-cd frontend
+cd squill/frontend
+cp .env.example .env.local
+bun install
 bun run dev
 ```
 
-The frontend will be available at [http://localhost:5173](http://localhost:5173)
+Set `VITE_GOOGLE_CLIENT_ID` in `.env.local`. Register `http://localhost:5173` as an authorized JavaScript origin and enable the BigQuery and Cloud Resource Manager APIs.
 
-### Backend
-
-```bash
-cd backend
-uv run uvicorn main:app --reload
-```
-
-The API will be available at [http://localhost:8000](http://localhost:8000)
-
-## Testing
-
-```bash
-# Backend tests
-cd backend && uv run pytest
-
-# Frontend tests
-cd frontend && bun run test:run
-
-# Watch mode (frontend)
-cd frontend && bun run test
-```
-
-## LLM benchmarks
-
-There are benchmark scripts to test AI code-fixing performance.
+## Checks
 
 ```sh
-cd backend
-python -m scripts.benchmarks.hex_remover
+bun run type-check
+bun run lint
+bun run test:run
+bun run build
 ```
 
-## Useful links
+Please preserve the product's core constraints:
 
-- https://github.com/settings/developers
-- https://console.cloud.google.com/auth/overview?project=squill-482710
-
-## Need help?
-
-Open an issue if you have questions or run into problems.
+- no application backend or server-side secrets;
+- access tokens remain in memory;
+- no query executes without an explicit user action;
+- persisted connection data contains metadata only; and
+- BigQuery is the only external database integration.

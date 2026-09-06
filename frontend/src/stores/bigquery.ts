@@ -3,23 +3,14 @@ import { ref } from 'vue'
 import { useConnectionsStore } from './connections'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
 import { createBigQueryClient } from '../services/bigquery'
-import type { BigQueryClient, DryRunResult } from '../services/bigquery'
+import type { BigQueryClient } from '../services/bigquery'
 import type { BigQueryProject } from '../types/bigquery'
-import { startBigQueryAuth, revokeBigQueryRefreshToken } from '../services/oauth/bigqueryAuth'
-import { getGoogleOAuthConfig } from '../services/oauth/googleClientConfig'
+import { prepareBigQueryAuth, revokeBigQueryAccessToken } from '../services/oauth/bigqueryAuth'
 
 export type {
   BigQueryQueryResult,
   BigQueryPaginatedQueryResult,
-  DryRunResult,
 } from '../services/bigquery/types'
-
-interface DryRunCacheEntry {
-  result: DryRunResult
-  timestamp: number
-}
-const dryRunCache = new Map<string, DryRunCacheEntry>()
-const DRY_RUN_CACHE_TTL = 60000 // 60 seconds
 
 export const useBigQueryStore = defineStore('bigquery', () => {
   const connectionsStore = useConnectionsStore()
@@ -68,22 +59,28 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     return conn?.projectId || projectId.value
   }
 
-  const signInWithGoogle = async (): Promise<void> => {
-    const { clientId } = await getGoogleOAuthConfig()
-    if (!clientId) {
-      throw new Error('Google OAuth client is not configured. Open Settings → Google OAuth (BigQuery) to add credentials, or ask your admin to set VITE_GOOGLE_CLIENT_ID at build time.')
+  const signInWithGoogle = async (): Promise<string> => {
+    const connectionId = await connectionsStore.connectBigQuery()
+    const connection = connectionsStore.connections.find(item => item.id === connectionId)
+    const availableProjects = await fetchProjects()
+    const selectedProject = connection?.projectId || availableProjects[0]?.projectId
+    if (selectedProject) {
+      connectionsStore.setConnectionProjectId(connectionId, selectedProject)
+      setProjectId(selectedProject)
     }
-    await startBigQueryAuth(clientId)
+    return connectionId
   }
 
-  const reconnectConnection = async (_connectionId: string): Promise<void> => {
-    await signInWithGoogle()
+  const reconnectConnection = async (connectionId: string): Promise<void> => {
+    await connectionsStore.refreshAccessToken(connectionId)
   }
+
+  const ensureAccessToken = (connectionId: string): Promise<string> =>
+    connectionsStore.ensureAccessToken(connectionId)
 
   const signOut = async () => {
     const activeId = connectionsStore.activeConnectionId
-    const activeConn = activeId ? connectionsStore.connections.find(c => c.id === activeId) : null
-    const refreshToken = activeConn?.bigqueryRefreshToken
+    const accessToken = activeId ? connectionsStore.getAccessToken(activeId) : null
 
     if (activeId) {
       connectionsStore.removeConnection(activeId)
@@ -92,31 +89,17 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     projectId.value = null
     deleteItem('bigquery-project').catch(console.error)
 
-    if (refreshToken) {
-      // Best-effort revoke directly against Google (no backend involved)
+    if (accessToken) {
       try {
-        await revokeBigQueryRefreshToken(refreshToken)
+        await revokeBigQueryAccessToken(accessToken)
       } catch (err) {
-        console.warn('Failed to revoke refresh token:', err)
+        console.warn('Failed to revoke Google access:', err)
       }
     }
   }
 
   const restoreSession = async (): Promise<void> => {
-    if (!connectionsStore.activeConnectionId) return
-    if (connectionsStore.activeConnection?.type !== 'bigquery') return
-
-    if (connectionsStore.hasValidToken(connectionsStore.activeConnectionId)) return
-
-    try {
-      await connectionsStore.refreshAccessToken(connectionsStore.activeConnectionId)
-      console.log('Session restored successfully')
-      if (!projectId.value) {
-        await fetchDefaultProject()
-      }
-    } catch (err) {
-      console.warn('Failed to restore session:', err)
-    }
+    await prepareBigQueryAuth()
   }
 
   const setProjectId = (newProjectId: string | null) => {
@@ -140,17 +123,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
       console.warn('Could not fetch projects:', err)
       projects.value = []
       return []
-    }
-  }
-
-  const fetchDefaultProject = async () => {
-    try {
-      const result = await fetchProjects()
-      if (result.length > 0) {
-        projectId.value = result[0].projectId
-      }
-    } catch (err) {
-      console.warn('Could not fetch default project:', err)
     }
   }
 
@@ -214,38 +186,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     })
   }
 
-  /**
-   * Run a dry run query to estimate cost without executing.
-   * Results are cached for 60 seconds.
-   */
-  const dryRunQuery = async (
-    query: string,
-    targetConnectionId?: string,
-  ): Promise<DryRunResult> => {
-    const connectionId = targetConnectionId || connectionsStore.activeConnectionId
-    if (!connectionId) {
-      return { totalBytesProcessed: '0', estimatedCost: '', error: 'No connection' }
-    }
-
-    const targetProjectId = resolveProjectId(connectionId)
-    if (!targetProjectId) {
-      return { totalBytesProcessed: '0', estimatedCost: '', error: 'No project selected' }
-    }
-
-    const cacheKey = `${connectionId}:${query}`
-    const cached = dryRunCache.get(cacheKey)
-    if (cached && Date.now() - cached.timestamp < DRY_RUN_CACHE_TTL) {
-      return cached.result
-    }
-    if (cached) dryRunCache.delete(cacheKey)
-
-    const result = await clientFor(connectionId).dryRunQuery(query, targetProjectId)
-    if (!result.error) {
-      dryRunCache.set(cacheKey, { result, timestamp: Date.now() })
-    }
-    return result
-  }
-
   const fetchQueryPlan = async (
     targetProjectId: string,
     jobId: string,
@@ -256,111 +196,13 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     return clientFor(connectionId).fetchQueryPlan(targetProjectId, jobId)
   }
 
-  /**
-   * Fetch all schemas via INFORMATION_SCHEMA.COLUMNS queries.
-   * Lists datasets, groups by location, runs one UNION ALL query per region.
-   * Works for both OAuth and local CLI bq via the same client interface.
-   */
-  const fetchAllSchemas = async (
-    targetProjectId: string | null = null,
-    targetConnectionId?: string,
-  ): Promise<void> => {
-    const project = targetProjectId || projectId.value
-    if (!project) throw new Error('No project specified')
-
-    const connectionId = targetConnectionId || connectionsStore.activeConnectionId
-    if (!connectionId) throw new Error('No connection available')
-
-    const client = clientFor(connectionId)
-    const { useDuckDBStore } = await import('./duckdb')
-    const duckdbStore = useDuckDBStore()
-
-    try {
-      // Step 1: list datasets with their locations
-      const allDatasets = await client.listDatasets(project)
-      if (allDatasets.length === 0) {
-        console.log('No datasets found in project')
-        return
-      }
-
-      // Step 2: group datasets by location (so each query stays within one region)
-      const datasetsByLocation = new Map<string, string[]>()
-      for (const ds of allDatasets) {
-        const location = ds.location || 'US'
-        const group = datasetsByLocation.get(location) || []
-        group.push(ds.datasetReference.datasetId)
-        datasetsByLocation.set(location, group)
-      }
-
-      // Step 3: per region, run one UNION ALL INFORMATION_SCHEMA.COLUMNS query
-      const allEntries: Array<{
-        project: string
-        dataset: string
-        table: string
-        columns: Array<{ name: string; type: string }>
-      }> = []
-
-      await Promise.all(
-        Array.from(datasetsByLocation.entries()).map(async ([_location, datasetIds]) => {
-          try {
-            const unionParts = datasetIds.map(dsId =>
-              `SELECT table_schema, table_name, column_name, data_type FROM \`${project}.${dsId}.INFORMATION_SCHEMA.COLUMNS\``,
-            )
-            const sqlQuery = unionParts.join('\nUNION ALL\n')
-            const { rows } = await client.runQuery(sqlQuery, project)
-
-            const tableColumns = new Map<string, { name: string; type: string }[]>()
-            for (const row of rows) {
-              const dsId = row.table_schema as string
-              const tbl = row.table_name as string
-              const key = `${dsId}\0${tbl}`
-              if (!tableColumns.has(key)) tableColumns.set(key, [])
-              tableColumns.get(key)!.push({
-                name: row.column_name as string,
-                type: row.data_type as string,
-              })
-            }
-
-            for (const [key, columns] of tableColumns) {
-              const [dsId, tbl] = key.split('\0')
-              allEntries.push({ project, dataset: dsId, table: tbl, columns })
-            }
-          } catch (err) {
-            console.warn(`Could not fetch schemas for datasets [${datasetIds.join(', ')}]:`, err)
-          }
-        }),
-      )
-
-      const schemaRows = allEntries.flatMap(entry =>
-        entry.columns.map(col => ({
-          connection_type: 'bigquery',
-          connection_id: connectionId,
-          catalog: entry.project,
-          schema_name: entry.dataset,
-          table_name: entry.table,
-          column_name: col.name,
-          column_type: col.type,
-          is_nullable: true,
-        })),
-      )
-      await duckdbStore.replaceConnectionCatalogSchemas('bigquery', connectionId, project, schemaRows)
-
-      const { clearSchemaCache } = await import('../utils/schemaAdapter')
-      clearSchemaCache('bigquery')
-
-      console.log(`Loaded ${allEntries.length} table schemas via INFORMATION_SCHEMA (${datasetsByLocation.size} region(s))`)
-    } catch (error) {
-      console.error('Failed to fetch schemas:', error)
-      throw error
-    }
-  }
-
   return {
     ready,
     projectId,
     projects,
     signInWithGoogle,
     reconnectConnection,
+    ensureAccessToken,
     signOut,
     fetchProjects,
     setProjectId,
@@ -369,8 +211,6 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     fetchTableSchema,
     runQuery,
     runQueryPaginated,
-    dryRunQuery,
-    fetchAllSchemas,
     restoreSession,
     fetchQueryPlan,
     anyBigQueryClient,

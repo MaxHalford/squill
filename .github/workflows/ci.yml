@@ -1,60 +1,60 @@
-name: CI
+name: CI and Pages
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  lint:
-    name: Lint
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Install frontend dependencies
-        run: cd frontend && bun install --frozen-lockfile
-
-      - name: Type check
-        run: cd frontend && bun run type-check
-
-      - name: Lint
-        run: cd frontend && bun run lint
-
-  frontend-tests:
-    name: Frontend tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        run: cd frontend && bun install --frozen-lockfile
-
-      - name: Run tests
-        run: cd frontend && bun run test:run
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: frontend
+      - run: bun run type-check
+        working-directory: frontend
+      - run: bun run lint
+        working-directory: frontend
+      - run: bun run test:run
+        working-directory: frontend
+      - name: Check production OAuth configuration
+        if: github.event_name != 'pull_request'
+        run: test -n "$VITE_GOOGLE_CLIENT_ID"
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      - run: bun run build
+        working-directory: frontend
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: frontend/dist
 
   deploy:
-    needs: [lint, frontend-tests]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
+    needs: frontend
     runs-on: ubuntu-latest
-    container: ghcr.io/railwayapp/cli:latest
-    strategy:
-      matrix:
-        include:
-          - name: backend
-            service_id: f6001fcc-4b46-45e6-9a74-73f5fbca10e2
-          - name: frontend
-            service_id: 7293644f-9a89-49fb-be39-6fe80c8ae97b
-    env:
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Deploy ${{ matrix.name }} to Railway
-        run: railway up --service=${{ matrix.service_id }} --detach
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

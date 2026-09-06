@@ -1,19 +1,12 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef, watch, computed, onScopeDispose } from 'vue'
-import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex, CursorState } from '../types/canvas'
+import { ref, watch, computed, onScopeDispose } from 'vue'
+import type { Box, BoxType, Position, Size, CanvasMeta, CanvasData, MultiCanvasIndex } from '../types/canvas'
 import type { DatabaseEngine } from '../types/database'
 import { getBoxDefinition } from '../boxes'
 import { computeExplodeLayout } from '../utils/cteParser'
 import type { ExplodedQuery } from '../utils/cteParser'
-import { CanvasDataSchema } from '../utils/storageSchemas'
+import { CanvasDataSchema, MultiCanvasIndexSchema } from '../utils/storageSchemas'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
-import {
-  LocalPersistence,
-  SyncedPersistence,
-  migrateLocalToSynced,
-  type CanvasPersistence,
-} from '../utils/canvasPersistence'
-import type { CanvasWSEvent } from '../utils/canvasWebSocket'
 
 // Debounce utility for auto-save
 const debounce = <T extends (...args: unknown[]) => void>(fn: T, ms: number) => {
@@ -109,13 +102,6 @@ export const useCanvasStore = defineStore('canvas', () => {
   const undoStack = ref<UndoRedoState[]>([])
   const redoStack = ref<UndoRedoState[]>([])
 
-  // Persistence layer (local IDB for free, API+WS for Pro)
-  let persistence: CanvasPersistence = new LocalPersistence()
-  const persistenceMode = ref<'local' | 'synced'>('local')
-  const isSyncConnected = ref(false)
-  const isReadOnly = ref(false)
-  const remoteCursors = shallowRef<Map<number, CursorState>>(new Map())
-
   // Computed: active canvas name for display
   const activeCanvasName = computed(() => {
     const canvas = canvasIndex.value.find(c => c.id === activeCanvasId.value)
@@ -182,142 +168,27 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Load state (main entry point)
   // ============================================
 
-  const initPersistence = async () => {
-    // Dispose previous persistence (important for navigation back/forth)
-    persistence.dispose()
-
-    // Check if user is Pro to determine persistence mode
-    try {
-      const { useUserStore } = await import('./user')
-      const userStore = useUserStore()
-      await userStore.ready
-      if (userStore.isPro && userStore.sessionToken) {
-        persistence = new SyncedPersistence(userStore.sessionToken)
-        persistenceMode.value = 'synced'
-      } else {
-        persistence = new LocalPersistence()
-        persistenceMode.value = 'local'
-      }
-    } catch {
-      persistence = new LocalPersistence()
-      persistenceMode.value = 'local'
-    }
-
-    // Wire up remote event handling for synced mode
-    if (persistence.isSynced) {
-      persistence.onRemoteEvent = handleRemoteEvent
-      persistence.onConnectionChange = (connected) => {
-        isSyncConnected.value = connected
-      }
-    }
-  }
-
-  /** Apply fields to an object, filtering out prototype-polluting keys. */
-  const safeAssign = (target: Record<string, unknown>, fields: Record<string, unknown>) => {
-    for (const key of Object.keys(fields)) {
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
-      ;(target as Record<string, unknown>)[key] = fields[key]
-    }
-  }
-
-  const handleRemoteEvent = (event: CanvasWSEvent) => {
-    const { type, data } = event
-    // Ignore events from this client (already applied optimistically)
-    // We don't have a local client_id to compare, so trust all remote events
-    // The WS server excludes the sender for mutations
-    switch (type) {
-      case 'snapshot':
-        // Initial sync handled by loadCanvas, ignore here
-        break
-      case 'box.created': {
-        const boxData = data as { box_id: number; state: Record<string, unknown> }
-        const newBox: Box = { id: boxData.box_id, ...boxData.state } as Box
-        if (!boxes.value.find(b => b.id === newBox.id)) {
-          boxes.value.push(newBox)
-        }
-        break
-      }
-      case 'box.updated': {
-        const update = data as { box_id: number; fields: Record<string, unknown> }
-        const box = boxes.value.find(b => b.id === update.box_id)
-        if (box) safeAssign(box as unknown as Record<string, unknown>, update.fields)
-        break
-      }
-      case 'box.deleted': {
-        const del = data as { box_id: number }
-        const idx = boxes.value.findIndex(b => b.id === del.box_id)
-        if (idx !== -1) boxes.value.splice(idx, 1)
-        break
-      }
-      case 'box.batch_updated': {
-        const batch = data as { updates: { box_id: number; fields: Record<string, unknown> }[] }
-        for (const u of batch.updates) {
-          const box = boxes.value.find(b => b.id === u.box_id)
-          if (box) safeAssign(box as unknown as Record<string, unknown>, u.fields)
-        }
-        break
-      }
-      case 'cursor.moved': {
-        const cursor = data as { user_id: string; name: string; x: number; y: number; client_id: string }
-        const cursors = new Map(remoteCursors.value)
-        cursors.set(Number(cursor.client_id) || cursors.size, {
-          x: cursor.x,
-          y: cursor.y,
-          name: cursor.name,
-          color: '#3b82f6',
-        } as CursorState)
-        remoteCursors.value = cursors
-        break
-      }
-      case 'presence.left': {
-        const left = data as { client_id: string }
-        const cursors = new Map(remoteCursors.value)
-        cursors.delete(Number(left.client_id) || 0)
-        remoteCursors.value = cursors
-        break
-      }
-    }
-  }
-
   const loadState = async () => {
-    // Initialize persistence based on user plan
-    await initPersistence()
-
-    // Load index (from API for Pro, IDB for free)
-    let index = await persistence.loadIndex()
-
-    // First-time Pro upgrade: push existing IDB canvases up to the backend so
-    // they're available to MCP tools and other devices. Only when the backend
-    // is empty — we don't try to merge once the user is already syncing.
-    if (persistence.isSynced && (!index || index.canvases.length === 0)) {
-      const { useUserStore } = await import('./user')
-      const userStore = useUserStore()
-      if (userStore.sessionToken) {
-        const result = await migrateLocalToSynced(userStore.sessionToken)
-        if (result.migrated > 0) {
-          index = await persistence.loadIndex()
-        }
-      }
-    }
+    const rawIndex = await loadItem<MultiCanvasIndex>('canvas:index')
+    const parsedIndex = MultiCanvasIndexSchema.safeParse(rawIndex)
+    const index = parsedIndex.success
+      ? { canvases: parsedIndex.data.canvases, activeCanvasId: parsedIndex.data.activeCanvasId }
+      : null
 
     if (index && index.canvases.length > 0) {
       canvasIndex.value = index.canvases
       activeCanvasId.value = index.activeCanvasId
 
       // Load active canvas data
-      const data = await persistence.loadCanvas(index.activeCanvasId)
+      const data = await loadCanvasData(index.activeCanvasId)
       if (data) {
-        boxes.value = data.boxes
+        boxes.value = data.boxes.filter(box => getBoxDefinition(box.type))
         nextBoxId.value = data.nextBoxId
       } else {
         boxes.value = []
         nextBoxId.value = 1
       }
 
-      // Connect WebSocket for real-time sync
-      if (persistence.isSynced) {
-        persistence.connectToCanvas(index.activeCanvasId)
-      }
     } else {
       // No existing data, create default canvas
       createCanvas('Canvas 1')
@@ -338,9 +209,9 @@ export const useCanvasStore = defineStore('canvas', () => {
   // Debounced auto-save to prevent IDB thrashing during drag operations
   const debouncedSaveState = debounce(saveState, 500)
 
-  // Watch for changes and auto-save to IDB (debounced, skipped in synced mode where API handles persistence)
+  // Watch for changes and auto-save to IndexedDB.
   watch([boxes, nextBoxId], () => {
-    if (persistenceMode.value === 'local') debouncedSaveState()
+    debouncedSaveState()
   }, { deep: true })
 
   // Flush pending saves when store scope is disposed
@@ -354,7 +225,7 @@ export const useCanvasStore = defineStore('canvas', () => {
 
   const createCanvas = (name?: string): string => {
     // Save current canvas first if exists
-    if (activeCanvasId.value && persistenceMode.value === 'local') {
+    if (activeCanvasId.value) {
       saveCanvasData(activeCanvasId.value)
     }
 
@@ -399,14 +270,9 @@ export const useCanvasStore = defineStore('canvas', () => {
   const switchCanvas = async (canvasId: string) => {
     if (canvasId === activeCanvasId.value) return
 
-    // Disconnect real-time sync before switching canvases
-    disableSync()
+    debouncedSaveState.flush()
 
-    // Flush pending saves before switching (IDB only)
-    if (persistenceMode.value === 'local') debouncedSaveState.flush()
-
-    // Save current canvas (IDB only; the WS sync layer handles collaborative saves)
-    if (activeCanvasId.value && persistenceMode.value === 'local') {
+    if (activeCanvasId.value) {
       saveCanvasData(activeCanvasId.value)
     }
 
@@ -422,11 +288,6 @@ export const useCanvasStore = defineStore('canvas', () => {
       undoStack.value = []
       redoStack.value = []
       saveIndex()
-
-      // Reconnect WebSocket for the new canvas
-      if (persistence.isSynced) {
-        persistence.connectToCanvas(canvasId)
-      }
     }
   }
 
@@ -463,7 +324,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     if (!sourceData) return null
 
     // Save current canvas first (IDB only)
-    if (activeCanvasId.value && persistenceMode.value === 'local') {
+    if (activeCanvasId.value) {
       saveCanvasData(activeCanvasId.value)
     }
 
@@ -547,7 +408,7 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   // ============================================
-  // Box management (unchanged from original)
+  // Box management
   // ============================================
 
   const getMaxZIndex = (): number => {
@@ -556,8 +417,6 @@ export const useCanvasStore = defineStore('canvas', () => {
   }
 
   const saveToUndoStack = () => {
-    // In collaborative mode, Y.UndoManager tracks history automatically
-    // Undo stack works in both local and synced modes
     undoStack.value.push({
       boxes: JSON.parse(JSON.stringify(boxes.value)),
       selectedBoxId: selectedBoxId.value,
@@ -636,9 +495,6 @@ export const useCanvasStore = defineStore('canvas', () => {
       connectionId: connectionId
     }
     boxes.value.push(newBox)
-    if (activeCanvasId.value) {
-      persistence.onBoxAdded(activeCanvasId.value, newBox)
-    }
     return newBox.id
   }
 
@@ -702,10 +558,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     const origIndex = boxes.value.findIndex(b => b.id === boxId)
     if (origIndex !== -1) boxes.value.splice(origIndex, 1)
     boxes.value.push(...newBoxes)
-    if (activeCanvasId.value) {
-      persistence.onBoxesReplaced(activeCanvasId.value, boxId, newBoxes)
-    }
-
     return newBoxes.map(b => b.id)
   }
 
@@ -718,10 +570,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     if (index !== -1) {
       saveToUndoStack()
       boxes.value.splice(index, 1)
-      if (activeCanvasId.value) {
-        persistence.onBoxRemoved(activeCanvasId.value, id)
-      }
-
       selectionHistory.value = selectionHistory.value.filter(historyId => historyId !== id)
 
       if (selectedBoxId.value === id) {
@@ -804,10 +652,6 @@ export const useCanvasStore = defineStore('canvas', () => {
 
     const idsToRemove = new Set(boxIds)
     boxes.value = boxes.value.filter(box => !idsToRemove.has(box.id))
-    if (activeCanvasId.value) {
-      persistence.onBoxesRemoved(activeCanvasId.value, boxIds)
-    }
-
     selectedBoxId.value = null
     selectedBoxIds.value.clear()
   }
@@ -817,9 +661,6 @@ export const useCanvasStore = defineStore('canvas', () => {
     const box = boxes.value.find(b => b.id === id)
     if (box) {
       Object.assign(box, fields)
-      if (activeCanvasId.value) {
-        persistence.onBoxUpdated(activeCanvasId.value, id, fields)
-      }
     }
   }
 
@@ -901,9 +742,6 @@ export const useCanvasStore = defineStore('canvas', () => {
       editorHeight: originalBox.editorHeight
     }
     boxes.value.push(newBox)
-    if (activeCanvasId.value) {
-      persistence.onBoxAdded(activeCanvasId.value, newBox)
-    }
     return newBox.id
   }
 
@@ -943,50 +781,11 @@ export const useCanvasStore = defineStore('canvas', () => {
         editorHeight: originalBox.editorHeight
       }
       boxes.value.push(newBox)
-      if (activeCanvasId.value) {
-        persistence.onBoxAdded(activeCanvasId.value, newBox)
-      }
       newBoxIds.push(boxId)
     })
 
     return newBoxIds
   }
-
-  // ============================================
-  // Real-time sync (WebSocket, Pro only)
-  // ============================================
-
-  const setLocalCursor = (x: number, y: number, _name: string, _color: string) => {
-    persistence.sendCursorMove(x, y)
-  }
-
-  const clearLocalCursor = () => {
-    // No-op for WS (cursor removed when connection drops)
-  }
-
-  /**
-   * Enable real-time sync for a canvas via WebSocket.
-   * Called when switching to a canvas in synced mode.
-   */
-  const enableSync = (canvasId: string) => {
-    if (!persistence.isSynced) return
-    persistence.connectToCanvas(canvasId)
-  }
-
-  /**
-   * Disable real-time sync.
-   */
-  const disableSync = () => {
-    persistence.disconnectFromCanvas()
-    isSyncConnected.value = false
-    isReadOnly.value = false
-    remoteCursors.value = new Map()
-  }
-
-  // Clean up on store dispose
-  onScopeDispose(() => {
-    persistence.dispose()
-  })
 
   return {
     // Multi-canvas state
@@ -1045,14 +844,5 @@ export const useCanvasStore = defineStore('canvas', () => {
     redo,
     setCanvasRef,
 
-    // Sync & collaboration
-    persistenceMode,
-    isSyncConnected,
-    isReadOnly,
-    remoteCursors,
-    setLocalCursor,
-    clearLocalCursor,
-    enableSync,
-    disableSync,
   }
 })

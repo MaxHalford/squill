@@ -36,12 +36,6 @@ export interface BigQueryPaginatedQueryResult {
   stats: { totalBytesProcessed?: string; cacheHit?: boolean }
 }
 
-export interface DryRunResult {
-  totalBytesProcessed: string
-  estimatedCost: string
-  error?: string
-}
-
 export interface BigQueryClient {
   /** List BigQuery projects accessible to this connection. */
   listProjects(): Promise<BigQueryProject[]>
@@ -80,9 +74,6 @@ export interface BigQueryClient {
       signal?: AbortSignal | null
     },
   ): Promise<BigQueryPaginatedQueryResult>
-
-  /** Estimate query cost without executing. */
-  dryRunQuery(query: string, projectId: string): Promise<DryRunResult>
 
   /**
    * Fetch the execution plan for a completed job, or null if unavailable.

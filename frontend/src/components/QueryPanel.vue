@@ -11,10 +11,7 @@ import QueryEditor from './QueryEditor.vue'
 import ResultsTable from './ResultsTable.vue'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useDuckDBStore } from '../stores/duckdb'
-import { useSnowflakeStore } from '../stores/snowflake'
-import { useClickHouseStore } from '../stores/clickhouse'
 import { useSettingsStore } from '../stores/settings'
-import { useUserStore } from '../stores/user'
 import { useQueryResultsStore } from '../stores/queryResults'
 import { useBoxConnection } from '../composables/useBoxConnection'
 import { getEffectiveEngine, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
@@ -23,8 +20,6 @@ import { useQueryExecution } from '../composables/useQueryExecution'
 import { useCanvasStore } from '../stores/canvas'
 import { buildCTEQuery } from '../utils/cteResolver'
 import type { SchemaNamespace } from '../utils/schemaBuilder'
-import { suggestFix, castSpell, type LineSuggestion, type FixContext } from '../services/ai'
-import { isFixableError } from '../utils/errorClassifier'
 import { getConnectionDisplayName } from '../utils/connectionHelpers'
 import { type DatabaseEngine, type QueryCompleteEvent } from '../types/database'
 
@@ -38,10 +33,7 @@ const resultsRef = ref<InstanceType<typeof ResultsTable> | null>(null)
 
 const bigqueryStore = useBigQueryStore()
 const duckdbStore = useDuckDBStore()
-const snowflakeStore = useSnowflakeStore()
-const clickhouseStore = useClickHouseStore()
 const settingsStore = useSettingsStore()
-const userStore = useUserStore()
 const queryResultsStore = useQueryResultsStore()
 const canvasStore = useCanvasStore()
 const { executeQuery } = useQueryExecution()
@@ -58,7 +50,6 @@ const props = withDefaults(defineProps<{
   connectionId?: string
   boxId?: number | null
   boxName?: string
-  showAutofix?: boolean
   showRowDetail?: boolean
   showAnalytics?: boolean
   initialEditorHeight?: number
@@ -68,7 +59,6 @@ const props = withDefaults(defineProps<{
   connectionId: undefined,
   boxId: null,
   boxName: 'untitled',
-  showAutofix: true,
   showRowDetail: true,
   showAnalytics: true,
   initialEditorHeight: 150,
@@ -81,8 +71,8 @@ const emit = defineEmits<{
   'query-error': [error: string]
   'navigate-to-table': [ref: TableReferenceWithPosition]
   'show-row-detail': [payload: { rowData: Record<string, unknown>; columnTypes: Record<string, string>; rowIndex: number; globalRowIndex: number; clickX: number; clickY: number }]
-  'show-column-analytics': [payload: { columnName: string; columnType: string; typeCategory: string; tableName: string; clickX: number; clickY: number; sourceEngine?: string; originalQuery?: string; connectionId?: string; availableColumns?: string[] }]
-  'show-explain': [payload: { planData: unknown; engine: string; query: string; clickX: number; clickY: number }]
+  'show-column-analytics': [payload: { columnName: string; columnType: string; typeCategory: string; tableName: string; clickX: number; clickY: number; sourceEngine?: DatabaseEngine; originalQuery?: string; connectionId?: string; availableColumns?: string[] }]
+  'show-explain': [payload: { planData: unknown; engine: DatabaseEngine; query: string; clickX: number; clickY: number }]
   'explode': []
 }>()
 
@@ -115,13 +105,6 @@ const error = ref<string | null>(null)
 const detectedEngine = ref<string | null>(null)
 let abortController: AbortController | null = null
 let backgroundLoadController: AbortController | null = null
-
-// Fix suggestion state
-const suggestion = ref<LineSuggestion | null>(null)
-const isFetchingFix = ref(false)
-
-// Spell casting state
-const isCastingSpell = ref(false)
 
 // BigQuery job reference for post-execution explain
 const lastBigQueryJobRef = ref<{ projectId: string; jobId: string } | null>(null)
@@ -191,10 +174,8 @@ const currentEngine = computed(() => {
   return getEffectiveEngine(connectionType, queryText.value, Object.keys(tables), boxConnection.value?.id, canvasStore.boxes)
 })
 
-const currentDialect = computed((): 'bigquery' | 'duckdb' | 'postgres' => {
-  const engine = currentEngine.value
-  if (engine === 'snowflake' || engine === 'clickhouse') return 'postgres'
-  return engine
+const currentDialect = computed((): 'bigquery' | 'duckdb' => {
+  return currentEngine.value
 })
 
 const isEngineLoading = computed(() => {
@@ -259,14 +240,8 @@ watch(
 // Lazy loading
 // ---------------------------------------------------------------------------
 
-const getOffsetStore = (engine: string) => {
-  if (engine === 'snowflake') return snowflakeStore
-  if (engine === 'clickhouse') return clickhouseStore
-  return null
-}
-
 const fetchNextBatch = async (
-  engine: string,
+  engine: DatabaseEngine,
   query: string,
   tableName: string,
   schema: { name: string; type: string }[],
@@ -295,21 +270,6 @@ const fetchNextBatch = async (
       if (fetchState) {
         queryResultsStore.updateFetchProgress(
           props.boxId, fetchState.fetchedRows + result.rows.length, result.hasMore, result.pageToken,
-        )
-      }
-    } else {
-      const store = getOffsetStore(engine)
-      if (!store) return
-      const offset = pageTokenOrOffset as number
-      const result = await store.runQueryPaginated(
-        boxConnection.value?.id || '', query, batchSize, offset, false, backgroundLoadController.signal,
-      )
-      await duckdbStore.appendResults(tableName, result.rows as Record<string, unknown>[], schema)
-
-      const fetchState = queryResultsStore.getFetchState(props.boxId)
-      if (fetchState) {
-        queryResultsStore.updateFetchProgress(
-          props.boxId, fetchState.fetchedRows + result.rows.length, result.hasMore, undefined, result.nextOffset,
         )
       }
     }
@@ -348,6 +308,20 @@ const handleRequestMoreData = async (neededRows: number) => {
 // ---------------------------------------------------------------------------
 
 const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => {
+  // Token acquisition must be initiated by the same user gesture as Run.
+  // Once Google returns, continue the exact query the user asked to execute.
+  const connection = boxConnection.value
+  if (connection?.type === 'bigquery') {
+    try {
+      await bigqueryStore.ensureAccessToken(connection.id)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Google authorization was cancelled.'
+      error.value = message
+      emit('query-error', message)
+      throw err
+    }
+  }
+
   // If an override query is provided, set it in the editor first
   if (overrideQuery !== undefined) {
     queryText.value = overrideQuery
@@ -384,7 +358,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
       finalQuery = cteResult.assembledQuery
     }
 
-    let execResult: { rowCount: number; executionTimeMs: number; engine: string; stats?: Record<string, unknown> }
+    let execResult: { rowCount: number; executionTimeMs: number; engine: DatabaseEngine; stats?: Record<string, unknown> }
 
     if (usePagination) {
       const batchSize = settingsStore.fetchBatchSize
@@ -416,25 +390,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
         }
         execResult = { rowCount: paginatedResult.rows.length, executionTimeMs: 0, engine, stats: paginatedResult.stats }
       } else {
-        const store = getOffsetStore(engine)
-        if (!store || !connectionId) throw new Error(`No ${engine} connection selected`)
-
-        const paginatedResult = await store.runQueryPaginated(
-          connectionId, finalQuery, batchSize, 0, true, abortController.signal,
-        )
-        await duckdbStore.storeResults(props.boxName || 'untitled', paginatedResult.rows as Record<string, unknown>[], props.boxId, paginatedResult.columns, engine as DatabaseEngine)
-        if (props.boxId !== null) {
-          queryResultsStore.initQueryResult(props.boxId, engine as DatabaseEngine, {
-            totalRows: paginatedResult.totalRows,
-            fetchedRows: paginatedResult.rows.length,
-            hasMoreRows: paginatedResult.hasMore,
-            nextOffset: paginatedResult.nextOffset,
-            originalQuery: finalQuery,
-            connectionId,
-            schema: paginatedResult.columns,
-          })
-        }
-        execResult = { rowCount: paginatedResult.rows.length, executionTimeMs: 0, engine, stats: paginatedResult.stats }
+        throw new Error(`Pagination is not supported for ${engine}`)
       }
 
       execResult.executionTimeMs = Math.round(performance.now() - startTime)
@@ -449,9 +405,6 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
       }
       execResult = result
     }
-
-    // Clear any previous suggestion on successful run
-    suggestion.value = null
 
     if (resultTableName.value === tableName) {
       // Same table name — watch won't fire, so refresh manually
@@ -491,33 +444,6 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
 
       emit('query-error', errorMessage)
 
-      // Request AI fix suggestion
-      if (props.showAutofix) {
-        suggestion.value = null
-        const engine = currentEngine.value
-        const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = (engine === 'snowflake' || engine === 'clickhouse') ? 'postgres' : engine
-        if (settingsStore.autofixEnabled && userStore.isPro && userStore.sessionToken && isFixableError(errorMessage, databaseDialect)) {
-          isFetchingFix.value = true
-          try {
-            const query = editorRef.value?.getQuery() || queryText.value
-            const fixContext: FixContext = {
-              connectionId: props.connectionId,
-              connectionType: engine,
-              projectId: boxConnection.value?.projectId,
-            }
-            const fix = await suggestFix({
-              query,
-              error_message: errorMessage,
-              database_dialect: databaseDialect,
-            }, userStore.sessionToken, fixContext)
-            suggestion.value = fix
-          } catch (fixErr) {
-            console.warn('Failed to get fix suggestion:', fixErr)
-          } finally {
-            isFetchingFix.value = false
-          }
-        }
-      }
     }
     resultTableName.value = null
     queryStats.value = null
@@ -544,14 +470,6 @@ const explainQuery = async (event: { clientX: number; clientY: number }) => {
       const row = result.rows[0]
       const raw = row?.explain_value ?? (row ? Object.values(row)[0] : null) ?? result.rows
       planData = typeof raw === 'string' ? JSON.parse(raw) : raw
-    } else if (engine === 'snowflake') {
-      if (!connectionId) throw new Error('No Snowflake connection')
-      const result = await snowflakeStore.runQuery(connectionId, `EXPLAIN USING JSON ${query}`)
-      planData = result.rows
-    } else if (engine === 'clickhouse') {
-      if (!connectionId) throw new Error('No ClickHouse connection')
-      const result = await clickhouseStore.runQuery(connectionId, `EXPLAIN JSON ${query}`)
-      planData = result.rows
     } else if (engine === 'bigquery') {
       if (!lastBigQueryJobRef.value) throw new Error('Run the query first to get its execution plan')
       planData = await bigqueryStore.fetchQueryPlan(
@@ -583,36 +501,6 @@ const stopQuery = () => {
   }
 }
 
-const handleAcceptSuggestion = () => {
-  if (editorRef.value && suggestion.value) {
-    editorRef.value.acceptSuggestion()
-    suggestion.value = null
-    error.value = null
-  }
-}
-
-const handleCastSpell = async (instruction: string, selectedText: string) => {
-  if (!userStore.isPro || !userStore.sessionToken) return
-  isCastingSpell.value = true
-  try {
-    const query = editorRef.value?.getQuery() || queryText.value
-    const engine = currentEngine.value
-    const databaseDialect: 'bigquery' | 'postgres' | 'duckdb' = (engine === 'snowflake' || engine === 'clickhouse') ? 'postgres' : engine
-    const result = await castSpell({
-      query,
-      instruction,
-      database_dialect: databaseDialect,
-      selected_text: selectedText || undefined,
-    }, userStore.sessionToken)
-    if (result) {
-      queryText.value = result.rewrittenQuery
-    }
-  } catch (err) {
-    console.warn('Failed to cast spell:', err)
-  } finally {
-    isCastingSpell.value = false
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Splitter
@@ -697,11 +585,7 @@ onUnmounted(() => {
 // ---------------------------------------------------------------------------
 
 // Computed forwarding of editor state for header action buttons
-const editorShowSpellInput = computed(() => editorRef.value?.showSpellInput ?? false)
 const editorJustFormatted = computed(() => editorRef.value?.justFormatted ?? false)
-const editorDryRunResult = computed(() => editorRef.value?.dryRunResult ?? null)
-const editorIsDryRunLoading = computed(() => editorRef.value?.isDryRunLoading ?? false)
-const connectionType = computed(() => boxConnection.value?.type)
 
 defineExpose({
   runQuery,
@@ -711,19 +595,12 @@ defineExpose({
   focusEditor: () => editorRef.value?.focus(),
   // State for header action buttons
   isRunning,
-  isCastingSpell,
   isEngineLoading,
   explainDisabledReason,
-  connectionType,
   // Delegated editor methods
   formatQuery: () => editorRef.value?.formatQuery(),
-  triggerDryRun: () => editorRef.value?.triggerDryRun(),
-  toggleSpellInput: () => editorRef.value?.toggleSpellInput(),
   // Forwarded editor reactive state
-  showSpellInput: editorShowSpellInput,
   justFormatted: editorJustFormatted,
-  dryRunResult: editorDryRunResult,
-  isDryRunLoading: editorIsDryRunLoading,
 })
 </script>
 
@@ -741,19 +618,14 @@ defineExpose({
       :disabled="isEngineLoading"
       :dialect="currentDialect"
       :schema="editorSchema"
-      :suggestion="showAutofix ? suggestion : undefined"
       :connection-type="boxConnection?.type"
       :connection-id="boxConnection?.id"
       :explain-disabled-reason="explainDisabledReason"
       :can-explode="canExplode"
-      :is-casting-spell="isCastingSpell"
       @run="runQuery()"
       @stop="stopQuery"
       @explain="explainQuery"
       @explode="emit('explode')"
-      @accept-suggestion="handleAcceptSuggestion"
-      @dismiss-suggestion="suggestion = null"
-      @cast-spell="handleCastSpell"
       @navigate-to-table="emit('navigate-to-table', $event)"
       @activate="handleEditorActivate"
       @ready="() => {}"
@@ -771,16 +643,14 @@ defineExpose({
         :table-name="resultTableName"
         :stats="queryStats"
         :error="error"
-        :is-fetching-fix="isFetchingFix"
-        :no-relevant-fix="suggestion?.noRelevantFix"
         :box-name="boxName"
         :box-id="boxId"
         :connection-name="connectionDisplayName"
         :show-row-detail="showRowDetail"
         :show-analytics="showAnalytics"
+        :is-running="isRunning"
         @show-row-detail="emit('show-row-detail', $event)"
         @show-column-analytics="emit('show-column-analytics', $event)"
-        :is-running="isRunning"
         @request-more-data="handleRequestMoreData"
         @run-query="runQuery()"
         @stop-query="stopQuery"

@@ -127,40 +127,4 @@ describe('parsePlan', () => {
     })
   })
 
-  describe('postgres', () => {
-    it('parses EXPLAIN (ANALYZE, FORMAT JSON) output', () => {
-      const raw = [
-        {
-          Plan: {
-            'Node Type': 'Seq Scan',
-            'Relation Name': 'users',
-            'Plan Rows': 100,
-            'Actual Rows': 87,
-            'Total Cost': 12.5,
-            'Actual Total Time': 0.45,
-            Plans: [
-              {
-                'Node Type': 'Index Scan',
-                'Index Name': 'users_pkey',
-                'Plan Rows': 1,
-                'Actual Rows': 1,
-                'Total Cost': 0.29,
-                'Actual Total Time': 0.01,
-              },
-            ],
-          },
-        },
-      ]
-
-      const tree = parsePlan('postgres', raw)
-      expect(tree).not.toBeNull()
-      expect(tree!.operator).toBe('Seq Scan')
-      expect(tree!.table).toBe('users')
-      expect(tree!.rows).toBe(87) // prefers Actual Rows
-      expect(tree!.durationMs).toBe(0.45)
-      expect(tree!.cost).toBe(12.5)
-      expect(tree!.children).toHaveLength(1)
-      expect(tree!.children[0].operator).toBe('Index Scan')
-    })
-  })
 })

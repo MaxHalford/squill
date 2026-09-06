@@ -10,9 +10,9 @@ export interface PlanNode {
   operator: string
   table?: string
   rows?: number
-  /** Real execution time in milliseconds (PG Actual Total Time, BQ stage duration) */
+  /** Real execution time in milliseconds. */
   durationMs?: number
-  /** Abstract planner cost units (PG Total Cost, DuckDB Cost) */
+  /** Abstract planner cost units. */
   cost?: number
   /** Bytes shuffled (BigQuery stages) */
   shuffleBytes?: number
@@ -112,64 +112,6 @@ function parseDuckDBPlan(raw: unknown): PlanNode | null {
 }
 
 // ---------------------------------------------------------------------------
-// PostgreSQL — EXPLAIN (FORMAT JSON)
-// Structure: [{ "Plan": { "Node Type", "Plans": [...], ... } }]
-// ---------------------------------------------------------------------------
-
-interface PGPlanNode {
-  'Node Type': string
-  'Relation Name'?: string
-  'Alias'?: string
-  'Plan Rows'?: number
-  'Actual Rows'?: number
-  'Total Cost'?: number
-  'Startup Cost'?: number
-  'Actual Total Time'?: number
-  'Plan Width'?: number
-  'Join Type'?: string
-  'Index Name'?: string
-  Plans?: PGPlanNode[]
-  [key: string]: unknown
-}
-
-// Keys we already handle structurally — skip them in extra
-const PG_STRUCTURAL_KEYS = new Set([
-  'Node Type', 'Relation Name', 'Alias', 'Plan Rows', 'Actual Rows',
-  'Total Cost', 'Startup Cost', 'Actual Total Time', 'Plan Width', 'Plans',
-])
-
-function parsePGNode(raw: PGPlanNode): PlanNode {
-  const extra: Record<string, string> = {}
-
-  for (const [k, v] of Object.entries(raw)) {
-    if (!PG_STRUCTURAL_KEYS.has(k) && v !== undefined && v !== null) {
-      extra[k] = String(v)
-    }
-  }
-
-  return {
-    id: nextNodeId++,
-    operator: raw['Node Type'] || 'Unknown',
-    table: raw['Relation Name'],
-    rows: raw['Actual Rows'] ?? raw['Plan Rows'],
-    durationMs: raw['Actual Total Time'],
-    cost: raw['Total Cost'],
-    extra,
-    children: (raw.Plans || []).map(parsePGNode),
-  }
-}
-
-function parsePostgresPlan(raw: unknown): PlanNode | null {
-  if (!raw) return null
-  // PG returns [{ Plan: { ... } }]
-  const arr = Array.isArray(raw) ? raw : [raw]
-  const first = arr[0]
-  const planObj = first?.Plan ?? first?.plan ?? first
-  if (!planObj || typeof planObj !== 'object') return null
-  return parsePGNode(planObj as PGPlanNode)
-}
-
-// ---------------------------------------------------------------------------
 // BigQuery — statistics.query.queryPlan from jobs.get
 // Structure: flat array of stages with inputStages DAG references
 // ---------------------------------------------------------------------------
@@ -262,48 +204,6 @@ function parseBigQueryPlan(raw: unknown): PlanNode | null {
 }
 
 // ---------------------------------------------------------------------------
-// Snowflake — EXPLAIN USING JSON
-// Structure similar to DuckDB: tree with operation/expressions
-// ---------------------------------------------------------------------------
-
-interface SnowflakeNode {
-  operation?: string
-  expressions?: string[]
-  globalStats?: Record<string, unknown>
-  id?: number
-  inputs?: SnowflakeNode[]
-  [key: string]: unknown
-}
-
-function parseSnowflakeNode(raw: SnowflakeNode): PlanNode {
-  const extra: Record<string, string> = {}
-
-  if (raw.expressions && raw.expressions.length > 0) {
-    extra['Expressions'] = raw.expressions.join(', ')
-  }
-  if (raw.globalStats) {
-    for (const [k, v] of Object.entries(raw.globalStats)) {
-      if (v !== undefined && v !== null) extra[k] = String(v)
-    }
-  }
-
-  return {
-    id: nextNodeId++,
-    operator: raw.operation || 'Unknown',
-    extra,
-    children: (raw.inputs || []).map(parseSnowflakeNode),
-  }
-}
-
-function parseSnowflakePlan(raw: unknown): PlanNode | null {
-  if (!raw) return null
-  // Snowflake may return an array or a single object
-  const arr = Array.isArray(raw) ? raw : [raw]
-  if (arr.length === 0) return null
-  return parseSnowflakeNode(arr[0] as SnowflakeNode)
-}
-
-// ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
 
@@ -311,9 +211,7 @@ export function parsePlan(engine: string, raw: unknown): PlanNode | null {
   try {
     switch (engine) {
       case 'duckdb': return parseDuckDBPlan(raw)
-      case 'postgres': return parsePostgresPlan(raw)
       case 'bigquery': return parseBigQueryPlan(raw)
-      case 'snowflake': return parseSnowflakePlan(raw)
       default: return null
     }
   } catch (err) {

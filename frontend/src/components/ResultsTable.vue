@@ -50,7 +50,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'show-row-detail': [payload: { rowData: Record<string, unknown>; columnTypes: Record<string, string>; rowIndex: number; globalRowIndex: number; clickX: number; clickY: number }]
-  'show-column-analytics': [payload: { columnName: string; columnType: string; typeCategory: string; tableName: string; clickX: number; clickY: number; sourceEngine?: string; originalQuery?: string; connectionId?: string; availableColumns?: string[] }]
+  'show-column-analytics': [payload: { columnName: string; columnType: string; typeCategory: string; tableName: string; clickX: number; clickY: number; sourceEngine?: DatabaseEngine; originalQuery?: string; connectionId?: string; availableColumns?: string[] }]
   'request-more-data': [neededRows: number]
   'run-query': []
   'stop-query': []

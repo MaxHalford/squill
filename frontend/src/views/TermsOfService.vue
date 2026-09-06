@@ -21,29 +21,8 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { renderMarkdown } from '../utils/markdown'
-import { useHead } from '@unhead/vue'
 
 const router = useRouter()
-
-// SEO Meta Tags
-useHead({
-  title: 'Terms of Service - Squill',
-  meta: [
-    {
-      name: 'description',
-      content: 'Read the Terms of Service for Squill, the browser-based SQL editor. Understand your rights and responsibilities when using our service.'
-    },
-    { property: 'og:title', content: 'Terms of Service - Squill' },
-    { property: 'og:description', content: 'Terms of Service for Squill, the browser-based SQL editor.' },
-    { property: 'og:url', content: 'https://squill.dev/terms-of-service' },
-    { property: 'og:type', content: 'website' },
-    { name: 'twitter:title', content: 'Terms of Service - Squill' },
-    { name: 'twitter:description', content: 'Terms of Service for Squill, the browser-based SQL editor.' },
-  ],
-  link: [
-    { rel: 'canonical', href: 'https://squill.dev/terms-of-service' }
-  ]
-})
 
 const goBack = () => {
   router.push('/')
@@ -52,167 +31,49 @@ const goBack = () => {
 const markdownContent = `
 # Terms of Service
 
-**Last Updated: ${new Date().toLocaleDateString()}**
+**Last Updated: September 6, 2026**
 
-## Acceptance of terms
+## The application
 
-By accessing and using Squill, you accept and agree to be bound by the terms and conditions of this agreement.
+Squill is an open-source, static, browser-based BigQuery client. It stores application data locally and sends authorized BigQuery requests directly from your browser to Google. No Squill account or paid subscription is provided.
 
-## Description of service
-
-Squill is a web-based SQL editor and data exploration tool. The service allows you to:
-
-- Execute SQL queries using DuckDB WebAssembly (client-side)
-- Connect to external databases (BigQuery, PostgreSQL)
-- Visualize and explore query results
-- Import and analyze CSV files
-- Use AI-powered SQL assistance (Pro feature)
-
-## How Squill works
-
-Squill operates in two modes:
-
-- **Client-side processing**: DuckDB queries and CSV file analysis run entirely in your browser. No data is transmitted to our servers.
-- **Server-assisted features**: Database connections (BigQuery, PostgreSQL) and AI features require server-side processing. Your credentials are stored encrypted on our servers.
-
-## User accounts
-
-An account is required to:
-- Connect to external databases (BigQuery, PostgreSQL)
-- Store database credentials securely
-- Access Squill Pro features
-
-You do not need an account to use DuckDB or analyze CSV files locally.
-
-## Squill Pro
-
-Squill Pro is a paid subscription (8€/month) that includes:
-- **Hex remover**: Get AI-powered suggestions to fix broken queries
-- Additional features as they become available
-
-Pro features may involve transmitting data to third-party services (e.g., OpenAI for AI features). See our [Privacy Policy](/privacy-policy) for details.
-
-## Use license
-
-Permission is granted to use Squill for personal and commercial purposes, subject to the following restrictions:
-
-### You may
-
-- Use Squill for any lawful purpose
-- Connect to databases you are authorized to access
-- Share query results and visualizations
-- Self-host the open source version
-
-### You may not
-
-- Use Squill for any illegal activities
-- Access databases without proper authorization
-- Circumvent any security features
-- Abuse the service in ways that impact other users
-
-## User responsibilities
+## Your responsibility
 
 You are responsible for:
 
-- **Credentials**: Keeping your database credentials secure
-- **Authorization**: Ensuring you have permission to access connected databases
-- **Compliance**: Following applicable laws and your organization's policies
-- **Third-party terms**: Complying with terms of external services you connect to
-- **Account security**: Maintaining the security of your Squill account
+- using only Google Cloud projects and data you are authorized to access;
+- reviewing every query before running it;
+- understanding the BigQuery usage and cost associated with a query;
+- protecting access to your browser profile and device;
+- complying with Google Cloud's terms and your organization's policies; and
+- maintaining backups of any local Squill data you need to preserve.
 
-## Data and privacy
+Squill requests read-only Google OAuth scopes and does not automatically execute downstream queries. A query is submitted only following an explicit run action, but read queries can still consume BigQuery resources and incur charges.
 
-Please refer to our [Privacy Policy](/privacy-policy) for detailed information about:
-- What data we collect and store
-- How AI features process your queries
-- Third-party services we use
-- Your data rights
+## Google services
 
-### Your data
+BigQuery authorization and API requests are provided by Google and are subject to [Google Cloud terms](https://cloud.google.com/terms). Google may expire or revoke access tokens, require renewed consent, limit API access, or change its services independently of Squill.
 
-- You retain full ownership of your data
-- Local data (DuckDB, CSV) stays in your browser
-- Database credentials are encrypted at rest
-- AI features transmit queries to OpenAI (Pro only)
+## Local data
 
-## Third-party services
+Canvas documents, settings, query history, connection metadata, and cached results may be stored in your browser. There is no server-side backup or recovery service. Clearing site data, changing browser profiles, or losing the device may permanently remove this information.
 
-Squill integrates with the following services:
+## Availability and warranty
 
-- **OpenAI**: Powers the Hex remover (Pro). Subject to [OpenAI's terms](https://openai.com/terms).
-- **Google Cloud**: For BigQuery connections. Subject to [Google Cloud terms](https://cloud.google.com/terms).
-- **Paddle**: Processes Pro subscriptions. Subject to [Paddle's terms](https://www.paddle.com/legal/terms).
+Squill is provided as-is and without warranties of availability, fitness, correctness, security, or non-infringement, to the extent permitted by law. The application may change or stop working because of browser, Google API, GitHub Pages, or other dependency changes.
 
-## Payments and subscriptions
+## Liability
 
-- Pro subscriptions are billed monthly through Paddle
-- You may cancel at any time; access continues until the end of the billing period
-- Refunds are handled according to our [Refund Policy](/refund-policy)
-- Prices may change with notice
-
-## Disclaimer of warranties
-
-Squill is provided "AS IS" without warranty of any kind. We make no warranties that:
-
-- The service will be uninterrupted or error-free
-- Defects will be corrected
-- AI suggestions will be accurate or appropriate
-- The service is free from security vulnerabilities
-
-## Limitation of liability
-
-To the maximum extent permitted by law, we shall not be liable for any:
-
-- Indirect, incidental, or consequential damages
-- Data loss or corruption
-- Business interruption
-- Lost profits or revenue
-- Damages from AI-suggested fixes
-
-## Browser compatibility
-
-Squill requires a modern browser with support for:
-
-- WebAssembly
-- IndexedDB
-- ES6+ JavaScript features
-
-We recommend using the latest version of Chrome, Firefox, Safari, or Edge.
-
-## Changes to service
-
-We reserve the right to:
-
-- Modify or discontinue features at any time
-- Update these terms with notice on this page
-- Change pricing with advance notice
-- Modify Pro features
-
-Continued use after changes constitutes acceptance of modified terms.
+To the maximum extent permitted by law, the project maintainers are not liable for query charges, data loss, unauthorized access, business interruption, lost profits, or indirect or consequential damages arising from use of Squill.
 
 ## Open source
 
-Squill is open source under the AGPL license. The source code is available at [github.com/MaxHalford/squill](https://github.com/MaxHalford/squill).
+Squill's source code and license are available at [github.com/MaxHalford/squill](https://github.com/MaxHalford/squill). The repository license governs copying and modification of the source code; these terms govern use of the hosted application.
 
-## Termination
+## Changes and contact
 
-- You may delete your account at any time
-- We may terminate accounts that violate these terms
-- Upon termination, your stored credentials are deleted
-
-## Governing law
-
-These terms shall be governed by the laws of the jurisdiction in which the service operator is located.
-
-## Contact
-
-For questions about these terms, please [open an issue on GitHub](https://github.com/MaxHalford/squill/issues).
-
----
-
-By using Squill, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service.
+Changes will be published on this page. Continued use after a change means you accept the updated terms. For questions, [open an issue on GitHub](https://github.com/MaxHalford/squill/issues).
 `
-
 const htmlContent = computed(() => {
   return renderMarkdown(markdownContent)
 })

@@ -1,20 +1,14 @@
 <script setup lang="ts">
 import { watch, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
 import { useSettingsStore } from './stores/settings'
 import DialogHost from './components/DialogHost.vue'
 import ToastHost from './components/ToastHost.vue'
 
 const settingsStore = useSettingsStore()
-const route = useRoute()
-
 // Apply theme class to document
-// Landing page always uses light mode
 const applyTheme = () => {
-  const isLandingPage = route.path === '/'
-  const theme = isLandingPage ? 'light' : settingsStore.resolvedTheme
   document.documentElement.classList.remove('light', 'dark')
-  document.documentElement.classList.add(theme)
+  document.documentElement.classList.add(settingsStore.resolvedTheme)
 }
 
 // Apply accent color as CSS variable override
@@ -29,11 +23,6 @@ onMounted(() => {
 
 // Watch resolved theme (reacts to both preference changes and OS theme changes)
 watch(() => settingsStore.resolvedTheme, () => {
-  applyTheme()
-})
-
-// Watch for route changes (landing page always uses light mode)
-watch(() => route.path, () => {
   applyTheme()
 })
 

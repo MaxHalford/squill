@@ -3,11 +3,9 @@ import { ref, computed } from 'vue'
 import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
 import { DataType as ArrowDataType } from 'apache-arrow'
-import { loadCsvWithDuckDB } from '../services/csvHandler'
-import { sanitizeTableName, sanitizeFileName, escapeSqlString, escapeIdentifier } from '../utils/sqlSanitize'
+import { sanitizeTableName, escapeSqlString, escapeIdentifier } from '../utils/sqlSanitize'
 import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
 import { buildDuckDBSchema, type SchemaNamespace } from '../utils/schemaBuilder'
-import type { SchemaItem } from '../utils/textSimilarity'
 import type { DatabaseEngine } from '../types/database'
 
 interface TableMetadata {
@@ -39,7 +37,7 @@ export interface SchemaRow {
 /** Internal tables that should be hidden from user-visible table lists */
 const INTERNAL_TABLES = new Set(['_schemas'])
 
-/** Group column rows by table name (shared by loadTablesMetadata and loadAttachedTablesMetadata) */
+/** Group column rows by table name. */
 const groupColumnsByTable = (colRows: { table_name: unknown; column_name: unknown }[]): Map<string, string[]> => {
   const result = new Map<string, string[]>()
   for (const row of colRows) {
@@ -132,11 +130,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // Track available tables (table name -> metadata)
   const tables = ref<Record<string, TableMetadata>>({})
 
-  // Track attached (imported) DuckDB databases: alias → { tables }
-  const attachedDatabases = ref<Record<string, {
-    tables: Record<string, { rowCount: number, columns: string[] }>
-  }>>({})
-
   // Reactive trigger for table schema changes
   const schemaVersion = ref(0)
 
@@ -173,7 +166,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         // Select bundle (prefer eh for better performance)
         const bundle = MANUAL_BUNDLES.eh
 
-        // Create worker
         const worker = new Worker(bundle.mainWorker, { type: 'module' })
         const logger = new duckdb.ConsoleLogger()
 
@@ -260,46 +252,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }
     } catch (err) {
       console.warn('Failed to load tables metadata:', err)
-    }
-  }
-
-  // Load metadata (tables, row counts, columns) for an attached DuckDB database.
-  // Returns table names for caller convenience.
-  const loadAttachedTablesMetadata = async (alias: string): Promise<string[]> => {
-    if (!conn.value) return []
-
-    try {
-      const escapedAlias = alias.replace(/'/g, "''")
-
-      // Get tables and row counts
-      const countResult = await conn.value.query(
-        `SELECT table_name, estimated_size as row_count FROM duckdb_tables() WHERE database_name = '${escapedAlias}'`
-      )
-      const countRows = countResult.toArray()
-
-      // Get columns
-      const colResult = await conn.value.query(
-        `SELECT table_name, column_name FROM information_schema.columns WHERE table_catalog = '${escapedAlias}' ORDER BY table_name, ordinal_position`
-      )
-      const colRows = colResult.toArray()
-
-      const columnsByTable = groupColumnsByTable(colRows)
-
-      const tablesMap: Record<string, { rowCount: number, columns: string[] }> = {}
-      for (const row of countRows) {
-        const tableName = row.table_name as string
-        tablesMap[tableName] = {
-          rowCount: Number(row.row_count || 0),
-          columns: columnsByTable.get(tableName) || [],
-        }
-      }
-
-      attachedDatabases.value[alias] = { tables: tablesMap }
-      schemaVersion.value++
-      return Object.keys(tablesMap)
-    } catch (err) {
-      console.warn(`Failed to load metadata for attached database ${alias}:`, err)
-      return []
     }
   }
 
@@ -836,103 +788,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
-  // Load CSV file into DuckDB
-  const loadCsvFile = async (
-    file: File,
-    boxId: number | null = null
-  ): Promise<string | null> => {
-    await ensureInit()
-
-    try {
-      // Load CSV using DuckDB's native file loading
-      // Type assertions needed due to DuckDB WASM type version mismatches
-      const result = await loadCsvWithDuckDB(
-        file,
-        db.value! as AsyncDuckDB,
-        conn.value! as AsyncDuckDBConnection,
-        tables.value
-      )
-
-      // Update metadata store (table already created by DuckDB)
-      tables.value[result.tableName] = {
-        rowCount: result.rowCount,
-        columns: result.columns,
-        lastUpdated: Date.now(),
-        originalBoxName: result.originalFileName,
-        boxId: boxId
-      }
-
-      // Trigger reactive updates
-      schemaVersion.value++
-
-      console.log(`✅ Loaded CSV as table: ${result.tableName} (${result.rowCount} rows)`)
-
-      return result.tableName
-    } catch (err: unknown) {
-      console.error(`Failed to load CSV ${file.name}:`, err)
-      throw new Error(`Failed to load CSV: ${getErrorMessage(err)}`, { cause: err })
-    }
-  }
-
-  // Attach an imported .duckdb file via OPFS
-  const attachDuckDBFile = async (file: File): Promise<{ alias: string, tables: string[] }> => {
-    await ensureInit()
-
-    // Sanitize filename for OPFS and SQL alias
-    const safeName = sanitizeFileName(file.name)
-    const alias = safeName.replace(/\.duckdb$/i, '').toLowerCase().replace(/[^a-z0-9_]/g, '_')
-
-    // Read file once, persist to OPFS, and register with DuckDB's VFS
-    const buffer = new Uint8Array(await file.arrayBuffer())
-
-    const root = await navigator.storage.getDirectory()
-    const fileHandle = await root.getFileHandle(safeName, { create: true })
-    const writable = await fileHandle.createWritable()
-    await writable.write(buffer)
-    await writable.close()
-
-    // Detach if already attached (re-import)
-    try {
-      await conn.value!.query(`DETACH "${alias.replace(/"/g, '""')}"`)
-    } catch {
-      // Not attached — ignore
-    }
-
-    await db.value!.registerFileBuffer(safeName, buffer)
-    await conn.value!.query(`ATTACH '${safeName.replace(/'/g, "''")}' AS "${alias.replace(/"/g, '""')}" (READ_ONLY)`)
-
-    // Load metadata and get table names in one pass
-    const tableNames = await loadAttachedTablesMetadata(alias)
-
-    console.log(`Attached DuckDB file: ${safeName} as "${alias}" with ${tableNames.length} tables`)
-    return { alias, tables: tableNames }
-  }
-
-  // Re-attach a previously imported DuckDB file (call on startup for persisted connections)
-  // opfsFileName is the sanitized filename stored in the connection's database field
-  const reattachDuckDBFile = async (opfsFileName: string, alias: string): Promise<boolean> => {
-    await ensureInit()
-    try {
-      // Read file from OPFS and register with DuckDB's VFS
-      const root = await navigator.storage.getDirectory()
-      const fileHandle = await root.getFileHandle(opfsFileName)
-      const file = await fileHandle.getFile()
-      const buffer = new Uint8Array(await file.arrayBuffer())
-      await db.value!.registerFileBuffer(opfsFileName, buffer)
-
-      await conn.value!.query(`ATTACH '${opfsFileName.replace(/'/g, "''")}' AS "${alias.replace(/"/g, '""')}" (READ_ONLY)`)
-      console.log(`Re-attached DuckDB: ${alias}`)
-
-      // Load metadata so schema browser can show tables
-      await loadAttachedTablesMetadata(alias)
-
-      return true
-    } catch (err: unknown) {
-      console.warn(`Failed to re-attach DuckDB ${alias}:`, err)
-      return false
-    }
-  }
-
   // Export a table to various formats using DuckDB's native COPY command
   type ExportFormat = 'csv' | 'json' | 'parquet' | 'xlsx'
 
@@ -1027,35 +882,11 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   /**
-   * Atomically replace all schema rows for a connection.
-   * Deletes existing rows, inserts new ones, persists to IDB.
-   */
-  const replaceConnectionSchemas = async (
-    connectionType: string,
-    connectionId: string,
-    rows: SchemaRow[]
-  ) => {
-    await ensureInit()
-
-    const safeType = escapeSqlString(connectionType)
-    const safeId = escapeSqlString(connectionId)
-    await conn.value!.query(
-      `DELETE FROM _schemas WHERE connection_type = '${safeType}' AND connection_id = '${safeId}'`
-    )
-
-    if (rows.length > 0) {
-      await insertSchemaRows(rows)
-    }
-
-    schemaVersion.value++
-  }
-
-  /**
    * Build a SchemaNamespace from _schemas for CodeMirror autocompletion.
-   * Handles BigQuery hierarchical structure, Postgres/Snowflake shortcuts.
+   * Handles BigQuery's project → dataset → table hierarchy.
    */
   const getEditorSchema = async (
-    connectionType: string,
+    connectionType: 'bigquery',
     connectionId: string,
     activeProject?: string
   ): Promise<SchemaNamespace> => {
@@ -1091,145 +922,26 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
     const schema: SchemaNamespace = {}
 
-    if (connectionType === 'bigquery') {
-      // Hierarchical: project → dataset → table → columns
-      for (const [key, columns] of tableColumns) {
-        const [project, dataset, table] = key.split('\0')
-        if (!project || !dataset || !table) continue
+    for (const [key, columns] of tableColumns) {
+      const [project, dataset, table] = key.split('\0')
+      if (!project || !dataset || !table) continue
 
-        if (!schema[project]) schema[project] = {}
-        const projectNs = schema[project] as SchemaNamespace
-        if (!projectNs[dataset]) projectNs[dataset] = {}
-        const datasetNs = projectNs[dataset] as SchemaNamespace
-        datasetNs[table] = columns
+      if (!schema[project]) schema[project] = {}
+      const projectNs = schema[project] as SchemaNamespace
+      if (!projectNs[dataset]) projectNs[dataset] = {}
+      const datasetNs = projectNs[dataset] as SchemaNamespace
+      datasetNs[table] = columns
 
-        // Add dataset.table shortcut for active project
-        if (activeProject && project === activeProject) {
-          if (!schema[dataset]) schema[dataset] = {}
-          const topDs = schema[dataset] as SchemaNamespace
-          if (!topDs[table]) topDs[table] = columns
-        }
-      }
-    } else if (connectionType === 'postgres') {
-      // Flat: schema.table → columns, plus unqualified for public
-      for (const [key, columns] of tableColumns) {
-        const [, schemaName, tableName] = key.split('\0')
-        schema[`${schemaName}.${tableName}`] = columns
-        if (schemaName === 'public') {
-          schema[tableName] = columns
-        }
-      }
-    } else if (connectionType === 'snowflake') {
-      // Flat: database.schema.table → columns, plus shortcuts
-      for (const [key, columns] of tableColumns) {
-        const [dbName, schemaName, tableName] = key.split('\0')
-        schema[`${dbName}.${schemaName}.${tableName}`] = columns
-        if (!schema[`${schemaName}.${tableName}`]) {
-          schema[`${schemaName}.${tableName}`] = columns
-        }
-        if (schemaName?.toUpperCase() === 'PUBLIC' && !schema[tableName]) {
-          schema[tableName] = columns
-        }
+      // Add dataset.table shortcut for the active billing project.
+      if (activeProject && project === activeProject) {
+        if (!schema[dataset]) schema[dataset] = {}
+        const topDs = schema[dataset] as SchemaNamespace
+        if (!topDs[table]) topDs[table] = columns
       }
     }
 
     editorSchemaCache.set(cacheKey, schema)
     return schema
-  }
-
-  /**
-   * Get SchemaItem[] from _schemas for AI/LLM context (schemaAdapter replacement).
-   */
-  const getSchemaItems = async (
-    connectionType: string,
-    connectionId?: string
-  ): Promise<SchemaItem[]> => {
-    if (!isInitialized.value || !conn.value) return []
-
-    const safeType = escapeSqlString(connectionType)
-    let where = `connection_type = '${safeType}'`
-    if (connectionId) {
-      const safeId = escapeSqlString(connectionId)
-      where += ` AND connection_id = '${safeId}'`
-    }
-
-    const result = await conn.value.query(`
-      SELECT catalog, schema_name, table_name, column_name, column_type
-      FROM _schemas
-      WHERE ${where}
-      ORDER BY catalog, schema_name, table_name, column_name
-    `)
-    const rows = result.toArray()
-
-    // Group columns by table
-    const tableColumns = new Map<string, Array<{ name: string; type: string }>>()
-    for (const row of rows) {
-      let tableName: string
-      if (connectionType === 'bigquery') {
-        tableName = `${row.catalog}.${row.schema_name}.${row.table_name}`
-      } else if (connectionType === 'snowflake') {
-        tableName = `${row.catalog}.${row.schema_name}.${row.table_name}`
-      } else {
-        tableName = `${row.schema_name}.${row.table_name}`
-      }
-      if (!tableColumns.has(tableName)) tableColumns.set(tableName, [])
-      tableColumns.get(tableName)!.push({
-        name: row.column_name as string,
-        type: row.column_type as string,
-      })
-    }
-
-    return Array.from(tableColumns.entries()).map(([tableName, columns]) => ({
-      tableName,
-      columns,
-    }))
-  }
-
-  /**
-   * Atomically replace all schema rows for a specific catalog within a connection.
-   * Used by BigQuery to update one project's schemas without wiping others.
-   */
-  const replaceConnectionCatalogSchemas = async (
-    connectionType: string,
-    connectionId: string,
-    catalog: string,
-    rows: SchemaRow[]
-  ) => {
-    await ensureInit()
-
-    const safeType = escapeSqlString(connectionType)
-    const safeId = escapeSqlString(connectionId)
-    const safeCatalog = escapeSqlString(catalog)
-    await conn.value!.query(
-      `DELETE FROM _schemas WHERE connection_type = '${safeType}' AND connection_id = '${safeId}' AND catalog = '${safeCatalog}'`
-    )
-
-    if (rows.length > 0) {
-      await insertSchemaRows(rows)
-    }
-
-    schemaVersion.value++
-  }
-
-  /**
-   * Remove all schema rows for a specific catalog within a connection.
-   * Used when deselecting a BigQuery project.
-   */
-  const removeConnectionCatalogSchemas = async (
-    connectionType: string,
-    connectionId: string,
-    catalog: string
-  ) => {
-    await ensureInit()
-
-    const safeType = escapeSqlString(connectionType)
-    const safeId = escapeSqlString(connectionId)
-    const safeCatalog = escapeSqlString(catalog)
-    await conn.value!.query(
-      `DELETE FROM _schemas WHERE connection_type = '${safeType}' AND connection_id = '${safeId}' AND catalog = '${safeCatalog}'`
-    )
-
-    schemaVersion.value++
   }
 
   /**
@@ -1275,7 +987,6 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     isInitializing,
     initError,
     tables,
-    attachedDatabases,
     schemaVersion,
     getTableNames,
     getFreshTableNames,
@@ -1297,17 +1008,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     loadTablesMetadata,
     renameTable,
     garbageCollect,
-    loadCsvFile,
-    attachDuckDBFile,
-    reattachDuckDBFile,
-    loadAttachedTablesMetadata,
     exportTable,
-    replaceConnectionSchemas,
-    replaceConnectionCatalogSchemas,
-    removeConnectionCatalogSchemas,
     upsertTableSchema,
     getEditorSchema,
-    getSchemaItems,
     duckdbEditorSchema,
     schemaRefreshMessage,
   }

@@ -1,7 +1,9 @@
 export interface GoogleTokenResponse {
   access_token: string
   error?: string
+  error_description?: string
   expires_in?: number
+  scope?: string
   state?: string
 }
 
@@ -13,7 +15,12 @@ export interface GoogleUserInfo {
 }
 
 export interface GoogleTokenClient {
-  requestAccessToken: () => void
+  requestAccessToken: (config?: { prompt?: string; hint?: string }) => void
+}
+
+export interface GoogleOAuthError {
+  type: string
+  message?: string
 }
 
 declare global {
@@ -25,6 +32,7 @@ declare global {
             client_id: string
             scope: string
             callback: (response: GoogleTokenResponse) => void
+            error_callback?: (error: GoogleOAuthError) => void
             state?: string
           }) => GoogleTokenClient
           revoke: (token: string, callback: () => void) => void

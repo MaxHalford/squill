@@ -4,7 +4,6 @@ import type { Box } from '../types/canvas'
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 import { calculateBoundingBox } from '../utils/geometry'
-import CursorOverlay from './CursorOverlay.vue'
 
 interface Point {
   x: number
@@ -13,9 +12,6 @@ interface Point {
 
 const emit = defineEmits<{
   'canvas-click': []
-  'file-drop': [payload: { csvFiles: File[]; duckdbFiles?: File[]; nonCsvFiles: File[]; position: Point }]
-  'cursor-move': [x: number, y: number]
-  'cursor-leave': []
 }>()
 
 const canvasStore = useCanvasStore()
@@ -50,10 +46,6 @@ const rectangleCurrent = ref<Point>({ x: 0, y: 0 })
 // Space key panning state
 const isSpaceHeld = ref(false)
 const isMetaHeld = ref(false)
-
-// CSV drag state
-const isDraggingFile = ref(false)
-const dragCounter = ref(0)
 
 // Zoom uses transform: scale() exclusively (no CSS zoom).
 // CSS zoom was removed because WebKit (Tauri/WKWebView) returns zoomed values from
@@ -350,9 +342,6 @@ const handleMouseMove = (e: MouseEvent) => {
       }
     }
 
-    // Emit canvas-space cursor position for awareness
-    const pos = screenToCanvas(latestMoveX, latestMoveY)
-    emit('cursor-move', pos.x, pos.y)
   })
 }
 
@@ -437,53 +426,6 @@ const handleWindowBlur = () => {
   canvasRef.value?.classList.remove('space-ready', 'meta-ready', 'pan-active')
 }
 
-// File drag and drop
-const handleDragEnter = (e: DragEvent) => {
-  if (e.dataTransfer?.types.includes('Files')) {
-    e.preventDefault()
-    dragCounter.value++
-    isDraggingFile.value = true
-  }
-}
-
-const handleDragLeave = (e: DragEvent) => {
-  e.preventDefault()
-  if (--dragCounter.value === 0) isDraggingFile.value = false
-}
-
-const handleDragOver = (e: DragEvent) => {
-  if (e.dataTransfer?.types.includes('Files')) {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-  }
-}
-
-const handleDrop = (e: DragEvent) => {
-  e.preventDefault()
-  isDraggingFile.value = false
-  dragCounter.value = 0
-
-  const files = e.dataTransfer?.files
-  if (!files?.length) return
-
-  const csvFiles: File[] = []
-  const duckdbFiles: File[] = []
-  const nonSupportedFiles: File[] = []
-  for (const f of Array.from(files)) {
-    const lower = f.name.toLowerCase()
-    if (lower.endsWith('.csv') || f.type === 'text/csv') csvFiles.push(f)
-    else if (lower.endsWith('.duckdb')) duckdbFiles.push(f)
-    else nonSupportedFiles.push(f)
-  }
-
-  emit('file-drop', {
-    csvFiles,
-    duckdbFiles,
-    nonCsvFiles: nonSupportedFiles,
-    position: screenToCanvas(e.clientX, e.clientY)
-  })
-}
-
 onMounted(() => {
   canvasRef.value?.addEventListener('wheel', handleWheel, { passive: false, capture: true })
   canvasRef.value?.addEventListener('mousedown', handleMouseDownCapture, { capture: true })
@@ -540,22 +482,14 @@ onUnmounted(() => {
   <div
     ref="canvasRef"
     class="infinite-canvas"
-    :class="[canvasPatternClass, { 'dragging-file': isDraggingFile, 'low-zoom': isLowZoom }]"
+    :class="[canvasPatternClass, { 'low-zoom': isLowZoom }]"
     @mousedown="handleMouseDown"
-    @mouseleave="emit('cursor-leave')"
-    @dragenter="handleDragEnter"
-    @dragleave="handleDragLeave"
-    @dragover="handleDragOver"
-    @drop="handleDrop"
   >
     <div
       ref="viewportRef"
       class="viewport"
     >
       <slot />
-
-      <!-- Remote user cursors (awareness) -->
-      <CursorOverlay v-if="canvasStore.persistenceMode === 'synced'" />
 
       <!-- Teleport target for box creation buttons -->
       <div id="box-creation-buttons-container" />
@@ -650,20 +584,4 @@ onUnmounted(() => {
   z-index: 9999;
 }
 
-/* File drag overlay */
-.infinite-canvas.dragging-file::before {
-  content: 'Drop file to import';
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-  border: 3px dashed color-mix(in srgb, var(--color-accent) 60%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  font-weight: 600;
-  color: color-mix(in srgb, var(--color-accent) 90%, transparent);
-  pointer-events: none;
-  z-index: 10000;
-}
 </style>

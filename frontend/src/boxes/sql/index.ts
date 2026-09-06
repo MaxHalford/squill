@@ -35,7 +35,7 @@ const getUniqueTreeName = (existingNames: string[]): string => {
 registerBox({
   type: 'sql',
   label: 'SQL editor',
-  shortcut: '&#x2318;J',
+  shortcut: '⌘J',
   defaultWidth: 600,
   defaultHeight: 500,
   generateName: (_id: number, existing: string[]) => getUniqueTreeName(existing),

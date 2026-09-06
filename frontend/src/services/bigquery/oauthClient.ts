@@ -7,7 +7,6 @@
 
 import { useConnectionsStore } from '../../stores/connections'
 import { convertBigQueryRows, extractSimpleSchema } from '../../utils/bigqueryConversion'
-import { formatBytes } from '../../utils/formatUtils'
 import type {
   BigQueryProject,
   BigQueryDataset,
@@ -21,7 +20,6 @@ import type {
   BigQueryClient,
   BigQueryQueryResult,
   BigQueryPaginatedQueryResult,
-  DryRunResult,
 } from './types'
 
 const BQ_BASE = 'https://bigquery.googleapis.com/bigquery/v2'
@@ -45,18 +43,18 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
   async function getToken(): Promise<string> {
     const cached = connectionsStore.getAccessToken(connectionId)
     if (cached) return cached
-    return connectionsStore.refreshAccessToken(connectionId)
+    throw new Error('BigQuery authorization expired. Run the query again to reconnect.')
   }
 
-  /** Run one fetch, auto-retry once on 401 after refreshing the token. */
+  /** Run one fetch. Interactive authorization is only started by an explicit user action. */
   async function fetchWith401Retry(
     makeRequest: (token: string) => Promise<Response>,
   ): Promise<Response> {
-    let token = await getToken()
-    let response = await makeRequest(token)
+    const token = await getToken()
+    const response = await makeRequest(token)
     if (response.status === 401) {
-      token = await connectionsStore.refreshAccessToken(connectionId)
-      response = await makeRequest(token)
+      connectionsStore.clearAccessToken(connectionId)
+      throw new Error('BigQuery authorization expired. Run the query again to reconnect.')
     }
     return response
   }
@@ -123,7 +121,7 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
 
   /**
    * Submit a query to jobs.query, handle 401-retry, and poll if the job didn't
-   * complete synchronously. Shared by runQuery / runQueryPaginated / dryRunQuery.
+   * complete synchronously. Shared by runQuery and runQueryPaginated.
    */
   async function submitQuery(
     projectId: string,
@@ -257,21 +255,6 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
       return { rows: [], columns: [], totalRows: 0, hasMore: false, jobReference, stats }
     },
 
-    async dryRunQuery(query: string, projectId: string): Promise<DryRunResult> {
-      try {
-        const data = await submitQuery(projectId, {
-          query,
-          useLegacySql: false,
-          dryRun: true,
-        }, null)
-        const bytes = parseInt((data.totalBytesProcessed as string | undefined) || '0', 10)
-        return formatDryRunResult(bytes)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Request failed'
-        return { totalBytesProcessed: '0', estimatedCost: '', error: message }
-      }
-    },
-
     async fetchQueryPlan(projectId: string, jobId: string): Promise<unknown> {
       const data = await apiCall<{ statistics?: { query?: { queryPlan?: unknown } } }>(token =>
         fetch(
@@ -282,18 +265,4 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
       return data.statistics?.query?.queryPlan ?? null
     },
   }
-}
-
-/** BigQuery charges $6.25 per TiB scanned; convert bytes to pricing display strings. */
-export function formatDryRunResult(bytes: number): DryRunResult {
-  const costPerTiB = 6.25
-  const tib = bytes / 1099511627776
-  const cost = tib * costPerTiB
-
-  let estimatedCost: string
-  if (bytes === 0) estimatedCost = 'Free'
-  else if (cost < 0.01) estimatedCost = '<$0.01'
-  else estimatedCost = `$${cost.toFixed(2)}`
-
-  return { totalBytesProcessed: formatBytes(bytes), estimatedCost }
 }

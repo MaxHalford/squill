@@ -33,7 +33,7 @@ export interface CanvasState {
 export interface QueryStats {
   executionTimeMs: number
   rowCount?: number
-  engine: 'bigquery' | 'duckdb' | 'postgres' | 'snowflake'
+  engine: 'bigquery' | 'duckdb'
   totalBytesProcessed?: string
   cacheHit?: boolean
 }
@@ -59,14 +59,6 @@ export interface MultiCanvasIndex {
   version: 1
   activeCanvasId: string
   canvases: CanvasMeta[]
-}
-
-export interface CursorState {
-  x: number
-  y: number
-  color: string
-  name: string
-  clientId: number
 }
 
 export interface ViewportBounds {

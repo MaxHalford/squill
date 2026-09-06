@@ -122,6 +122,9 @@ const selectedEntry = computed(() => {
   return historyStore.getEntry(selectedEntryId.value)
 })
 
+const getHistoryDatabaseInfo = (entry: QueryHistoryEntry) =>
+  entry.connectionType === 'duckdb' ? DATABASE_INFO.duckdb : DATABASE_INFO.bigquery
+
 // Get connection name for tooltip
 function getConnectionName(entry: QueryHistoryEntry): string {
   const connection = connectionsStore.connections.find(c => c.id === entry.connectionId)
@@ -263,11 +266,11 @@ onUnmounted(() => {
                 v-tooltip="getConnectionName(entry)"
                 class="engine-badge"
                 :style="{
-                  background: DATABASE_INFO[entry.connectionType].color,
-                  color: DATABASE_INFO[entry.connectionType].textColor
+                  background: getHistoryDatabaseInfo(entry).color,
+                  color: getHistoryDatabaseInfo(entry).textColor
                 }"
               >
-                {{ DATABASE_INFO[entry.connectionType].shortName }}
+                {{ getHistoryDatabaseInfo(entry).shortName }}
               </span>
               <span
                 v-if="entry.success && entry.rowCount !== undefined"

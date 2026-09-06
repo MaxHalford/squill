@@ -21,29 +21,8 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { renderMarkdown } from '../utils/markdown'
-import { useHead } from '@unhead/vue'
 
 const router = useRouter()
-
-// SEO Meta Tags
-useHead({
-  title: 'Privacy Policy - Squill',
-  meta: [
-    {
-      name: 'description',
-      content: 'Learn how Squill protects your data. Our privacy policy explains what data we collect, how we use it, and your rights regarding your information.'
-    },
-    { property: 'og:title', content: 'Privacy Policy - Squill' },
-    { property: 'og:description', content: 'Learn how Squill protects your data and your privacy rights.' },
-    { property: 'og:url', content: 'https://squill.dev/privacy-policy' },
-    { property: 'og:type', content: 'website' },
-    { name: 'twitter:title', content: 'Privacy Policy - Squill' },
-    { name: 'twitter:description', content: 'Learn how Squill protects your data and your privacy rights.' },
-  ],
-  link: [
-    { rel: 'canonical', href: 'https://squill.dev/privacy-policy' }
-  ]
-})
 
 const goBack = () => {
   router.push('/')
@@ -52,114 +31,52 @@ const goBack = () => {
 const markdownContent = `
 # Privacy Policy
 
-**Last Updated: ${new Date().toLocaleDateString()}**
+**Last Updated: September 6, 2026**
 
-## Introduction
+## Summary
 
-Welcome to Squill. This privacy policy explains how we collect, use, and protect your information when you use our application.
+Squill is a static, local-first BigQuery client. Squill has no application backend, no user accounts, no subscriptions, no advertising, and no analytics. Your queries, settings, canvas data, connection metadata, and cached results are stored by your browser on your device.
 
-## How Squill works
+## Google authorization
 
-Squill offers both client-side and server-assisted features:
+When you connect BigQuery, Squill uses Google Identity Services in your browser. Google issues a short-lived access token directly to the page.
 
-- **Free tier (DuckDB, CSV files)**: Runs entirely in your browser. No data is transmitted to our servers.
-- **Database connections (BigQuery, PostgreSQL)**: Require server-side processing and credential storage.
-- **Squill Pro features (Hex remover)**: Transmit query data to third-party AI providers.
+- Access tokens are kept in memory and are not written to browser storage.
+- Squill stores the Google account email and selected Google Cloud project locally so you can recognize and reuse a connection.
+- Squill does not receive or store your Google password.
+- There is no Squill server to receive your token, queries, or results.
+- You can revoke Squill's access from your Google Account permissions at any time.
 
-## Data we collect
+Squill requests read-only Google scopes needed to identify the selected account, discover accessible projects, inspect BigQuery metadata, and run BigQuery queries. It does not request BigQuery write access. Google's handling of this information is governed by [Google's Privacy Policy](https://policies.google.com/privacy).
 
-### Account information
+## Query execution
 
-When you create an account, we collect and store:
-- **Email address**: Used for authentication and account identification
-- **Login timestamps**: To track account activity
-- **Subscription status**: To manage your plan (free or Pro)
+A BigQuery query is sent directly from your browser to the Google BigQuery API only when you explicitly run it. Squill does not automatically execute downstream queries. BigQuery usage and charges, if any, are governed by your Google Cloud project and Google Cloud terms.
 
-### Database credentials
+Query results are copied into an in-browser DuckDB WebAssembly database so Squill can display and work with them locally. DuckDB runs on your device.
 
-When you connect to external databases, we store:
-- **BigQuery**: Encrypted OAuth refresh tokens
-- **PostgreSQL**: Encrypted connection details (host, port, database name, username, password)
+## Local storage
 
-All credentials are encrypted at rest using industry-standard encryption.
+Squill uses IndexedDB and browser storage for canvas documents, query history, settings, non-secret connection metadata, schema caches, and query-result caches. This data remains on the device and browser profile where it was created. Clearing Squill's site data removes it.
 
-### AI feature data (Squill Pro)
+Because Squill has no backend, it cannot recover, synchronize, or remotely delete local data for you.
 
-When you use the Hex remover, the following data is sent to our AI provider (OpenAI):
-- Your SQL query
-- The error message
-- Database schema context (table and column names)
-- Sample queries (if provided)
-- Database type (BigQuery, PostgreSQL, DuckDB)
+## Network requests
 
-This data is used solely to generate fix suggestions and is subject to [OpenAI's privacy policy](https://openai.com/privacy).
+The app may contact:
 
-### Local browser storage
+- Google Identity Services and Google OAuth endpoints for authorization
+- Google Cloud Resource Manager to list accessible projects
+- Google BigQuery APIs for metadata and queries
+- Static asset hosts required by the in-browser SQL tooling
+- GitHub Pages to load the application itself
 
-For all users, data is stored locally in your browser:
-- **LocalStorage**: Application settings and preferences
-- **IndexedDB**: DuckDB database files and query results
+Squill does not send this data to an operator-controlled application server.
 
-This local data never leaves your device unless you use server-assisted features.
+## Contact and changes
 
-## Data we don't collect
-
-- Query results or database contents (except as described above for AI features)
-- Usage analytics or telemetry (this may change with future Pro features)
-- Payment card details (handled by our payment processor)
-
-## Third-party services
-
-### OpenAI (Hex remover - Pro)
-
-Query data is sent to OpenAI for AI-powered fix suggestions. See [OpenAI's privacy policy](https://openai.com/privacy).
-
-### Paddle (payments)
-
-Subscription payments are processed by Paddle. We do not store your payment card details. See [Paddle's privacy policy](https://www.paddle.com/legal/privacy).
-
-### Google BigQuery
-
-If you connect to BigQuery, queries are executed via Google's APIs. See [Google's privacy policy](https://policies.google.com/privacy).
-
-### PostgreSQL providers
-
-PostgreSQL queries are routed through our backend to your database server. We do not store query results.
-
-### DuckDB WebAssembly
-
-DuckDB runs entirely in your browser. No data is sent to external servers for DuckDB queries.
-
-## Data security
-
-- All credentials are encrypted at rest
-- All data in transit uses HTTPS/TLS encryption
-- We follow security best practices for credential storage
-- Your local browser data is protected by your browser's security mechanisms
-
-## Data retention
-
-- **Account data**: Retained until you delete your account
-- **Database credentials**: Retained until you remove the connection or delete your account
-- **AI query data**: Not retained by Squill; subject to OpenAI's data retention policies
-- **Local browser data**: Retained until you clear your browser data
-
-## Your rights
-
-- **Access**: Request a copy of your stored data
-- **Delete**: Delete your account and all associated data
-- **Disconnect**: Remove database connections at any time
-- **Local data**: Clear browser data to remove all local Squill information
-
-## Changes to this policy
-
-We may update this privacy policy from time to time. Changes will be posted on this page with an updated "Last Updated" date.
-
-## Contact
-
-For questions about this privacy policy, please [open an issue on GitHub](https://github.com/MaxHalford/squill/issues).
+Material changes will be published on this page. For questions or security reports, [open an issue on GitHub](https://github.com/MaxHalford/squill/issues).
 `
-
 const htmlContent = computed(() => {
   return renderMarkdown(markdownContent)
 })

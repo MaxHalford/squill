@@ -10,7 +10,7 @@ export interface LineSuggestion {
 </script>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { EditorView } from 'codemirror'
 import { sql } from '@codemirror/lang-sql'
 import { Compartment, StateField, StateEffect, RangeSet, EditorState } from '@codemirror/state'
@@ -23,11 +23,9 @@ import { searchKeymap, highlightSelectionMatches, selectNextOccurrence } from '@
 import { getCodeMirrorDialect, type SqlDialect } from '../utils/sqlDialects'
 import { boostedSqlKeywords, substringSchemaCompletions } from '../utils/sqlKeywordCompletions'
 import { useSettingsStore } from '../stores/settings'
-import { useBigQueryStore, type DryRunResult } from '../stores/bigquery'
 import { createTableLinkExtension } from '../utils/tableLinkExtension'
 import { attachTooltip } from '../directives/tooltip'
 import { useSqlGlotStore, type SqlGlotError } from '../stores/sqlglot'
-import { useUserStore } from '../stores/user'
 import type { TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import type { SchemaNamespace } from '../utils/schemaBuilder'
 
@@ -36,14 +34,13 @@ const props = defineProps<{
   height?: number
   isRunning?: boolean
   disabled?: boolean
-  dialect?: 'bigquery' | 'duckdb' | 'postgres'
+  dialect?: 'bigquery' | 'duckdb'
   schema?: SchemaNamespace
   suggestion?: LineSuggestion | null
-  connectionType?: 'bigquery' | 'clickhouse' | 'duckdb' | 'mysql' | 'postgres' | 'snowflake'
+  connectionType?: 'bigquery' | 'duckdb'
   connectionId?: string
   explainDisabledReason?: string
   canExplode?: boolean
-  isCastingSpell?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -57,64 +54,14 @@ const emit = defineEmits<{
   'navigate-to-table': [ref: TableReferenceWithPosition]
   'ready': []
   'activate': []
-  'cast-spell': [instruction: string, selectedText: string]
 }>()
 
 const settingsStore = useSettingsStore()
-const bigqueryStore = useBigQueryStore()
 const sqlglotStore = useSqlGlotStore()
-const userStore = useUserStore()
 
 const editorRef = ref<HTMLElement | null>(null)
 const editorView = ref<EditorView | null>(null)
 
-// Spell input state
-const showSpellInput = ref(false)
-const spellInstruction = ref('')
-const spellInputRef = ref<HTMLTextAreaElement | null>(null)
-
-// Casting starfield animation
-const starFrames = ['.', '·', '+', '*', '✦', '*', '+', '·']
-interface ScatteredStar {
-  x: number
-  y: number
-  offset: number
-  speed: number
-}
-const castingStars = ref<ScatteredStar[]>([])
-const castingTick = ref(0)
-let castingTimer: ReturnType<typeof setInterval> | null = null
-
-function seedCastingStars() {
-  castingStars.value = Array.from({ length: 12 + Math.floor(Math.random() * 6) }, () => ({
-    x: 5 + Math.random() * 90,
-    y: 5 + Math.random() * 90,
-    offset: Math.floor(Math.random() * 8),
-    speed: 0.3 + Math.random() * 0.4,
-  }))
-}
-
-function starDisplay(star: ScatteredStar): string {
-  const tick = star.offset + Math.floor(castingTick.value * 0.1 / star.speed)
-  return starFrames[tick % starFrames.length]
-}
-
-watch(() => props.isCastingSpell, (casting) => {
-  if (casting) {
-    seedCastingStars()
-    castingTick.value = 0
-    castingTimer = setInterval(() => { castingTick.value++ }, 100)
-  } else {
-    if (castingTimer) { clearInterval(castingTimer); castingTimer = null }
-    castingStars.value = []
-  }
-})
-
-// Dry run state for cost estimation
-const dryRunResult = ref<DryRunResult | null>(null)
-const isDryRunLoading = ref(false)
-let dryRunDebounceTimer: ReturnType<typeof setTimeout> | null = null
-let lastDryRunQuery = ''
 
 // SQLGlot error tooltip state
 const hoveredError = ref<{ message: string; top: number } | null>(null)
@@ -145,40 +92,6 @@ const triggerValidation = () => {
   }, 200)
 }
 
-// Trigger dry run on hover (debounced)
-const triggerDryRun = () => {
-  // Only for BigQuery connections
-  if (props.connectionType !== 'bigquery' || !props.connectionId) return
-
-  const query = editorView.value?.state.doc.toString() || ''
-  if (!query.trim()) {
-    dryRunResult.value = null
-    return
-  }
-
-  // Skip if query hasn't changed since last dry run
-  if (query === lastDryRunQuery && dryRunResult.value) return
-
-  // Clear existing timer
-  if (dryRunDebounceTimer) {
-    clearTimeout(dryRunDebounceTimer)
-  }
-
-  // Debounce the dry run request
-  isDryRunLoading.value = true
-  dryRunDebounceTimer = setTimeout(async () => {
-    try {
-      const result = await bigqueryStore.dryRunQuery(query, props.connectionId)
-      dryRunResult.value = result
-      lastDryRunQuery = query
-    } catch {
-      dryRunResult.value = null
-    } finally {
-      isDryRunLoading.value = false
-    }
-  }, 300)
-}
-
 // Format button handler
 const justFormatted = ref(false)
 const handleFormat = async () => {
@@ -201,37 +114,6 @@ const handleFormat = async () => {
   }
 }
 
-// Spell input handlers
-const toggleSpellInput = () => {
-  if (!userStore.isPro) return
-  showSpellInput.value = !showSpellInput.value
-  spellInstruction.value = ''
-  if (showSpellInput.value) {
-    nextTick(() => spellInputRef.value?.focus())
-  }
-}
-
-const submitSpell = () => {
-  const instruction = spellInstruction.value.trim()
-  if (!instruction) return
-  const view = editorView.value
-  const selectedText = view ? view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to) : ''
-  emit('cast-spell', instruction, selectedText)
-  showSpellInput.value = false
-  spellInstruction.value = ''
-}
-
-const dismissSpellInput = () => {
-  showSpellInput.value = false
-  spellInstruction.value = ''
-}
-
-const handleSpellClickOutside = (e: MouseEvent) => {
-  if (!showSpellInput.value) return
-  const target = e.target as HTMLElement
-  if (target.closest('.spell-input-wrapper') || target.closest('.wand-btn')) return
-  dismissSpellInput()
-}
 
 const languageCompartment = new Compartment()
 const lineNumbersCompartment = new Compartment()
@@ -608,7 +490,7 @@ const buildSQLExtension = (dialect: string, _schema: SchemaNamespace) => {
 
 // Build completion sources with substring matching for schema items
 const buildCompletionSources = (dialect: string, schema: SchemaNamespace, connectionType?: string) => {
-  // Use connectionType for keyword completions (more specific, includes snowflake)
+  // Connection type selects the matching BigQuery or DuckDB completions.
   const keywordDialect = (connectionType || dialect) as SqlDialect
   return [boostedSqlKeywords(keywordDialect), substringSchemaCompletions(schema)]
 }
@@ -677,10 +559,6 @@ watch(() => props.modelValue, (newVal) => {
     })
   }
 
-  // Clear dry run result when query changes (to show fresh estimate on next hover)
-  if (currentDoc !== lastDryRunQuery) {
-    dryRunResult.value = null
-  }
 })
 
 // Watch for suggestion changes and update CodeMirror decorations
@@ -866,16 +744,11 @@ onMounted(() => {
   // Signal that editor is ready
   emit('ready')
 
-  // Click-outside listener for spell input
-  document.addEventListener('mousedown', handleSpellClickOutside)
 })
 
 onUnmounted(() => {
   editorView.value?.destroy()
-  if (dryRunDebounceTimer) clearTimeout(dryRunDebounceTimer)
   if (validateTimer) clearTimeout(validateTimer)
-  if (castingTimer) clearInterval(castingTimer)
-  document.removeEventListener('mousedown', handleSpellClickOutside)
 })
 
 // Accept the current suggestion by replacing or inserting a line
@@ -936,15 +809,9 @@ defineExpose({
   },
   acceptSuggestion,
   formatQuery: handleFormat,
-  triggerDryRun,
-  toggleSpellInput,
-  showSpellInput,
   justFormatted,
-  dryRunResult,
-  isDryRunLoading,
 })
 </script>
-
 <template>
   <div
     class="query-editor-wrapper"
@@ -955,18 +822,6 @@ defineExpose({
       class="query-editor"
     />
 
-    <!-- Casting overlay — starfield over editor while spell is being cast -->
-    <div v-if="isCastingSpell" class="casting-overlay">
-      <span
-        v-for="(star, i) in castingStars"
-        :key="i"
-        class="casting-star"
-        :style="{ left: star.x + '%', top: star.y + '%' }"
-      >{{ starDisplay(star) }}</span>
-      <span class="casting-label">Casting...</span>
-    </div>
-
-    <!-- SQLGlot error tooltip — side-anchored -->
     <div
       v-if="hoveredError"
       class="sqlglot-error-tooltip"
@@ -974,35 +829,8 @@ defineExpose({
     >
       {{ hoveredError.message }}
     </div>
-
-    <!-- Spell input — textarea centered above the wand button -->
-    <div v-if="showSpellInput" class="spell-input-wrapper">
-      <textarea
-        ref="spellInputRef"
-        v-model="spellInstruction"
-        class="spell-input"
-        placeholder="e.g. add a WHERE for date > 2024"
-        rows="3"
-        :disabled="isCastingSpell"
-        @keydown.enter.exact.prevent="submitSpell"
-        @keydown.escape.prevent="dismissSpellInput"
-      />
-      <button
-        v-tooltip="'Submit (Enter)'"
-        class="spell-submit-btn"
-        :disabled="isCastingSpell || !spellInstruction.trim()"
-        @click.stop="submitSpell"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 4v7a4 4 0 0 1-4 4H4" />
-          <path d="m9 10-5 5 5 5" />
-        </svg>
-      </button>
-    </div>
-
   </div>
 </template>
-
 <style scoped>
 .query-editor-wrapper {
   position: relative;

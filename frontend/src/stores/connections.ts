@@ -1,400 +1,186 @@
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
 import type { Connection, ConnectionType } from '../types/connection'
 import { ConnectionsStateSchema } from '../utils/storageSchemas'
-import {
-  fetchConnections as apiFetchConnections,
-  type ConnectionData,
-} from '../services/connections'
-import { clearSchemaCache } from '../utils/schemaAdapter'
 import { loadItem, saveItem } from '../utils/storage'
-import { refreshBigQueryAccessToken } from '../services/oauth/bigqueryAuth'
-import { getGoogleOAuthConfig } from '../services/oauth/googleClientConfig'
-
-/**
- * Convert backend ConnectionData to frontend Connection format.
- */
-function fromConnectionData(data: ConnectionData): Connection {
-  return {
-    id: data.id,
-    type: data.flavor as ConnectionType,
-    name: data.name,
-    email: data.email ?? undefined,
-    projectId: data.project_id ?? undefined,
-    database: data.database ?? undefined,
-    createdAt: Date.now(),
-  }
-}
+import { authorizeBigQuery } from '../services/oauth/bigqueryAuth'
 
 interface ConnectionsState {
   connections: Connection[]
   activeConnectionId: string | null
 }
 
-// In-memory token storage (not persisted)
 interface TokenEntry {
   token: string
   expiresAt: number
 }
 
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+const EXPIRY_SKEW_MS = 60_000
+
 export const useConnectionsStore = defineStore('connections', () => {
   const connections = ref<Connection[]>([])
   const activeConnectionId = ref<string | null>(null)
+  const accessTokens = new Map<string, TokenEntry>()
 
-  // In-memory only - access tokens are not persisted
-  const accessTokens = ref<Map<string, TokenEntry>>(new Map())
+  const activeConnection = computed(() =>
+    connections.value.find(connection => connection.id === activeConnectionId.value) || null,
+  )
 
-  // Computed: get active connection object
-  const activeConnection = computed(() => {
-    if (!activeConnectionId.value) return null
-    return connections.value.find(c => c.id === activeConnectionId.value) || null
-  })
-
-  // Computed: check if active connection token is expired or missing
-  const isActiveTokenExpired = computed(() => {
-    if (!activeConnection.value) return false
-
-    // Local connections and credential-based connections don't use OAuth tokens
-    if (activeConnection.value.type === 'duckdb') return false
-    if (activeConnection.value.type === 'clickhouse') return false
-    if (activeConnection.value.type === 'snowflake') return false
-
-    const tokenEntry = accessTokens.value.get(activeConnection.value.id)
-    if (!tokenEntry) return true // No token = expired
-
-    return Date.now() > tokenEntry.expiresAt
-  })
-
-  // Deduplicate connections by ID (keep first occurrence)
-  const deduplicateConnections = (conns: Connection[]): Connection[] => {
-    const seen = new Set<string>()
-    return conns.filter(c => {
-      if (seen.has(c.id)) return false
-      seen.add(c.id)
-      return true
-    })
-  }
-
-  // ---- Persistence ----
-
-  const loadState = async () => {
-    try {
-      const data = await loadItem<ConnectionsState>('connections')
-      if (data) {
-        const result = ConnectionsStateSchema.safeParse(data)
-        if (result.success) {
-          connections.value = deduplicateConnections(result.data.connections)
-          activeConnectionId.value = result.data.activeConnectionId
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load connections:', error)
+  const getAccessToken = (connectionId: string): string | null => {
+    const entry = accessTokens.get(connectionId)
+    if (!entry || Date.now() >= entry.expiresAt) {
+      accessTokens.delete(connectionId)
+      return null
     }
+    return entry.token
   }
+
+  const hasValidToken = (connectionId: string) => getAccessToken(connectionId) !== null
+  const isConnectionExpired = (connectionId: string) => !hasValidToken(connectionId)
+  const isActiveTokenExpired = computed(() =>
+    activeConnectionId.value ? isConnectionExpired(activeConnectionId.value) : false,
+  )
 
   const saveState = () => {
     const state: ConnectionsState = {
       connections: connections.value,
-      activeConnectionId: activeConnectionId.value
+      activeConnectionId: activeConnectionId.value,
     }
-    saveItem('connections', state).catch(error => {
-      console.error('Failed to save connections:', error)
-    })
+    saveItem('connections', state).catch(error => console.error('Failed to save connections:', error))
   }
 
-  const ready = loadState()
+  const loadState = async () => {
+    const stored = await loadItem<unknown>('connections')
+    const result = ConnectionsStateSchema.safeParse(stored)
+    if (!result.success) return
 
-  // Set access token for a connection (in-memory only)
+    // Migrate old installations by retaining only non-secret BigQuery metadata.
+    connections.value = result.data.connections
+      .filter(connection => connection.type === 'bigquery')
+      .map(connection => ({
+        id: connection.id,
+        type: 'bigquery' as const,
+        name: connection.name,
+        createdAt: connection.createdAt,
+        email: connection.email,
+        projectId: connection.projectId,
+        schemaProjectIds: connection.schemaProjectIds,
+      }))
+
+    activeConnectionId.value = connections.value.some(connection => connection.id === result.data.activeConnectionId)
+      ? result.data.activeConnectionId
+      : connections.value[0]?.id || null
+    saveState()
+  }
+
+  const ready = loadState().catch(error => console.error('Failed to load connections:', error))
+
   const setAccessToken = (connectionId: string, token: string, expiresIn: number) => {
-    accessTokens.value.set(connectionId, {
+    accessTokens.set(connectionId, {
       token,
-      expiresAt: Date.now() + (expiresIn * 1000)
+      expiresAt: Date.now() + expiresIn * 1000 - EXPIRY_SKEW_MS,
     })
   }
 
-  // Get access token for a connection
-  const getAccessToken = (connectionId: string): string | null => {
-    const entry = accessTokens.value.get(connectionId)
-    if (!entry) return null
-    if (Date.now() > entry.expiresAt) return null
-    return entry.token
-  }
+  const clearAccessToken = (connectionId: string) => accessTokens.delete(connectionId)
 
-  /**
-   * Refresh a BigQuery access token directly against Google's token endpoint.
-   * The refresh token lives in IndexedDB on the Connection record — the
-   * Squill backend is not involved.
-   */
-  const refreshAccessToken = async (connectionId: string): Promise<string> => {
-    const connection = connections.value.find(c => c.id === connectionId)
-    if (!connection) {
-      throw new Error('Connection not found')
-    }
-    if (connection.type !== 'bigquery') {
-      throw new Error('refreshAccessToken is only supported for BigQuery connections')
-    }
-    const refreshToken = connection.bigqueryRefreshToken
-    if (!refreshToken) {
-      removeConnection(connectionId)
-      throw new Error('Session expired. Please sign in again.')
-    }
-
-    const { clientId, clientSecret } = await getGoogleOAuthConfig()
-    if (!clientId) {
-      throw new Error('Google OAuth client is not configured.')
-    }
-
-    try {
-      const { accessToken, expiresIn } = await refreshBigQueryAccessToken(clientId, clientSecret, refreshToken)
-      setAccessToken(connectionId, accessToken, expiresIn)
-      return accessToken
-    } catch (err) {
-      const e = err as Error & { refreshRevoked?: boolean }
-      if (e.refreshRevoked) {
-        removeConnection(connectionId)
-        throw new Error('Session expired. Please sign in again.', { cause: err })
-      }
-      throw err
-    }
-  }
-
-  // Add or activate a connection. If a connection with the same ID already
-  // exists it is activated without creating a duplicate.
   const upsertConnection = (connection: Connection): string => {
-    const existing = connections.value.find(c => c.id === connection.id)
-    if (!existing) {
-      connections.value = [...connections.value, connection]
-    }
+    const existingIndex = connections.value.findIndex(item => item.id === connection.id)
+    if (existingIndex === -1) connections.value.push(connection)
+    else connections.value[existingIndex] = { ...connections.value[existingIndex], ...connection }
     activeConnectionId.value = connection.id
     saveState()
     return connection.id
   }
 
-  // Add or update BigQuery connection (called from the PKCE OAuth callback)
-  const addBigQueryConnection = (
-    email: string,
-    accessToken: string,
-    expiresIn: number,
-    refreshToken: string,
-  ): string => {
-    // BigQuery deduplicates by email rather than ID, since the ID
-    // is generated client-side and may differ across sessions.
-    const existing = connections.value.find(
-      c => c.type === 'bigquery' && c.email === email
+  const addBigQueryConnection = (email: string, accessToken: string, expiresIn: number): string => {
+    const existing = connections.value.find(connection =>
+      connection.type === 'bigquery' && connection.email?.toLowerCase() === email.toLowerCase(),
     )
-
-    if (existing) {
-      activeConnectionId.value = existing.id
-      connections.value = connections.value.map(c =>
-        c.id === existing.id ? { ...c, bigqueryRefreshToken: refreshToken } : c,
-      )
-      setAccessToken(existing.id, accessToken, expiresIn)
-      saveState()
-      return existing.id
-    }
-
-    const connectionId = upsertConnection({
-      id: `bigquery-${email}-${Date.now()}`,
+    const connectionId = existing?.id || `bigquery-${crypto.randomUUID()}`
+    upsertConnection({
+      ...(existing || {}),
+      id: connectionId,
       type: 'bigquery',
-      email,
       name: email,
-      createdAt: Date.now(),
-      bigqueryRefreshToken: refreshToken,
+      email,
+      createdAt: existing?.createdAt || Date.now(),
     })
-
     setAccessToken(connectionId, accessToken, expiresIn)
     return connectionId
   }
 
-  // Ensure DuckDB connection exists (no OAuth required).
-  // Only sets it active if there is no current active connection.
-  const addDuckDBConnection = (): string => {
-    const id = 'duckdb-local'
-    const existing = connections.value.find(c => c.id === id)
-    if (!existing) {
-      connections.value = [...connections.value, {
-        id,
-        type: 'duckdb',
-        name: 'DuckDB Local',
-        createdAt: Date.now()
-      }]
+  const connectBigQuery = async (): Promise<string> => {
+    if (!GOOGLE_CLIENT_ID) {
+      throw new Error('Google OAuth is not configured. Set the GOOGLE_CLIENT_ID GitHub Actions variable.')
     }
-    if (!activeConnectionId.value) {
-      activeConnectionId.value = id
-    }
-    saveState()
-    return id
+    const authorization = await authorizeBigQuery(GOOGLE_CLIENT_ID, { selectAccount: true })
+    return addBigQueryConnection(authorization.email, authorization.accessToken, authorization.expiresIn)
   }
 
-  // Set active connection
+  const refreshAccessToken = async (connectionId: string): Promise<string> => {
+    const connection = connections.value.find(item => item.id === connectionId)
+    if (!connection?.email) throw new Error('BigQuery connection not found.')
+    const authorization = await authorizeBigQuery(GOOGLE_CLIENT_ID, { expectedEmail: connection.email })
+    setAccessToken(connectionId, authorization.accessToken, authorization.expiresIn)
+    return authorization.accessToken
+  }
+
+  const ensureAccessToken = async (connectionId: string): Promise<string> =>
+    getAccessToken(connectionId) || refreshAccessToken(connectionId)
+
   const setActiveConnection = (connectionId: string) => {
-    const connection = connections.value.find(c => c.id === connectionId)
-    if (connection) {
-      activeConnectionId.value = connectionId
-      saveState()
-    }
+    if (!connections.value.some(connection => connection.id === connectionId)) return
+    activeConnectionId.value = connectionId
+    saveState()
   }
 
-  // Remove connection
   const removeConnection = (connectionId: string) => {
-    const connection = connections.value.find(c => c.id === connectionId)
-    if (!connection) return
-
-    // Remove token from memory
-    accessTokens.value.delete(connectionId)
-
-    // Clear stale schema cache for this connection
-    const connType = connection.type
-    if (connType === 'bigquery') {
-      clearSchemaCache('bigquery')
-    } else if (connType === 'snowflake' || connType === 'clickhouse') {
-      clearSchemaCache(connType, connectionId)
-    }
-
-    // Use filter to ensure Vue reactivity triggers
-    connections.value = connections.value.filter(c => c.id !== connectionId)
-
-    // If we deleted the active connection, switch to another or null
+    clearAccessToken(connectionId)
+    connections.value = connections.value.filter(connection => connection.id !== connectionId)
     if (activeConnectionId.value === connectionId) {
-      activeConnectionId.value = connections.value.length > 0
-        ? connections.value[0].id
-        : null
+      activeConnectionId.value = connections.value[0]?.id || null
     }
     saveState()
   }
 
-  // Update connection's project ID (for BigQuery and similar)
   const setConnectionProjectId = (connectionId: string, projectId: string | undefined) => {
-    // Use map to create new array and ensure Vue reactivity triggers
-    connections.value = connections.value.map(c => {
-      if (c.id === connectionId) {
-        return { ...c, projectId }
-      }
-      return c
-    })
+    connections.value = connections.value.map(connection =>
+      connection.id === connectionId ? { ...connection, projectId } : connection,
+    )
     saveState()
   }
 
-  // Add a project to the schema project list (BigQuery multi-project)
   const addSchemaProject = (connectionId: string, projectId: string) => {
-    connections.value = connections.value.map(c => {
-      if (c.id === connectionId) {
-        const existing = c.schemaProjectIds || []
-        if (!existing.includes(projectId)) {
-          return { ...c, schemaProjectIds: [...existing, projectId] }
-        }
-      }
-      return c
+    connections.value = connections.value.map(connection => {
+      if (connection.id !== connectionId) return connection
+      const projectIds = new Set(connection.schemaProjectIds || [])
+      projectIds.add(projectId)
+      return { ...connection, schemaProjectIds: [...projectIds] }
     })
     saveState()
   }
 
-  // Remove a project from the schema project list
   const removeSchemaProject = (connectionId: string, projectId: string) => {
-    connections.value = connections.value.map(c => {
-      if (c.id === connectionId) {
-        return { ...c, schemaProjectIds: (c.schemaProjectIds || []).filter(p => p !== projectId) }
-      }
-      return c
-    })
+    connections.value = connections.value.map(connection =>
+      connection.id === connectionId
+        ? { ...connection, schemaProjectIds: (connection.schemaProjectIds || []).filter(id => id !== projectId) }
+        : connection,
+    )
     saveState()
   }
 
-  // Get deduped union of schemaProjectIds and projectId
   const getSchemaProjectIds = (connectionId: string): string[] => {
-    const conn = connections.value.find(c => c.id === connectionId)
-    if (!conn) return []
-    const ids = new Set(conn.schemaProjectIds || [])
-    if (conn.projectId) ids.add(conn.projectId)
-    return Array.from(ids)
+    const connection = connections.value.find(item => item.id === connectionId)
+    if (!connection) return []
+    const projectIds = new Set(connection.schemaProjectIds || [])
+    if (connection.projectId) projectIds.add(connection.projectId)
+    return [...projectIds]
   }
 
-  // Get the active connection's project ID
-  const getActiveProjectId = (): string | undefined => {
-    return activeConnection.value?.projectId
-  }
-
-  // Get connections by type
-  const getConnectionsByType = (type: ConnectionType): Connection[] => {
-    return connections.value.filter(c => c.type === type)
-  }
-
-  // Check if a connection has a valid token
-  const hasValidToken = (connectionId: string): boolean => {
-    const connection = connections.value.find(c => c.id === connectionId)
-    if (!connection) return false
-
-    // Local and credential-based connections are always "valid"
-    if (connection.type === 'duckdb') return true
-    if (connection.type === 'snowflake') return true
-    if (connection.type === 'clickhouse') return true
-
-    const tokenEntry = accessTokens.value.get(connectionId)
-    if (!tokenEntry) return false
-
-    return Date.now() <= tokenEntry.expiresAt
-  }
-
-  // Check if a connection's token is expired (inverse of hasValidToken for remote connections)
-  const isConnectionExpired = (connectionId: string): boolean => {
-    const connection = connections.value.find(c => c.id === connectionId)
-    if (!connection) return false
-
-    // Local and credential-based connections don't expire
-    if (connection.type === 'duckdb') return false
-    if (connection.type === 'snowflake') return false
-    if (connection.type === 'clickhouse') return false
-
-    return !hasValidToken(connectionId)
-  }
-
-  // ============================================================
-  // Pro/VIP Backend Sync Functions
-  // ============================================================
-
-  /**
-   * Get user store (lazy import to avoid circular dependency).
-   */
-  const getUserStore = async () => {
-    const { useUserStore } = await import('./user')
-    return useUserStore()
-  }
-
-  /**
-   * Fetch connections from backend and merge with local state.
-   * Called on login for Pro/VIP users.
-   * Backend connections (BigQuery, ClickHouse, Snowflake) are merged with
-   * local-only connections (DuckDB).
-   */
-  const syncFromBackend = async (): Promise<void> => {
-    try {
-      const userStore = await getUserStore()
-      if (!userStore.isPro || !userStore.sessionToken) return
-
-      const backendConnections = await apiFetchConnections(userStore.sessionToken)
-
-      // Keep local-only connections (DuckDB is browser-only)
-      const localConnections = connections.value.filter(c => c.type === 'duckdb')
-
-      // Convert backend connections to frontend format
-      const remoteConnections = backendConnections.map(fromConnectionData)
-
-      // Merge: backend connections + local DuckDB connections
-      const mergedConnections = [...remoteConnections, ...localConnections]
-      connections.value = deduplicateConnections(mergedConnections)
-
-      // Set active connection to first one if current is not in list or if none is selected
-      if (!activeConnectionId.value || !connections.value.find(c => c.id === activeConnectionId.value)) {
-        activeConnectionId.value = connections.value.length > 0 ? connections.value[0].id : null
-      }
-
-      saveState()
-      console.log(`Synced ${remoteConnections.length} connections from backend (+ ${localConnections.length} local)`)
-    } catch (error) {
-      console.warn('Failed to sync connections from backend:', error)
-      // Don't throw - local state still works
-    }
-  }
+  const getActiveProjectId = () => activeConnection.value?.projectId
+  const getConnectionsByType = (type: ConnectionType) => connections.value.filter(connection => connection.type === type)
 
   return {
     ready,
@@ -404,11 +190,13 @@ export const useConnectionsStore = defineStore('connections', () => {
     isActiveTokenExpired,
     saveState,
     setAccessToken,
+    clearAccessToken,
     getAccessToken,
     refreshAccessToken,
+    ensureAccessToken,
+    connectBigQuery,
     upsertConnection,
     addBigQueryConnection,
-    addDuckDBConnection,
     setActiveConnection,
     removeConnection,
     setConnectionProjectId,
@@ -419,6 +207,5 @@ export const useConnectionsStore = defineStore('connections', () => {
     getConnectionsByType,
     hasValidToken,
     isConnectionExpired,
-    syncFromBackend,
   }
 })

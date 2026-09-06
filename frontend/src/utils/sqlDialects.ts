@@ -1,7 +1,7 @@
 import { SQLDialect, PostgreSQL } from '@codemirror/lang-sql'
 import type { Completion } from '@codemirror/autocomplete'
 
-export type SqlDialect = 'bigquery' | 'postgres' | 'duckdb' | 'snowflake'
+export type SqlDialect = 'bigquery' | 'duckdb'
 
 // =============================================================================
 // Common Completions (shared by all dialects)
@@ -242,59 +242,6 @@ const bigqueryCompletions: Completion[] = [
   { label: 'JSON', type: 'type', boost: 5 },
 ]
 
-// PostgreSQL-specific completions
-const postgresCompletions: Completion[] = [
-  // PostgreSQL-specific keywords
-  { label: 'RETURNING', type: 'keyword', boost: 14 },
-  { label: 'ILIKE', type: 'keyword', boost: 89 },
-  { label: 'SIMILAR', type: 'keyword', boost: 88 },
-  { label: 'LATERAL', type: 'keyword', boost: 55 },
-  { label: 'FETCH', type: 'keyword', boost: 62 },
-  { label: 'ONLY', type: 'keyword', boost: 8 },
-
-  // PostgreSQL-specific functions
-  { label: 'STRING_AGG', type: 'function', boost: 30 },
-  { label: 'ARRAY_AGG', type: 'function', boost: 30 },
-  { label: 'NOW', type: 'function', boost: 19 },
-  { label: 'AGE', type: 'function', boost: 18 },
-  { label: 'DATE_PART', type: 'function', boost: 18 },
-  { label: 'DATE_TRUNC', type: 'function', boost: 18 },
-  { label: 'TO_CHAR', type: 'function', boost: 17 },
-  { label: 'TO_DATE', type: 'function', boost: 17 },
-  { label: 'TO_TIMESTAMP', type: 'function', boost: 17 },
-  { label: 'GREATEST', type: 'function', boost: 29 },
-  { label: 'LEAST', type: 'function', boost: 29 },
-
-  // PostgreSQL JSON functions
-  { label: 'JSONB', type: 'type', boost: 15 },
-  { label: 'JSON_AGG', type: 'function', boost: 15 },
-  { label: 'JSONB_AGG', type: 'function', boost: 15 },
-  { label: 'JSON_BUILD_OBJECT', type: 'function', boost: 15 },
-  { label: 'JSONB_BUILD_OBJECT', type: 'function', boost: 15 },
-
-  // PostgreSQL array functions
-  { label: 'ARRAY_APPEND', type: 'function', boost: 15 },
-  { label: 'ARRAY_CAT', type: 'function', boost: 15 },
-  { label: 'ARRAY_LENGTH', type: 'function', boost: 15 },
-  { label: 'UNNEST', type: 'function', boost: 15 },
-
-  // PostgreSQL regex
-  { label: 'REGEXP_MATCH', type: 'function', boost: 20 },
-  { label: 'REGEXP_MATCHES', type: 'function', boost: 20 },
-  { label: 'REGEXP_REPLACE', type: 'function', boost: 20 },
-
-  // PostgreSQL data types
-  { label: 'SERIAL', type: 'type', boost: 5 },
-  { label: 'BIGSERIAL', type: 'type', boost: 5 },
-  { label: 'TEXT', type: 'type', boost: 5 },
-  { label: 'VARCHAR', type: 'type', boost: 5 },
-  { label: 'INTEGER', type: 'type', boost: 5 },
-  { label: 'BIGINT', type: 'type', boost: 5 },
-  { label: 'BOOLEAN', type: 'type', boost: 5 },
-  { label: 'TIMESTAMPTZ', type: 'type', boost: 5 },
-  { label: 'UUID', type: 'type', boost: 5 },
-]
-
 // DuckDB-specific completions
 const duckdbCompletions: Completion[] = [
   // DuckDB-specific keywords
@@ -361,71 +308,6 @@ const duckdbCompletions: Completion[] = [
   { label: 'BLOB', type: 'type', boost: 5 },
 ]
 
-// Snowflake-specific completions
-const snowflakeCompletions: Completion[] = [
-  // Snowflake-specific keywords
-  { label: 'QUALIFY', type: 'keyword', boost: 67 },
-  { label: 'SAMPLE', type: 'keyword', boost: 62 },
-  { label: 'TABLESAMPLE', type: 'keyword', boost: 62 },
-  { label: 'LATERAL', type: 'keyword', boost: 55 },
-  { label: 'FLATTEN', type: 'function', boost: 55 },
-  { label: 'MATCH_RECOGNIZE', type: 'keyword', boost: 50 },
-  { label: 'CONNECT', type: 'keyword', boost: 14 },
-  { label: 'START', type: 'keyword', boost: 14 },
-
-  // Snowflake-specific functions
-  { label: 'LISTAGG', type: 'function', boost: 30 },
-  { label: 'ARRAY_AGG', type: 'function', boost: 30 },
-  { label: 'OBJECT_AGG', type: 'function', boost: 30 },
-  { label: 'IFF', type: 'function', boost: 30 },
-  { label: 'IFNULL', type: 'function', boost: 29 },
-  { label: 'NVL', type: 'function', boost: 29 },
-  { label: 'NVL2', type: 'function', boost: 29 },
-  { label: 'ZEROIFNULL', type: 'function', boost: 29 },
-  { label: 'GREATEST', type: 'function', boost: 29 },
-  { label: 'LEAST', type: 'function', boost: 29 },
-
-  // Snowflake date functions
-  { label: 'DATEDIFF', type: 'function', boost: 18 },
-  { label: 'DATEADD', type: 'function', boost: 18 },
-  { label: 'DATE_TRUNC', type: 'function', boost: 18 },
-  { label: 'DATE_PART', type: 'function', boost: 18 },
-  { label: 'TO_DATE', type: 'function', boost: 17 },
-  { label: 'TO_TIMESTAMP', type: 'function', boost: 17 },
-  { label: 'TO_CHAR', type: 'function', boost: 17 },
-  { label: 'CURRENT_TIMESTAMP', type: 'function', boost: 19 },
-  { label: 'CURRENT_DATE', type: 'function', boost: 19 },
-
-  // Snowflake semi-structured functions
-  { label: 'PARSE_JSON', type: 'function', boost: 15 },
-  { label: 'TRY_PARSE_JSON', type: 'function', boost: 15 },
-  { label: 'TO_JSON', type: 'function', boost: 15 },
-  { label: 'TO_VARIANT', type: 'function', boost: 15 },
-  { label: 'OBJECT_CONSTRUCT', type: 'function', boost: 15 },
-  { label: 'ARRAY_CONSTRUCT', type: 'function', boost: 15 },
-  { label: 'GET', type: 'function', boost: 15 },
-  { label: 'GET_PATH', type: 'function', boost: 15 },
-
-  // Snowflake regex
-  { label: 'REGEXP_LIKE', type: 'function', boost: 20 },
-  { label: 'REGEXP_REPLACE', type: 'function', boost: 20 },
-  { label: 'REGEXP_SUBSTR', type: 'function', boost: 20 },
-  { label: 'REGEXP_INSTR', type: 'function', boost: 20 },
-  { label: 'REGEXP_COUNT', type: 'function', boost: 20 },
-  { label: 'RLIKE', type: 'keyword', boost: 88 },
-
-  // Snowflake data types
-  { label: 'VARIANT', type: 'type', boost: 5 },
-  { label: 'OBJECT', type: 'type', boost: 5 },
-  { label: 'NUMBER', type: 'type', boost: 5 },
-  { label: 'FLOAT', type: 'type', boost: 5 },
-  { label: 'VARCHAR', type: 'type', boost: 5 },
-  { label: 'BINARY', type: 'type', boost: 5 },
-  { label: 'TIMESTAMP_LTZ', type: 'type', boost: 5 },
-  { label: 'TIMESTAMP_NTZ', type: 'type', boost: 5 },
-  { label: 'TIMESTAMP_TZ', type: 'type', boost: 5 },
-]
-
 // =============================================================================
 // Dialect Registry
 // =============================================================================
@@ -435,17 +317,9 @@ export const dialects: Record<SqlDialect, DialectConfig> = {
     codemirror: BigQueryCodeMirror,
     completions: bigqueryCompletions,
   },
-  postgres: {
-    codemirror: PostgreSQL,
-    completions: postgresCompletions,
-  },
   duckdb: {
     codemirror: PostgreSQL,
     completions: duckdbCompletions,
-  },
-  snowflake: {
-    codemirror: PostgreSQL,
-    completions: snowflakeCompletions,
   },
 }
 
@@ -488,4 +362,3 @@ export const sqlKeywordSet: Set<string> = (() => {
   }
   return keywords
 })()
-

@@ -50,7 +50,9 @@ const handleKeydown = (e: KeyboardEvent) => {
         @keydown="handleKeydown"
       >
         <div class="dialog">
-          <p class="dialog-message">{{ active.message }}</p>
+          <p class="dialog-message">
+            {{ active.message }}
+          </p>
 
           <input
             v-if="active.type === 'prompt'"
@@ -58,11 +60,15 @@ const handleKeydown = (e: KeyboardEvent) => {
             v-model="inputValue"
             class="dialog-input"
             @keydown.enter="handleConfirm"
-          />
+          >
 
           <div class="dialog-actions">
-            <button class="dialog-btn dialog-btn-cancel" @click="handleCancel">Cancel</button>
-            <button class="dialog-btn dialog-btn-confirm" @click="handleConfirm">OK</button>
+            <button class="dialog-btn dialog-btn-cancel" @click="handleCancel">
+              Cancel
+            </button>
+            <button class="dialog-btn dialog-btn-confirm" @click="handleConfirm">
+              OK
+            </button>
           </div>
         </div>
       </div>

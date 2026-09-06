@@ -25,18 +25,6 @@ FROM characters`,
 
   bigquery: `SELECT *
 FROM bigquery-public-data.chicago_taxi_trips.taxi_trips`,
-
-  clickhouse: `SELECT
-    currentDatabase() AS database,
-    currentUser() AS user,
-    version() AS version`,
-
-  snowflake: `SELECT
-    CURRENT_WAREHOUSE() AS warehouse,
-    CURRENT_DATABASE() AS database,
-    CURRENT_SCHEMA() AS schema,
-    CURRENT_USER() AS user,
-    CURRENT_ROLE() AS role`
 }
 
 export const getDefaultQuery = (engine?: DatabaseEngine | null): string => {

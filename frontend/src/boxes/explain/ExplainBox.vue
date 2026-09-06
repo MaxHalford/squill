@@ -97,7 +97,8 @@ const detailTheme = EditorView.theme({
 
 const selectedNodeJson = computed(() => {
   if (!selectedNode.value) return ''
-  const { children, ...rest } = selectedNode.value
+  const rest = { ...selectedNode.value }
+  delete (rest as Partial<PlanNode>).children
   return JSON.stringify(rest, null, 2)
 })
 

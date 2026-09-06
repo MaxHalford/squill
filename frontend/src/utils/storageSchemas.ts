@@ -17,7 +17,6 @@ export const SettingsSchema = z.object({
   fetchPaginationEnabled: z.boolean(),
   paginationSize: z.number().positive(),
   panToBoxOnSelect: z.boolean(),
-  autofixEnabled: z.boolean(),
   themePreference: ThemePreferenceSchema,
   showEditorLineNumbers: z.boolean(),
   editorFontSize: z.number().min(8).max(24),
@@ -26,7 +25,6 @@ export const SettingsSchema = z.object({
   canvasPattern: CanvasPatternSchema,
   voiceNotifyEnabled: z.boolean(),
   sqlBoxLayout: SqlBoxLayoutSchema,
-  autoRunDownstream: z.boolean()
 }).partial() // All fields optional since we merge with defaults
 
 export type SettingsData = z.infer<typeof SettingsSchema>
@@ -88,6 +86,8 @@ export type MultiCanvasIndexData = z.infer<typeof MultiCanvasIndexSchema>
 // ============================================
 // Connection Schema
 // ============================================
+// Accept legacy provider values so old IndexedDB records can be loaded and
+// filtered by the store. Zod strips their obsolete fields and all secrets.
 const ConnectionTypeSchema = z.enum(['bigquery', 'clickhouse', 'duckdb', 'snowflake'])
 
 const ConnectionSchema = z.object({
@@ -96,21 +96,8 @@ const ConnectionSchema = z.object({
   name: z.string(),
   createdAt: z.number(),
   email: z.string().optional(),
-  bigqueryRefreshToken: z.string().optional(),
   projectId: z.string().optional(),
   schemaProjectIds: z.array(z.string()).optional(),
-  database: z.string().optional(),
-  // ClickHouse non-secret metadata (passwords never in IndexedDB)
-  clickhouseHost: z.string().optional(),
-  clickhousePort: z.number().optional(),
-  clickhouseUsername: z.string().optional(),
-  clickhouseSecure: z.boolean().optional(),
-  // Snowflake non-secret metadata (passwords never in IndexedDB)
-  snowflakeAccount: z.string().optional(),
-  snowflakeUsername: z.string().optional(),
-  snowflakeWarehouse: z.string().optional(),
-  snowflakeSchema: z.string().optional(),
-  snowflakeRole: z.string().optional(),
 })
 
 export const ConnectionsStateSchema = z.object({
@@ -119,37 +106,6 @@ export const ConnectionsStateSchema = z.object({
 })
 
 export type ConnectionsStateData = z.infer<typeof ConnectionsStateSchema>
-
-// ============================================
-// User Schema
-// ============================================
-const PlanTypeSchema = z.enum(['free', 'pro'])
-
-const AuthProviderSchema = z.enum(['google', 'github', 'microsoft'])
-
-export const UserSchema = z.object({
-  id: z.string(),
-  email: z.string().email(),
-  firstName: z.string().nullable().optional().default(null),
-  lastName: z.string().nullable().optional().default(null),
-  plan: PlanTypeSchema,
-  isVip: z.boolean(),
-  planExpiresAt: z.string().nullable().optional().default(null),
-  subscriptionCancelAtPeriodEnd: z.boolean().optional().default(false),
-  authProvider: AuthProviderSchema.optional()
-})
-
-export type UserData = z.infer<typeof UserSchema>
-
-// ============================================
-// OAuth settings schema (BYO Google OAuth client for BigQuery)
-// ============================================
-export const OAuthSettingsSchema = z.object({
-  googleClientId: z.string(),
-  googleClientSecret: z.string(),
-}).partial()
-
-export type OAuthSettingsData = z.infer<typeof OAuthSettingsSchema>
 
 // ============================================
 // Query history schema

@@ -17,26 +17,20 @@ import { useQueryHistoryStore } from '../../stores/queryHistory'
 import { useSettingsStore } from '../../stores/settings'
 import { useBoxConnection } from '../../composables/useBoxConnection'
 import { announceQueryResult, notifyTab } from '../../utils/voiceNotify'
-import { getEffectiveEngine, extractTableReferences, isLocalConnectionType, type TableReferenceWithPosition } from '../../utils/queryAnalyzer'
+import { getEffectiveEngine, extractTableReferences, type TableReferenceWithPosition } from '../../utils/queryAnalyzer'
 import { DATABASE_INFO } from '../../types/database'
 import { hasCTEs } from '../../utils/cteParser'
 import { useSqlGlotStore } from '../../stores/sqlglot'
-import { useUserStore } from '../../stores/user'
-import { SHOW_PREMIUM } from '../../constants/features'
 
 const duckdbStore = useDuckDBStore()
 const canvasStore = useCanvasStore()
 const sqlglotStore = useSqlGlotStore()
 const queryHistoryStore = useQueryHistoryStore()
 const settingsStore = useSettingsStore()
-const userStore = useUserStore()
-const showPremium = SHOW_PREMIUM
 
-// Inject box executor registry for recursive dependency execution
+// Register this box so keyboard shortcuts can execute it explicitly.
 const registerBoxExecutor = inject<((boxId: number, runFn: () => Promise<void>) => void) | null>('registerBoxExecutor', null)
 const unregisterBoxExecutor = inject<((boxId: number) => void) | null>('unregisterBoxExecutor', null)
-const executeBoxQuery = inject<((boxId: number) => Promise<void>) | null>('executeBoxQuery', null)
-const runDownstream = inject<((boxId: number) => Promise<void>) | null>('runDownstream', null)
 
 const props = defineProps({
   boxId: { type: Number, required: true },
@@ -68,25 +62,14 @@ const lastQueryStartTime = ref(0)
 // ---------------------------------------------------------------------------
 
 const panelIsRunning = computed(() => queryPanelRef.value?.isRunning ?? false)
-const panelIsCastingSpell = computed(() => queryPanelRef.value?.isCastingSpell ?? false)
 const panelIsEngineLoading = computed(() => queryPanelRef.value?.isEngineLoading ?? false)
 const panelExplainDisabledReason = computed(() => queryPanelRef.value?.explainDisabledReason ?? '')
-const panelConnectionType = computed(() => queryPanelRef.value?.connectionType)
-const panelShowSpellInput = computed(() => queryPanelRef.value?.showSpellInput ?? false)
 const panelJustFormatted = computed(() => queryPanelRef.value?.justFormatted ?? false)
-const panelDryRunResult = computed(() => queryPanelRef.value?.dryRunResult ?? null)
-const panelIsDryRunLoading = computed(() => queryPanelRef.value?.isDryRunLoading ?? false)
 
 const runButtonTooltip = computed(() => {
   const base = 'Run query (\u2318\u23CE)'
   if (panelIsEngineLoading.value) return 'Loading database...'
   if (panelIsRunning.value) return 'Query running...'
-  if (panelConnectionType.value !== 'bigquery') return base
-  if (panelIsDryRunLoading.value) return `${base}\nEstimating cost...`
-  if (panelDryRunResult.value) {
-    if (panelDryRunResult.value.error) return `${base}\n\u26A0\uFE0F Query error`
-    return `${base}\n~${panelDryRunResult.value.totalBytesProcessed} \u2022 ${panelDryRunResult.value.estimatedCost}`
-  }
   return base
 })
 
@@ -95,12 +78,6 @@ const formatButtonTooltip = computed(() => {
   if (sqlglotStore.isLoading) return 'Loading formatter...'
   if (!sqlglotStore.isReady) return 'Formatter unavailable'
   return 'Format SQL'
-})
-
-const wandButtonTooltip = computed(() => {
-  if (!userStore.isPro) return 'Pro feature'
-  if (panelIsCastingSpell.value) return 'Casting...'
-  return 'Cast a spell'
 })
 
 // ---------------------------------------------------------------------------
@@ -112,8 +89,6 @@ const { connection: boxConnection, isConnectionMissing } = useBoxConnection(toRe
 const missingConnectionType = computed((): string | undefined => {
   if (!props.connectionId) return undefined
   if (props.connectionId.startsWith('bigquery')) return DATABASE_INFO.bigquery.name
-  if (props.connectionId.startsWith('snowflake')) return DATABASE_INFO.snowflake.name
-  if (props.connectionId.startsWith('clickhouse')) return DATABASE_INFO.clickhouse.name
   return 'database'
 })
 
@@ -147,46 +122,6 @@ const updateDependenciesFromQuery = (query: string) => {
     canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
   } catch (err) {
     console.warn('Failed to update dependencies:', err)
-  }
-}
-
-const runMissingDependencies = async (query: string) => {
-  const tableRefs = extractTableReferences(query)
-  if (tableRefs.length === 0) return
-
-  const availableTables = duckdbStore.getTableNames
-  const connectionType = boxConnection.value?.type
-  const isRemote = connectionType && !isLocalConnectionType(connectionType)
-
-  const missingTables = tableRefs
-    .filter(ref => {
-      const tableName = ref.split('.').pop()!.replace(/`/g, '').toLowerCase()
-      const isBigQueryTable = ref.includes('.') && ref.split('.').length >= 2
-      return !isBigQueryTable && !availableTables.includes(tableName)
-    })
-    .map(ref => ref.split('.').pop()!.replace(/`/g, '').toLowerCase())
-
-  if (missingTables.length === 0) return
-
-  for (const tableName of missingTables) {
-    let boxIdToRun = duckdbStore.getTableBoxId(tableName)
-
-    if (!boxIdToRun) {
-      const box = canvasStore.boxes.find(b =>
-        duckdbStore.sanitizeTableName(b.name) === tableName,
-      )
-      boxIdToRun = box?.id ?? null
-    }
-
-    if (!boxIdToRun || boxIdToRun === props.boxId || !executeBoxQuery) continue
-
-    // Same remote connection → CTE inlining handles it, skip pre-execution
-    if (isRemote && props.connectionId) {
-      const sourceBox = canvasStore.boxes.find(b => b.id === boxIdToRun)
-      if (sourceBox?.connectionId === props.connectionId) continue
-    }
-
-    await executeBoxQuery(boxIdToRun)
   }
 }
 
@@ -270,8 +205,6 @@ const handleQueryComplete = (result: QueryCompleteEvent) => {
     })
   }
 
-  // Cascade to downstream dependents (fire-and-forget)
-  runDownstream?.(props.boxId)
 }
 
 const handleQueryError = (errorMessage: string) => {
@@ -323,13 +256,6 @@ const handleNavigateToTable = (ref: TableReferenceWithPosition) => {
     navigationInfo.projectId = ref.parts[0]
     navigationInfo.datasetId = ref.parts[1]
     navigationInfo.tableName = ref.parts[2]
-  } else if (connectionType === 'snowflake' && ref.parts.length === 3) {
-    navigationInfo.databaseName = ref.parts[0]
-    navigationInfo.schemaName = ref.parts[1]
-    navigationInfo.tableName = ref.parts[2]
-  } else if ((connectionType === 'clickhouse' || connectionType === 'snowflake') && ref.parts.length === 2) {
-    navigationInfo.schemaName = ref.parts[0]
-    navigationInfo.tableName = ref.parts[1]
   }
 
   emit('navigate-to-table', navigationInfo)
@@ -344,15 +270,9 @@ const handleUpdateName = async (newName: string) => {
   emit('update:name', newName)
 }
 
-// Registered run function that first resolves dependencies, then executes
+// A run command executes this box only. Dependencies are never run implicitly.
 const registeredRun = async () => {
-  const query = queryPanelRef.value?.getQuery() || queryText.value
   lastQueryStartTime.value = performance.now()
-  try {
-    await runMissingDependencies(query)
-  } catch (depErr) {
-    console.warn('Failed to run dependencies:', depErr)
-  }
   await queryPanelRef.value?.runQuery()
 }
 
@@ -414,7 +334,6 @@ defineExpose({
         v-tooltip="runButtonTooltip"
         class="header-action-btn"
         :disabled="panelIsEngineLoading || panelIsRunning"
-        @mouseenter="queryPanelRef?.triggerDryRun()"
         @click.stop="queryPanelRef?.runQuery()"
       >
         <svg
@@ -506,51 +425,6 @@ defineExpose({
           stroke-linejoin="round"
         >
           <path d="M12 2 L13.5 8.5 L20 5 L15.5 10.5 L22 12 L15.5 13.5 L20 19 L13.5 15.5 L12 22 L10.5 15.5 L4 19 L8.5 13.5 L2 12 L8.5 10.5 L4 5 L10.5 8.5 Z" />
-        </svg>
-      </button>
-
-      <!-- Wand (AI spell) -->
-      <button
-        v-if="showPremium"
-        v-tooltip="wandButtonTooltip"
-        class="header-action-btn"
-        :class="{ active: panelShowSpellInput, casting: panelIsCastingSpell }"
-        :disabled="!userStore.isPro || panelIsCastingSpell"
-        @click.stop="queryPanelRef?.toggleSpellInput()"
-      >
-        <svg
-          v-if="panelIsCastingSpell"
-          class="spin"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-        </svg>
-        <svg
-          v-else
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72" />
-          <path d="m14 7 3 3" />
-          <path d="M5 6v4" />
-          <path d="M19 14v4" />
-          <path d="M10 2v2" />
-          <path d="M7 8H3" />
-          <path d="M21 16h-4" />
-          <path d="M11 3H9" />
         </svg>
       </button>
     </template>

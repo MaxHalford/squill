@@ -1,1110 +1,259 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { getMenuBoxDefinitions } from '../boxes'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useCanvasStore } from '../stores/canvas'
 import { useConnectionsStore } from '../stores/connections'
-import { useDuckDBStore } from '../stores/duckdb'
-import { useClickHouseStore } from '../stores/clickhouse'
-import { useSnowflakeStore } from '../stores/snowflake'
-import { useUserStore } from '../stores/user'
-import type { BoxType } from '../types/canvas'
-import { getMenuBoxDefinitions, isBoxSupportedForEngine } from '../boxes'
-import type { BoxDefinition } from '../boxes'
-import { DATABASE_INFO } from '../types/database'
-import { useDialog } from '../composables/useDialog'
-
-const { confirm, prompt: promptDialog } = useDialog()
-import {
-  getConnectionDisplayName,
-  connectionRequiresAuth
-} from '../utils/connectionHelpers'
-import { refreshSchemaCache } from '../utils/schemaAdapter'
-import ClickHouseConnectionModal from './ClickHouseConnectionModal.vue'
-import SnowflakeConnectionModal from './SnowflakeConnectionModal.vue'
-import { SHOW_PREMIUM } from '../constants/features'
-
-// Premium UI (sign-in, Pro badge, MCP, Share) is hidden for the public launch.
-const showPremium = SHOW_PREMIUM
+import { useToast } from '../composables/useToast'
 import SettingsPanel from './SettingsPanel.vue'
-import BigQueryOAuthModal from './BigQueryOAuthModal.vue'
-import CopyButton from './CopyButton.vue'
-import { BACKEND_URL } from '@/services/backend'
 
-const router = useRouter()
-const bigqueryStore = useBigQueryStore()
-const projectSearch = ref('')
-const projectSearchRef = ref<HTMLInputElement | null>(null)
-const projectsLoading = ref(false)
-const sortedProjects = computed(() =>
-  [...bigqueryStore.projects].sort((a, b) => {
-    const aSelected = isProjectSelected(a.projectId)
-    const bSelected = isProjectSelected(b.projectId)
-    if (aSelected !== bSelected) return aSelected ? -1 : 1
-    return a.projectId.localeCompare(b.projectId)
-  })
-)
-const filteredProjects = computed(() => {
-  const q = projectSearch.value.toLowerCase()
-  if (!q) return sortedProjects.value
-  return sortedProjects.value.filter(p => p.projectId.toLowerCase().includes(q))
-})
-const canvasStore = useCanvasStore()
-const connectionsStore = useConnectionsStore()
-const duckdbStore = useDuckDBStore()
-const clickhouseStore = useClickHouseStore()
-const snowflakeStore = useSnowflakeStore()
-const userStore = useUserStore()
-
-const menuBoxDefs = getMenuBoxDefinitions()
-const activeEngine = computed(() => connectionsStore.activeConnection?.type || 'duckdb')
-
-const isBoxDisabled = (def: BoxDefinition): boolean => {
-  return !isBoxSupportedForEngine(def, activeEngine.value)
-}
-
-const getDisabledTooltip = (def: BoxDefinition): string | undefined => {
-  if (!isBoxDisabled(def)) return undefined
-  const engineName = DATABASE_INFO[activeEngine.value].name
-  return `${def.label} is not available for ${engineName}`
-}
-
-// Emits for parent component to handle
 const emit = defineEmits<{
   'box-created': [boxId: number]
-  'connection-added': [type: 'bigquery' | 'clickhouse' | 'snowflake', connectionId: string]
+  'connection-added': [type: 'bigquery', connectionId: string]
   'show-shortcuts': []
-  'import-files': [files: File[]]
 }>()
 
-// ClickHouse modal state
-const showClickHouseModal = ref(false)
+const canvasStore = useCanvasStore()
+const connectionsStore = useConnectionsStore()
+const bigqueryStore = useBigQueryStore()
+const { showToast } = useToast()
 
-// Snowflake modal state
-const showSnowflakeModal = ref(false)
+const openMenu = ref<'canvas' | 'new' | 'connection' | 'help' | null>(null)
+const showSettings = ref(false)
+const isConnecting = ref(false)
+const isLoadingProjects = ref(false)
 
-// Settings panel state
-const showSettingsPanel = ref(false)
-
-// BigQuery OAuth client modal (BYO Google credentials)
-const showBigQueryOAuthModal = ref(false)
-
-// Delayed expired state - prevents flash when tokens are being refreshed
-// Only show "(Expired)" after the token has been expired for 2 seconds
-const EXPIRED_DELAY_MS = 2000
-const expiredTimers = ref<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-const delayedExpiredConnections = ref<Set<string>>(new Set())
-
-// Check if we should show expired state for a specific connection (with delay)
-const shouldShowExpired = (connectionId: string): boolean => {
-  return delayedExpiredConnections.value.has(connectionId)
-}
-
-// Show warning icon on the Connection menu button when active connection has issues
-const activeConnectionHasIssue = computed(() => {
-  if (!connectionsStore.activeConnectionId) return false
-  return shouldShowExpired(connectionsStore.activeConnectionId)
+const bigQueryConnections = computed(() => connectionsStore.getConnectionsByType('bigquery'))
+const activeConnection = computed(() => {
+  const active = connectionsStore.activeConnection
+  return active?.type === 'bigquery' ? active : bigQueryConnections.value[0] || null
 })
-
-// Watch for changes in connection expired states and apply delay
-watch(
-  () => connectionsStore.connections.map(c => ({
-    id: c.id,
-    type: c.type,
-    expired: connectionRequiresAuth(c.type) && connectionsStore.isConnectionExpired(c.id)
-  })),
-  (newStates) => {
-    for (const state of newStates) {
-      const currentlyShowingExpired = delayedExpiredConnections.value.has(state.id)
-      const existingTimer = expiredTimers.value.get(state.id)
-
-      if (state.expired && !currentlyShowingExpired && !existingTimer) {
-        // Token just expired - start timer to show expired state after delay
-        const timer = setTimeout(() => {
-          delayedExpiredConnections.value.add(state.id)
-          expiredTimers.value.delete(state.id)
-        }, EXPIRED_DELAY_MS)
-        expiredTimers.value.set(state.id, timer)
-      } else if (!state.expired) {
-        // Token is valid - clear any pending timer and hide expired state
-        if (existingTimer) {
-          clearTimeout(existingTimer)
-          expiredTimers.value.delete(state.id)
-        }
-        delayedExpiredConnections.value.delete(state.id)
-      }
-    }
-  },
-  { immediate: true, deep: true }
+const needsAuthorization = computed(() =>
+  activeConnection.value ? connectionsStore.isConnectionExpired(activeConnection.value.id) : false,
 )
+const boxDefinitions = computed(() => getMenuBoxDefinitions())
+const canvases = computed(() => canvasStore.getCanvasList())
 
-// Clean up timers on unmount
-onUnmounted(() => {
-  for (const timer of expiredTimers.value.values()) {
-    clearTimeout(timer)
-  }
-})
-
-// Single dropdown state - opening one closes others
-const activeDropdown = ref<string | null>(null) // 'canvas', 'connection', 'new', 'tools', 'user'
-const showMcpModal = ref(false)
-
-const mcpUrl = computed(() => `${BACKEND_URL}/mcp/`)
-const mcpCommand = computed(() => `claude mcp add --transport http squill ${mcpUrl.value}`)
-const mcpJson = computed(() => JSON.stringify({ mcpServers: { squill: { type: 'http', url: mcpUrl.value } } }, null, 2))
-
-const userDisplayName = computed(() => {
-  const u = userStore.user
-  if (!u) return null
-  if (u.firstName) return u.lastName ? `${u.firstName} ${u.lastName}` : u.firstName
-  return u.email
-})
-
-const userInitial = computed(() => {
-  const name = userStore.user?.firstName || userStore.user?.email || '?'
-  return name.charAt(0).toUpperCase()
-})
-
-
-const toggleUserDropdown = () => {
-  activeDropdown.value = activeDropdown.value === 'user' ? null : 'user'
+const toggleMenu = (menu: typeof openMenu.value) => {
+  openMenu.value = openMenu.value === menu ? null : menu
 }
 
-const handleSignInGoogle = async () => {
-  closeDropdown()
-  await userStore.loginWithGoogle()
+const closeMenus = () => {
+  openMenu.value = null
 }
 
-const handleSignInGitHub = async () => {
-  closeDropdown()
-  await userStore.loginWithGitHub()
+const handleOutsideClick = (event: MouseEvent) => {
+  if (!(event.target as HTMLElement).closest('.menu-bar')) closeMenus()
 }
 
-const toggleSignInDropdown = () => {
-  activeDropdown.value = activeDropdown.value === 'signin' ? null : 'signin'
+const addBox = (type: Parameters<typeof canvasStore.addBox>[0]) => {
+  const connectionId = activeConnection.value?.id
+  const boxId = canvasStore.addBox(type, null, 'bigquery', connectionId)
+  emit('box-created', boxId)
+  closeMenus()
 }
 
-const handleSignOut = async () => {
-  closeDropdown()
-  await userStore.logout()
-}
-
-const goToAccount = () => {
-  closeDropdown()
-  router.push('/account')
-}
-
-const showShortcuts = () => {
-  closeDropdown()
-  emit('show-shortcuts')
-}
-
-// Import file input
-const importFileInput = ref<HTMLInputElement | null>(null)
-const handleImportClick = () => {
-  importFileInput.value?.click()
-}
-const handleImportFiles = (event: Event) => {
-  const input = event.target as HTMLInputElement
-  if (input.files && input.files.length > 0) {
-    emit('import-files', Array.from(input.files))
-    input.value = '' // Reset so same file can be re-selected
-  }
-}
-
-// Submenu state
-const addDatabaseMenuOpen = ref(false)
-
-// Toggle dropdown - opening one closes all others
-const toggleDropdown = (dropdown: string) => {
-  if (activeDropdown.value === dropdown) {
-    activeDropdown.value = null
-  } else {
-    activeDropdown.value = dropdown
-    addDatabaseMenuOpen.value = false // Close submenu when switching dropdowns
-
-    // Load projects when opening connection dropdown (BigQuery only)
-    if (dropdown === 'connection' && connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired) {
-      projectsLoading.value = true
-      bigqueryStore.fetchProjects()
-        .catch(err => console.error('Failed to load projects:', err))
-        .finally(() => { projectsLoading.value = false })
-      // Auto-focus handled by watch on projectSearchRef below
-    }
-  }
-}
-
-// Close all dropdowns
-const closeDropdown = () => {
-  activeDropdown.value = null
-  addDatabaseMenuOpen.value = false
-  projectSearch.value = ''
-  projectsLoading.value = false
-}
-
-// Handle connection selection
-const handleConnectionSelect = async (connectionId: string) => {
-  const connection = connectionsStore.connections.find(c => c.id === connectionId)
-  if (!connection) return
-
+const loadProjects = async (connectionId: string) => {
   connectionsStore.setActiveConnection(connectionId)
-
-  // Handle connection-specific setup
-  if (connection.type === 'bigquery') {
-    await bigqueryStore.fetchProjects().catch(err => console.error('Failed to load projects:', err))
-    // Sync auth store with connection's project
-    if (connection.projectId) {
-      bigqueryStore.setProjectId(connection.projectId)
+  isLoadingProjects.value = true
+  try {
+    await bigqueryStore.ensureAccessToken(connectionId)
+    const projects = await bigqueryStore.fetchProjects()
+    const connection = connectionsStore.connections.find(item => item.id === connectionId)
+    const selected = connection?.projectId || projects[0]?.projectId
+    if (selected) {
+      connectionsStore.setConnectionProjectId(connectionId, selected)
+      bigqueryStore.setProjectId(selected)
     }
-  } else if (connection.type === 'clickhouse') {
-    // Prefetch ClickHouse schema for autocompletion
-    bigqueryStore.setProjectId(null)
-    await clickhouseStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load ClickHouse schema:', err))
-  } else if (connection.type === 'snowflake') {
-    // Prefetch Snowflake schema for autocompletion
-    bigqueryStore.setProjectId(null)
-    await snowflakeStore.fetchAllColumns(connectionId).catch(err => console.error('Failed to load Snowflake schema:', err))
-  } else {
-    // DuckDB or other local connections
-    bigqueryStore.setProjectId(null)
-  }
-
-  closeDropdown()
-}
-
-// Check if a project is selected for schema loading
-const isProjectSelected = (projectId: string): boolean => {
-  const conn = connectionsStore.activeConnection
-  if (!conn) return false
-  return connectionsStore.getSchemaProjectIds(conn.id).includes(projectId)
-}
-
-// Check if a project is the billing/active project
-const isBillingProject = (projectId: string): boolean => {
-  return connectionsStore.activeConnection?.projectId === projectId
-}
-
-// Count of extra selected projects beyond the billing project
-// Handle project toggle — add/remove from schemaProjectIds
-const handleProjectToggle = async (projectId: string) => {
-  const connectionId = connectionsStore.activeConnectionId
-  if (!connectionId) return
-
-  if (isProjectSelected(projectId)) {
-    // Deselect: remove schemas and from list
-    connectionsStore.removeSchemaProject(connectionId, projectId)
-    try {
-      await duckdbStore.removeConnectionCatalogSchemas('bigquery', connectionId, projectId)
-      const { clearSchemaCache } = await import('../utils/schemaAdapter')
-      clearSchemaCache('bigquery')
-    } catch (err) {
-      console.warn(`Failed to remove schemas for ${projectId}:`, err)
-    }
-    // If it was the billing project, set to first remaining or undefined
-    if (isBillingProject(projectId)) {
-      const remaining = connectionsStore.getSchemaProjectIds(connectionId)
-      const newBilling = remaining.length > 0 ? remaining[0] : undefined
-      connectionsStore.setConnectionProjectId(connectionId, newBilling)
-      bigqueryStore.setProjectId(newBilling || null)
-    }
-  } else {
-    // Select: add to list and fetch schemas
-    connectionsStore.addSchemaProject(connectionId, projectId)
-    // If no billing project set, make this one the billing project
-    if (!connectionsStore.activeConnection?.projectId) {
-      connectionsStore.setConnectionProjectId(connectionId, projectId)
-      bigqueryStore.setProjectId(projectId)
-    }
-    try {
-      duckdbStore.schemaRefreshMessage = `Refreshing BigQuery schemas (${projectId})...`
-      await bigqueryStore.fetchAllSchemas(projectId, connectionId)
-    } catch (err) {
-      console.warn(`Failed to fetch schemas for ${projectId}:`, err)
-    } finally {
-      duckdbStore.schemaRefreshMessage = null
-    }
+  } finally {
+    isLoadingProjects.value = false
   }
 }
 
-// Set billing/active project (for query execution)
-const handleSetBillingProject = (projectId: string, event: Event) => {
-  event.stopPropagation()
-  const connectionId = connectionsStore.activeConnectionId
-  if (!connectionId) return
-  connectionsStore.setConnectionProjectId(connectionId, projectId)
+const connectBigQuery = async () => {
+  isConnecting.value = true
+  try {
+    const connectionId = await bigqueryStore.signInWithGoogle()
+    emit('connection-added', 'bigquery', connectionId)
+    closeMenus()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    showToast(`Could not connect to BigQuery: ${message}`)
+  } finally {
+    isConnecting.value = false
+  }
+}
+
+const authorizeActiveConnection = async () => {
+  const connection = activeConnection.value
+  if (!connection) return connectBigQuery()
+  isConnecting.value = true
+  try {
+    await loadProjects(connection.id)
+    closeMenus()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    showToast(`Could not authorize BigQuery: ${message}`)
+  } finally {
+    isConnecting.value = false
+  }
+}
+
+const chooseConnection = async (connectionId: string) => {
+  try {
+    await loadProjects(connectionId)
+    closeMenus()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    showToast(`Could not use this connection: ${message}`)
+  }
+}
+
+const chooseProject = (event: Event) => {
+  const connection = activeConnection.value
+  if (!connection) return
+  const projectId = (event.target as HTMLSelectElement).value
+  connectionsStore.setConnectionProjectId(connection.id, projectId)
   bigqueryStore.setProjectId(projectId)
 }
 
-// Handle add database
-const handleAddDatabase = async (databaseType: string) => {
-  addDatabaseMenuOpen.value = false
-  activeDropdown.value = null
-
-  if (databaseType === 'bigquery') {
-    try {
-      await bigqueryStore.signInWithGoogle()
-      // Wait for Vue reactivity to settle after connection is added
-      await nextTick()
-
-      const connectionId = connectionsStore.activeConnectionId
-      if (connectionId) {
-        emit('connection-added', 'bigquery', connectionId)
-      }
-
-      // Re-open dropdown to show the new connection
-      activeDropdown.value = 'connection'
-      await bigqueryStore.fetchProjects()
-
-      // Auto-select first project if available
-      if (bigqueryStore.projects.length > 0) {
-        handleProjectToggle(bigqueryStore.projects[0].projectId)
-      }
-    } catch (error) {
-      console.error('Failed to add database:', error)
-    }
-  } else if (databaseType === 'clickhouse') {
-    showClickHouseModal.value = true
-  } else if (databaseType === 'snowflake') {
-    showSnowflakeModal.value = true
-  }
+const disconnectActive = async () => {
+  if (!activeConnection.value) return
+  await bigqueryStore.signOut()
+  closeMenus()
 }
 
-// Handle successful ClickHouse connection
-const handleClickHouseConnected = (connectionId: string) => {
-  console.log('ClickHouse connected:', connectionId)
-  emit('connection-added', 'clickhouse', connectionId)
-  // Re-open dropdown to show the new connection
-  activeDropdown.value = 'connection'
-}
-
-// Handle successful Snowflake connection
-const handleSnowflakeConnected = (connectionId: string) => {
-  console.log('Snowflake connected:', connectionId)
-  emit('connection-added', 'snowflake', connectionId)
-  // Re-open dropdown to show the new connection
-  activeDropdown.value = 'connection'
-}
-
-// Handle delete connection
-const handleDeleteConnection = (connectionId: string, event: Event) => {
-  event.stopPropagation()
-  connectionsStore.removeConnection(connectionId)
-}
-
-// Handle reconnect
-const handleReconnect = async (connectionId: string, event: Event) => {
-  event.stopPropagation()
-  try {
-    await bigqueryStore.reconnectConnection(connectionId)
-    await bigqueryStore.fetchProjects()
-  } catch (error) {
-    console.error('Failed to reconnect:', error)
-  }
-}
-
-// Add box with engine and connection based on active connection
-const addBox = (boxType: BoxType) => {
-  const def = menuBoxDefs.find(d => d.type === boxType)
-  if (def && !isBoxSupportedForEngine(def, activeEngine.value)) return
-  const activeConnection = connectionsStore.activeConnection
-  const connectionId = activeConnection?.id
-  const boxId = canvasStore.addBox(boxType, null, activeEngine.value, connectionId)
-  emit('box-created', boxId)
-  closeDropdown()
-}
-
-// Handle refresh schemas for all connections (resilient — skip failures, warn in console)
-const handleRefreshSchemas = async () => {
-  closeDropdown()
-  try {
-    const connections = connectionsStore.connections
-
-    // Refresh DuckDB (always available)
-    duckdbStore.schemaRefreshMessage = 'Refreshing DuckDB tables...'
-    await duckdbStore.loadTablesMetadata()
-    await refreshSchemaCache('duckdb')
-
-    // Refresh all BigQuery connections — loop per schema project
-    for (const conn of connections.filter(c => c.type === 'bigquery')) {
-      const projectIds = connectionsStore.getSchemaProjectIds(conn.id)
-      for (const pid of projectIds) {
-        try {
-          duckdbStore.schemaRefreshMessage = `Refreshing BigQuery schemas (${pid})...`
-          await bigqueryStore.fetchAllSchemas(pid, conn.id)
-        } catch (err) {
-          console.warn(`Schema refresh failed for BigQuery project ${pid}:`, err)
-        }
-      }
-    }
-    if (connections.some(c => c.type === 'bigquery')) {
-      await refreshSchemaCache('bigquery')
-    }
-
-    // Offset-based engines (identical pattern)
-    const offsetEngines = [
-      { type: 'clickhouse' as const, label: 'ClickHouse', store: clickhouseStore },
-      { type: 'snowflake' as const, label: 'Snowflake', store: snowflakeStore },
-    ]
-    for (const { type, label, store } of offsetEngines) {
-      for (const conn of connections.filter(c => c.type === type)) {
-        try {
-          duckdbStore.schemaRefreshMessage = `Refreshing ${label} schemas (${conn.name || conn.id})...`
-          await store.refreshSchemas(conn.id)
-          await refreshSchemaCache(type, conn.id)
-        } catch (err) {
-          console.warn(`Schema refresh failed for ${label} ${conn.name || conn.id}:`, err)
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Failed to refresh schemas:', error)
-  } finally {
-    duckdbStore.schemaRefreshMessage = null
-  }
-}
-
-// Handle reset all data
-const handleResetAll = async () => {
-  closeDropdown()
-  const confirmed = await confirm('This will clear all data including connections, queries, and cached results. Are you sure?')
-  if (confirmed) {
-    const { deleteDatabase } = await import('../utils/db')
-    await deleteDatabase()
-    window.location.reload()
-  }
-}
-
-// Auto-focus the project filter input when it appears (after projects load)
-watch(projectSearchRef, (el) => {
-  if (el && activeDropdown.value === 'connection') {
-    el.focus()
-  }
-})
-
-// --- Canvas management (inlined from CanvasDropdown) ---
-
-// Canvas list sorted by recent
-const canvasList = computed(() => canvasStore.getCanvasList())
-
-// Handle canvas selection
-const handleCanvasSelect = async (canvasId: string) => {
-  await canvasStore.switchCanvas(canvasId)
-  closeDropdown()
-}
-
-// Handle create new canvas
-const handleCreateCanvas = () => {
+const createCanvas = () => {
   canvasStore.createCanvas()
-  closeDropdown()
+  closeMenus()
 }
 
-// Handle duplicate active canvas
-const handleDuplicateActive = async () => {
-  if (!canvasStore.activeCanvasId) return
-  await canvasStore.duplicateCanvas(canvasStore.activeCanvasId)
-  closeDropdown()
-}
-
-// Handle delete active canvas
-const handleDeleteActive = async () => {
-  if (canvasList.value.length <= 1 || !canvasStore.activeCanvasId) return
-  await canvasStore.deleteCanvas(canvasStore.activeCanvasId)
-  closeDropdown()
-}
-
-// Handle rename active canvas (simple prompt for now)
-const handleRenameActive = async () => {
-  if (!canvasStore.activeCanvasId) return
-  const canvas = canvasList.value.find(c => c.id === canvasStore.activeCanvasId)
-  if (!canvas) return
-  closeDropdown()
-  const newName = await promptDialog('Rename canvas:', canvas.name)
-  if (newName) {
-    canvasStore.renameCanvas(canvas.id, newName)
-  }
-}
-
-// Close dropdown when clicking outside
-const handleClickOutside = (e: Event) => {
-  if (!(e.target as HTMLElement).closest('.menu-item')) {
-    closeDropdown()
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside, { capture: true })
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside, { capture: true })
-})
+onMounted(() => document.addEventListener('click', handleOutsideClick))
+onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 </script>
 
 <template>
-  <div class="menu-bar">
+  <nav class="menu-bar" aria-label="Application menu">
     <div class="menu-left">
-      <router-link to="/" class="app-name">
-        Squill
-      </router-link>
+      <a class="app-name" href="#/">Squill</a>
 
-      <!-- Canvas Menu -->
-      <div class="menu-item" :class="{ active: activeDropdown === 'canvas' }">
-        <button class="menu-button" @click.stop="toggleDropdown('canvas')">
-          <span class="menu-text">Canvas</span>
-          <span class="menu-caret">&#x25BE;</span>
+      <div class="menu-item" :class="{ active: openMenu === 'canvas' }">
+        <button class="menu-button" @click.stop="toggleMenu('canvas')">
+          <span class="menu-text">{{ canvasStore.activeCanvasName || 'Canvas' }}</span>
+          <span class="menu-caret">▾</span>
         </button>
-        <Transition name="dropdown">
-          <div v-if="activeDropdown === 'canvas'" class="dropdown os-dropdown">
-            <!-- Canvas list -->
-            <button
-              v-for="canvas in canvasList"
-              :key="canvas.id"
-              class="dropdown-item"
-              :class="{ selected: canvas.id === canvasStore.activeCanvasId }"
-              @click="handleCanvasSelect(canvas.id)"
-            >
-              {{ canvas.name }}
-            </button>
-            <div class="dropdown-divider"></div>
-            <button class="dropdown-item" @click="handleCreateCanvas">New canvas</button>
-            <button
-              class="dropdown-item"
-              :disabled="!canvasStore.activeCanvasId"
-              @click="handleDuplicateActive"
-            >Duplicate canvas</button>
-            <button
-              class="dropdown-item"
-              :disabled="!canvasStore.activeCanvasId"
-              @click="handleRenameActive"
-            >Rename canvas...</button>
-            <div class="dropdown-divider"></div>
-            <button
-              class="dropdown-item dropdown-item-danger"
-              :disabled="canvasStore.canvasIndex.length <= 1"
-              @click="handleDeleteActive"
-            >Delete canvas</button>
-          </div>
-        </Transition>
+        <div v-if="openMenu === 'canvas'" class="dropdown os-dropdown">
+          <button class="dropdown-item" @click="createCanvas">
+            <span class="item-text">New canvas</span>
+          </button>
+          <div class="dropdown-divider" />
+          <button
+            v-for="canvas in canvases"
+            :key="canvas.id"
+            class="dropdown-item"
+            :class="{ selected: canvas.id === canvasStore.activeCanvasId }"
+            @click="canvasStore.switchCanvas(canvas.id); closeMenus()"
+          >
+            <span class="item-text">{{ canvas.name }}</span>
+          </button>
+        </div>
       </div>
 
-      <!-- New Menu -->
-      <div class="menu-item" :class="{ active: activeDropdown === 'new' }">
-        <button class="menu-button" @click.stop="toggleDropdown('new')">
+      <div class="menu-item" :class="{ active: openMenu === 'new' }">
+        <button class="menu-button" @click.stop="toggleMenu('new')">
           <span class="menu-text">New</span>
-          <span class="menu-caret">&#x25BE;</span>
+          <span class="menu-caret">▾</span>
         </button>
-        <Transition name="dropdown">
-          <div v-if="activeDropdown === 'new'" class="dropdown os-dropdown">
-            <button
-              v-for="def in menuBoxDefs"
-              :key="def.type"
-              class="dropdown-item"
-              :disabled="isBoxDisabled(def)"
-              v-tooltip="getDisabledTooltip(def)"
-              @click="addBox(def.type)"
-            >
-              {{ def.label }} <span v-if="def.shortcut" class="shortcut" v-html="def.shortcut"></span>
-            </button>
-            <div class="dropdown-divider"></div>
-            <button class="dropdown-item" @click="handleImportClick">
-              Import file...
-            </button>
-            <input
-              ref="importFileInput"
-              type="file"
-              accept=".csv,.duckdb"
-              multiple
-              style="display:none"
-              @change="handleImportFiles"
-            >
-          </div>
-        </Transition>
+        <div v-if="openMenu === 'new'" class="dropdown os-dropdown">
+          <button
+            v-for="definition in boxDefinitions"
+            :key="definition.type"
+            class="dropdown-item"
+            @click="addBox(definition.type)"
+          >
+            <span class="item-text">{{ definition.label }}</span>
+            <span v-if="definition.shortcut" class="shortcut">{{ definition.shortcut }}</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Connection Menu -->
-      <div
-        class="menu-item"
-        :class="{ active: activeDropdown === 'connection' }"
-      >
-        <button
-          class="menu-button"
-          @click.stop="toggleDropdown('connection')"
-        >
-          <img
-            v-if="connectionsStore.activeConnection"
-            :src="DATABASE_INFO[connectionsStore.activeConnection.type].logo"
-            :alt="DATABASE_INFO[connectionsStore.activeConnection.type].name"
-            class="menu-db-icon"
-          >
-          <span class="menu-text">Connection</span>
-          <span v-if="activeConnectionHasIssue" class="connection-warning" v-tooltip="'Connection issue'">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
+      <div class="menu-item" :class="{ active: openMenu === 'connection' }">
+        <button class="menu-button" @click.stop="toggleMenu('connection')">
+          <span class="menu-text">
+            {{ activeConnection?.email || 'Connect BigQuery' }}
+            <span v-if="needsAuthorization" class="token-expired-indicator"> • authorize</span>
           </span>
-          <span class="menu-caret">&#x25BE;</span>
+          <span class="menu-caret">▾</span>
         </button>
-
-        <Transition name="dropdown">
-          <div
-            v-if="activeDropdown === 'connection'"
-            class="dropdown os-dropdown connection-dropdown"
-          >
-            <!-- Connections Section -->
-            <template v-if="connectionsStore.connections.length > 0">
-              <button
-                v-for="connection in connectionsStore.connections"
-                :key="connection.id"
-                class="dropdown-item connection-item"
-                :class="{
-                  selected: connectionsStore.activeConnectionId === connection.id,
-                  expired: shouldShowExpired(connection.id)
-                }"
-                @click="handleConnectionSelect(connection.id)"
-              >
-                <div class="connection-info">
-                  <div class="connection-name">
-                    {{ getConnectionDisplayName(connection) }}
-                  </div>
-                  <div
-                    v-if="shouldShowExpired(connection.id)"
-                    class="expired-badge"
-                  >
-                    Token Expired
-                  </div>
-                </div>
-                <div
-                  class="connection-actions"
-                  @click.stop
-                >
-                  <button
-                    v-if="connection.type === 'bigquery'"
-                    v-tooltip="shouldShowExpired(connection.id) ? 'Reconnect' : 'Re-login'"
-                    class="reconnect-btn"
-                    @click="handleReconnect(connection.id, $event)"
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-                      <path d="M21 3v5h-5" />
-                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-                      <path d="M3 21v-5h5" />
-                    </svg>
-                  </button>
-                  <button
-                    v-if="connection.id !== 'duckdb-local'"
-                    v-tooltip="'Delete'"
-                    class="delete-btn"
-                    @click="handleDeleteConnection(connection.id, $event)"
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </button>
-            </template>
-
-            <div class="dropdown-divider"></div>
-
-            <!-- Add database submenu trigger -->
-            <div class="submenu-trigger">
-              <button
-                class="dropdown-item"
-                @click.stop="addDatabaseMenuOpen = !addDatabaseMenuOpen"
-              >
-                Add database...
-                <span class="dropdown-arrow">
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M9 6l6 6-6 6" />
-                  </svg>
-                </span>
-              </button>
-
-              <!-- Flyout submenu -->
-              <div
-                class="flyout-menu"
-                :class="{ open: addDatabaseMenuOpen }"
-                @click.stop
-              >
-                <div class="flyout-item-wrapper">
-                  <button
-                    class="dropdown-item flyout-item"
-                    @click="handleAddDatabase('bigquery')"
-                  >
-                    <img
-                      :src="DATABASE_INFO.bigquery.logo"
-                      :alt="DATABASE_INFO.bigquery.name"
-                      class="db-icon"
-                    >
-                    {{ DATABASE_INFO.bigquery.name }}
-                  </button>
-                  <button
-                    v-tooltip="'OAuth client settings'"
-                    class="flyout-cog"
-                    @click.stop="showBigQueryOAuthModal = true"
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="3" />
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                  </button>
-                </div>
-                <button
-                  class="dropdown-item flyout-item"
-                  @click="handleAddDatabase('clickhouse')"
-                >
-                  <img
-                    :src="DATABASE_INFO.clickhouse.logo"
-                    :alt="DATABASE_INFO.clickhouse.name"
-                    class="db-icon"
-                  >
-                  {{ DATABASE_INFO.clickhouse.name }}
-                </button>
-                <button
-                  class="dropdown-item flyout-item"
-                  @click="handleAddDatabase('snowflake')"
-                >
-                  <img
-                    :src="DATABASE_INFO.snowflake.logo"
-                    :alt="DATABASE_INFO.snowflake.name"
-                    class="db-icon"
-                  >
-                  {{ DATABASE_INFO.snowflake.name }}
-                </button>
-              </div>
+        <div v-if="openMenu === 'connection'" class="dropdown os-dropdown">
+          <button class="dropdown-item" :disabled="isConnecting" @click="connectBigQuery">
+            <span class="item-text">{{ isConnecting ? 'Opening Google…' : 'Add Google account…' }}</span>
+          </button>
+          <template v-if="bigQueryConnections.length">
+            <div class="dropdown-divider" />
+            <div class="dropdown-label">
+              BigQuery accounts
             </div>
-
-            <!-- Projects Section (BigQuery only) -->
-            <template v-if="connectionsStore.activeConnection?.type === 'bigquery' && !connectionsStore.isActiveTokenExpired">
-              <div class="dropdown-divider"></div>
-              <div class="dropdown-label">PROJECTS</div>
-              <div class="projects-section">
-                <div
-                  v-if="sortedProjects.length > 5"
-                  class="project-search-wrapper"
-                >
-                  <input
-                    ref="projectSearchRef"
-                    v-model="projectSearch"
-                    type="text"
-                    class="project-search"
-                    placeholder="Filter projects..."
-                    @click.stop
-                    @keydown.stop
-                  >
-                </div>
-                <div
-                  v-if="projectsLoading && sortedProjects.length === 0"
-                  class="dropdown-message"
-                >
-                  Retrieving projects...
-                </div>
-                <div
-                  v-else-if="filteredProjects.length === 0"
-                  class="dropdown-message"
-                >
-                  {{ sortedProjects.length === 0 ? 'No projects found' : 'No matching projects' }}
-                </div>
-                <button
-                  v-for="project in filteredProjects"
-                  :key="project.projectId"
-                  class="dropdown-item project-item"
-                  :class="{ selected: isProjectSelected(project.projectId) }"
-                  @click="handleProjectToggle(project.projectId)"
-                >
-                  <span
-                    v-if="isProjectSelected(project.projectId)"
-                    class="item-check"
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M20 6L9 17l-5-5" />
-                    </svg>
-                  </span>
-                  <span
-                    v-else
-                    class="item-check-placeholder"
-                  />
-                  <span class="item-text">{{ project.projectId }}</span>
-                  <span
-                    v-tooltip="isProjectSelected(project.projectId) ? (isBillingProject(project.projectId) ? 'Billing project' : 'Set as billing project') : undefined"
-                    role="button"
-                    tabindex="0"
-                    class="billing-pin-btn"
-                    :class="{ active: isBillingProject(project.projectId), hidden: !isProjectSelected(project.projectId) }"
-                    @click.stop="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
-                    @keydown.enter.stop="isProjectSelected(project.projectId) && handleSetBillingProject(project.projectId, $event)"
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      :fill="isBillingProject(project.projectId) ? 'currentColor' : 'none'"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                    </svg>
-                  </span>
-                </button>
-              </div>
-            </template>
-          </div>
-        </Transition>
-      </div>
-
-      <!-- Tools Menu -->
-      <div class="menu-item" :class="{ active: activeDropdown === 'tools' }">
-        <button class="menu-button" @click.stop="toggleDropdown('tools')">
-          <span class="menu-text">Tools</span>
-          <span class="menu-caret">&#x25BE;</span>
-        </button>
-        <Transition name="dropdown">
-          <div v-if="activeDropdown === 'tools'" class="dropdown os-dropdown">
             <button
-              v-if="showPremium"
+              v-for="connection in bigQueryConnections"
+              :key="connection.id"
               class="dropdown-item"
-              @click="showMcpModal = true; activeDropdown = null"
+              :class="{ selected: connection.id === activeConnection?.id }"
+              @click="chooseConnection(connection.id)"
             >
-              Connect via MCP...
+              <span class="item-text">{{ connection.email }}</span>
+              <span v-if="connectionsStore.isConnectionExpired(connection.id)" class="item-hint">authorize</span>
             </button>
-            <button class="dropdown-item" @click="handleRefreshSchemas">Refresh schemas</button>
-            <div class="dropdown-divider"></div>
-            <button class="dropdown-item" @click="showShortcuts">
-              Keyboard shortcuts
+            <div class="dropdown-divider" />
+            <button class="dropdown-item" :disabled="isConnecting" @click="authorizeActiveConnection">
+              <span class="item-text">Authorize active account</span>
             </button>
-            <div class="dropdown-divider"></div>
-            <button class="dropdown-item dropdown-item-danger" @click="handleResetAll">
-              Reset all data...
+            <button class="dropdown-item dropdown-item-danger" @click="disconnectActive">
+              <span class="item-text">Disconnect active account</span>
             </button>
-          </div>
-        </Transition>
+          </template>
+        </div>
       </div>
+
+      <label v-if="activeConnection && bigqueryStore.projects.length" class="project-picker">
+        <span class="sr-only">Billing project</span>
+        <select
+          :value="activeConnection.projectId || bigqueryStore.projectId || ''"
+          :disabled="isLoadingProjects"
+          @change="chooseProject"
+        >
+          <option v-for="project in bigqueryStore.projects" :key="project.projectId" :value="project.projectId">
+            {{ project.name || project.projectId }}
+          </option>
+        </select>
+      </label>
     </div>
 
     <div class="menu-right">
-      <!-- Pro Badge -->
-      <span v-if="showPremium && userStore.isPro" class="pro-badge menu-pro-badge">Pro</span>
-
-      <!-- User Menu -->
-      <div
-        v-if="showPremium && userStore.isLoggedIn"
-        class="menu-item user-menu-item"
-      >
-        <button
-          class="user-button"
-          @click.stop="toggleUserDropdown"
-        >
-          <span class="user-initials">{{ userInitial }}</span>
-        </button>
-
-        <Transition name="dropdown">
-          <div
-            v-if="activeDropdown === 'user'"
-            class="dropdown os-dropdown user-dropdown"
-          >
-            <div class="user-info">
-              <div class="user-name">
-                {{ userDisplayName }}
-              </div>
-              <div
-                v-if="userStore.user?.firstName"
-                class="user-email"
-              >
-                {{ userStore.user?.email }}
-              </div>
-            </div>
-            <button
-              class="dropdown-item"
-              @click="goToAccount"
-            >
-              <span class="item-text">Account</span>
-            </button>
-            <button
-              class="dropdown-item"
-              @click="handleSignOut"
-            >
-              <span class="item-text">Sign out</span>
-            </button>
-          </div>
-        </Transition>
-      </div>
-
-      <!-- Sign In Dropdown -->
-      <div
-        v-else-if="showPremium"
-        class="menu-item sign-in-menu-item"
-      >
-        <button
-          class="sign-in-btn"
-          :disabled="userStore.isLoading"
-          @click.stop="toggleSignInDropdown"
-        >
-          {{ userStore.isLoading ? 'Signing in...' : 'Sign in' }}
-        </button>
-
-        <Transition name="dropdown">
-          <div
-            v-if="activeDropdown === 'signin'"
-            class="dropdown signin-dropdown"
-          >
-            <button
-              class="dropdown-item"
-              @click="handleSignInGoogle"
-            >
-              <img class="provider-icon" src="/logos/google.svg" alt="">
-              <span class="item-text">Continue with Google</span>
-            </button>
-            <button
-              class="dropdown-item"
-              @click="handleSignInGitHub"
-            >
-              <img class="provider-icon provider-icon-invert" src="/logos/github.svg" alt="">
-              <span class="item-text">Continue with GitHub</span>
-            </button>
-          </div>
-        </Transition>
-      </div>
-
-      <!-- Settings gear -->
-      <button class="tray-button" title="Settings" @click="showSettingsPanel = true">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-          <circle cx="12" cy="12" r="3"/>
-        </svg>
+      <button class="menu-button" @click="showSettings = true">
+        Settings
       </button>
-    </div>
-  </div>
-
-  <!-- ClickHouse Connection Modal -->
-  <ClickHouseConnectionModal
-    :show="showClickHouseModal"
-    @close="showClickHouseModal = false"
-    @connected="handleClickHouseConnected"
-  />
-
-  <!-- Snowflake Connection Modal -->
-  <SnowflakeConnectionModal
-    :show="showSnowflakeModal"
-    @close="showSnowflakeModal = false"
-    @connected="handleSnowflakeConnected"
-  />
-
-  <!-- MCP Setup Modal -->
-  <Teleport v-if="showPremium" to="body">
-    <Transition name="dropdown">
-      <div v-if="showMcpModal" class="modal-overlay" @click.self="showMcpModal = false">
-        <div class="modal-content mcp-modal">
-          <div class="modal-header">
-            <h3 class="modal-title">Connect via MCP</h3>
-            <button class="modal-close" @click="showMcpModal = false">&times;</button>
-          </div>
-          <div class="modal-body">
-            <p>Connect your AI coding assistant to Squill using the <a href="https://modelcontextprotocol.io" target="_blank">Model Context Protocol</a>.</p>
-
-            <div class="mcp-section">
-              <div class="mcp-section-title">Claude Code</div>
-              <div class="mcp-code-wrapper">
-                <pre class="mcp-code"><code>claude mcp add --transport http squill {{ mcpUrl }}</code></pre>
-                <CopyButton :text="mcpCommand" size="sm" class="mcp-copy" />
-              </div>
-              <div class="mcp-hint">Run this in your terminal, then authenticate via the browser.</div>
-              <div class="mcp-hint mcp-hint-secondary">Already added? Use <code>claude mcp remove squill</code> first, then re-run the command above.</div>
-            </div>
-
-            <div class="mcp-section">
-              <div class="mcp-section-title">Cursor / VS Code / Other</div>
-              <div class="mcp-hint">Add to your MCP config:</div>
-              <div class="mcp-code-wrapper">
-                <pre class="mcp-code"><code>{
-  "mcpServers": {
-    "squill": {
-      "type": "http",
-      "url": "{{ mcpUrl }}"
-    }
-  }
-}</code></pre>
-                <CopyButton :text="mcpJson" size="sm" class="mcp-copy" />
-              </div>
-            </div>
-
-            <div class="mcp-section">
-              <div class="mcp-section-title">Available tools</div>
-              <div class="mcp-tools">
-                <span class="mcp-tool">list_canvases</span>
-                <span class="mcp-tool">get_canvas</span>
-                <span class="mcp-tool">create_box</span>
-                <span class="mcp-tool">update_box</span>
-                <span class="mcp-tool">delete_box</span>
-                <span class="mcp-tool">execute_query</span>
-                <span class="mcp-tool">list_connections</span>
-                <span class="mcp-tool">list_tables</span>
-                <span class="mcp-tool">get_table_schema</span>
-              </div>
-            </div>
-          </div>
+      <div class="menu-item" :class="{ active: openMenu === 'help' }">
+        <button class="menu-button" @click.stop="toggleMenu('help')">
+          <span class="menu-text">Help</span>
+          <span class="menu-caret">▾</span>
+        </button>
+        <div v-if="openMenu === 'help'" class="dropdown os-dropdown dropdown-right">
+          <button class="dropdown-item" @click="emit('show-shortcuts'); closeMenus()">
+            <span class="item-text">Keyboard shortcuts</span>
+          </button>
+          <a class="dropdown-item" href="#/privacy-policy" @click="closeMenus">
+            <span class="item-text">Privacy</span>
+          </a>
+          <a class="dropdown-item" href="#/terms-of-service" @click="closeMenus">
+            <span class="item-text">Terms</span>
+          </a>
         </div>
       </div>
-    </Transition>
-  </Teleport>
+    </div>
 
-  <!-- Settings Panel -->
-  <SettingsPanel :show="showSettingsPanel" @close="showSettingsPanel = false" />
-
-  <!-- BigQuery OAuth client modal (BYO Google credentials) -->
-  <BigQueryOAuthModal
-    :show="showBigQueryOAuthModal"
-    @close="showBigQueryOAuthModal = false"
-  />
+    <SettingsPanel :show="showSettings" @close="showSettings = false" />
+  </nav>
 </template>
 
 <style scoped>
@@ -1877,6 +1026,33 @@ html.dark .provider-icon-invert {
 .dropdown-leave-to {
   opacity: 0;
   transform: translateY(-8px);
+}
+
+.dropdown-right {
+  right: 0;
+  left: auto;
+}
+
+.project-picker select {
+  max-width: 240px;
+  height: 24px;
+  margin-left: var(--space-2);
+  border: var(--border-width-thin) solid var(--border-secondary);
+  background: var(--surface-primary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 </style>

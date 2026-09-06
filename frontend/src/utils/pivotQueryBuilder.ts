@@ -16,23 +16,18 @@ import type {
   DateGranularity,
 } from '../types/pivot'
 
+export type PivotDialect = DatabaseEngine
+
 // ---------------------------------------------------------------------------
 // Column / table quoting
 // ---------------------------------------------------------------------------
 
-export const quoteIdentifier = (name: string, dialect: DatabaseEngine): string => {
+export const quoteIdentifier = (name: string, dialect: PivotDialect): string => {
   if (dialect === 'bigquery') return `\`${name}\``
   return `"${name}"`
 }
 
-/**
- * Quote an alias. Snowflake returns unquoted aliases in UPPERCASE,
- * so we must quote them to preserve casing.
- */
-export const quoteAlias = (alias: string, dialect: DatabaseEngine): string => {
-  if (dialect === 'snowflake') return `"${alias}"`
-  return alias
-}
+export const quoteAlias = (alias: string, _dialect: PivotDialect): string => alias
 
 // ---------------------------------------------------------------------------
 // Date expressions
@@ -44,7 +39,7 @@ export const quoteAlias = (alias: string, dialect: DatabaseEngine): string => {
  */
 export const buildDateExpression = (
   field: PivotField,
-  dialect: DatabaseEngine
+  dialect: PivotDialect
 ): [expression: string, alias: string] => {
   const col = quoteIdentifier(field.name, dialect)
   const granularity = field.dateGranularity || 'date'
@@ -57,7 +52,7 @@ export const buildDateExpression = (
 const buildDateExpressionForGranularity = (
   col: string,
   granularity: DateGranularity,
-  dialect: DatabaseEngine
+  dialect: PivotDialect
 ): string => {
   switch (granularity) {
     case 'year':
@@ -66,29 +61,21 @@ const buildDateExpressionForGranularity = (
 
     case 'quarter':
       if (dialect === 'bigquery') return `CONCAT('Q', CAST(EXTRACT(QUARTER FROM ${col}) AS STRING), ' ', CAST(EXTRACT(YEAR FROM ${col}) AS STRING))`
-      if (dialect === 'snowflake') return `'Q' || EXTRACT(QUARTER FROM ${col})::VARCHAR || ' ' || EXTRACT(YEAR FROM ${col})::VARCHAR`
-      if (dialect === 'clickhouse') return `concat('Q', toString(toQuarter(${col})), ' ', toString(toYear(${col})))`
       // DuckDB
       return `'Q' || CAST(QUARTER(${col}) AS VARCHAR) || ' ' || CAST(YEAR(${col}) AS VARCHAR)`
 
     case 'month':
       if (dialect === 'bigquery') return `FORMAT_TIMESTAMP('%Y-%m', ${col})`
-      if (dialect === 'snowflake') return `TO_CHAR(${col}, 'YYYY-MM')`
-      if (dialect === 'clickhouse') return `formatDateTime(${col}, '%Y-%m')`
       // DuckDB
       return `STRFTIME('%Y-%m', ${col})`
 
     case 'week':
       if (dialect === 'bigquery') return `DATE_TRUNC(${col}, WEEK)`
-      if (dialect === 'snowflake') return `DATE_TRUNC('WEEK', ${col})`
-      if (dialect === 'clickhouse') return `toStartOfWeek(${col})`
       // DuckDB: cast to VARCHAR so timestamps don't serialize as epoch ms
       return `CAST(DATE_TRUNC('week', ${col}) AS VARCHAR)`
 
     case 'date':
       if (dialect === 'bigquery') return `FORMAT_TIMESTAMP('%Y-%m-%d', ${col})`
-      if (dialect === 'snowflake') return `TO_CHAR(${col}, 'YYYY-MM-DD')`
-      if (dialect === 'clickhouse') return `formatDateTime(${col}, '%Y-%m-%d')`
       // DuckDB
       return `STRFTIME('%Y-%m-%d', ${col})`
   }
@@ -105,7 +92,7 @@ const buildDateExpressionForGranularity = (
  */
 export const buildFieldExpression = (
   field: PivotField,
-  dialect: DatabaseEngine
+  dialect: PivotDialect
 ): [expression: string, alias: string] => {
   if (field.typeCategory === 'date' && field.dateGranularity) {
     return buildDateExpression(field, dialect)
@@ -121,7 +108,7 @@ export const buildFieldExpression = (
 /** Build a WHERE clause from filters. Returns empty string if no filters. */
 export const buildFilterClause = (
   filters: PivotFilter[],
-  dialect: DatabaseEngine
+  dialect: PivotDialect
 ): string => {
   if (filters.length === 0) return ''
 
@@ -129,7 +116,7 @@ export const buildFilterClause = (
   return `WHERE ${conditions.join('\n  AND ')}`
 }
 
-const buildFilterCondition = (filter: PivotFilter, dialect: DatabaseEngine): string => {
+const buildFilterCondition = (filter: PivotFilter, dialect: PivotDialect): string => {
   const col = quoteIdentifier(filter.field, dialect)
 
   switch (filter.operator) {
@@ -158,7 +145,7 @@ const buildFilterCondition = (filter: PivotFilter, dialect: DatabaseEngine): str
   }
 }
 
-const quoteValue = (value: string, _dialect: DatabaseEngine): string => {
+const quoteValue = (value: string, _dialect: PivotDialect): string => {
   // Escape single quotes
   const escaped = value.replace(/'/g, "''")
   return `'${escaped}'`
@@ -170,7 +157,7 @@ const quoteValue = (value: string, _dialect: DatabaseEngine): string => {
 
 export const buildFromClause = (
   config: PivotConfig,
-  dialect: DatabaseEngine
+  dialect: PivotDialect
 ): string => {
   if (config.originalQuery) {
     return `(${config.originalQuery}) AS source_data`
@@ -184,11 +171,11 @@ export const buildFromClause = (
 
 /**
  * Build the aggregation GROUP BY query for Phase 1.
- * This runs on the source database (Postgres/Snowflake/BigQuery/DuckDB).
+ * This runs in BigQuery, or in local DuckDB for locally materialized data.
  */
 export const buildAggregationQuery = (
   config: PivotConfig,
-  dialect: DatabaseEngine
+  dialect: PivotDialect
 ): string => {
   const metric = config.metrics[0]
   if (!metric) throw new Error('At least one metric is required')
@@ -256,7 +243,7 @@ export const buildAggregationQuery = (
 /** Build the metric aggregation expression */
 const buildMetricExpression = (
   metric: PivotMetric,
-  dialect: DatabaseEngine
+  dialect: PivotDialect
 ): string => {
   const col = metric.field === '*' ? '*' : quoteIdentifier(metric.field, dialect)
 

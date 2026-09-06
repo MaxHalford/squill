@@ -1,57 +1,16 @@
-/**
- * Supported database connection types
- * Add new database types here as they are implemented
- */
-export type ConnectionType = 'bigquery' | 'clickhouse' | 'duckdb' | 'snowflake'
+/** BigQuery is the only persisted external connection. DuckDB is internal. */
+export type ConnectionType = 'bigquery' | 'duckdb'
 
-/**
- * Database connection configuration
- * Encapsulates connection-related data including session info
- * Note: Access tokens are stored in memory only (not persisted)
- */
+/** Persisted connection metadata. OAuth access tokens live in memory only. */
 export interface Connection {
   id: string
   type: ConnectionType
   name: string
   createdAt: number
-
-  // Session info (for remote connections like BigQuery)
   email?: string
-
-  // BigQuery: Google refresh token (stored client-side; PKCE flow)
-  bigqueryRefreshToken?: string
-
-  // Context within the connection
-  // For BigQuery: the billing/active project for query execution
   projectId?: string
-
-  // BigQuery: additional projects whose schemas are loaded for autocomplete
   schemaProjectIds?: string[]
-
-  // Database name (used by DuckDB attached databases, ClickHouse, Snowflake)
-  database?: string
-
-  // ClickHouse non-secret metadata (passwords stored server-side or OS keychain)
-  clickhouseHost?: string
-  clickhousePort?: number
-  clickhouseUsername?: string
-  clickhouseSecure?: boolean
-
-  // Snowflake non-secret metadata (passwords stored server-side or OS keychain)
-  snowflakeAccount?: string
-  snowflakeUsername?: string
-  snowflakeWarehouse?: string
-  snowflakeSchema?: string
-  snowflakeRole?: string
 }
 
-/**
- * Check if a connection type represents a local/in-memory database
- */
 export function isLocalConnectionType(type: ConnectionType | undefined): boolean
-
-/**
- * Get the SQL dialect for CodeMirror based on connection type
- * Note: Snowflake uses PostgreSQL dialect as they are largely compatible
- */
-export function getDialectForConnection(type: ConnectionType | undefined): 'bigquery' | 'duckdb' | 'postgres'
+export function getDialectForConnection(type: ConnectionType | undefined): 'bigquery' | 'duckdb'

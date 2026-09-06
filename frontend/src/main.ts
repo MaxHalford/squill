@@ -1,80 +1,34 @@
-import { ViteSSG } from 'vite-ssg'
+import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import './style.css'
 import App from './App.vue'
-import type { RouteRecordRaw } from 'vue-router'
+import Home from './views/Home.vue'
 import { vTooltip, vTooltipOverflow } from './directives/tooltip'
-import { SHOW_PREMIUM } from './constants/features'
-import './boxes' // Register all box modules
+import './boxes'
 
-// Eagerly load landing page for fast initial render
-import LandingPage from './views/LandingPage.vue'
+const router = createRouter({
+  history: createWebHashHistory(import.meta.env.BASE_URL),
+  routes: [
+    { path: '/', component: Home },
+    { path: '/privacy-policy', component: () => import('./views/PrivacyPolicy.vue') },
+    { path: '/terms-of-service', component: () => import('./views/TermsOfService.vue') },
+    { path: '/:pathMatch(.*)*', redirect: '/' },
+  ],
+})
 
-// Lazy load other routes to reduce initial bundle size
-const Home = () => import('./views/Home.vue')
-const PrivacyPolicy = () => import('./views/PrivacyPolicy.vue')
-const TermsOfService = () => import('./views/TermsOfService.vue')
-const RefundPolicy = () => import('./views/RefundPolicy.vue')
-const Workbench = () => import('./views/Workbench.vue')
-const AuthCallback = () => import('./views/AuthCallback.vue')
-const OAuthBigQueryCallback = () => import('./views/OAuthBigQueryCallback.vue')
-const AccountPage = () => import('./views/AccountPage.vue')
-const Changelog = () => import('./views/Changelog.vue')
-const NotFound = () => import('./views/NotFound.vue')
-const OAuthConsent = () => import('./views/OAuthConsent.vue')
-
-const routes: RouteRecordRaw[] = [
-  { path: '/', component: LandingPage },
-  { path: '/app', component: Home },
-  { path: '/auth/callback', component: AuthCallback },
-  { path: '/oauth/bigquery/callback', component: OAuthBigQueryCallback },
-  { path: '/oauth/consent', component: OAuthConsent },
-  { path: '/account', component: AccountPage },
-  { path: '/privacy-policy', component: PrivacyPolicy },
-  { path: '/terms-of-service', component: TermsOfService },
-  { path: '/refund-policy', component: RefundPolicy },
-  { path: '/changelog', component: Changelog },
-  { path: '/workbench', component: Workbench },
-  { path: '/:pathMatch(.*)*', component: NotFound },
-]
-
-export const createApp = ViteSSG(
-  App,
-  {
-    routes,
-    base: import.meta.env.BASE_URL,
-    scrollBehavior(to, _from, savedPosition) {
-      // Restore scroll position when using browser back/forward
-      if (savedPosition) {
-        return savedPosition
-      }
-      // Scroll to hash anchor if present
-      if (to.hash) {
-        return { el: to.hash }
-      }
-      // Only scroll to top for policy pages, not the homepage
-      const policyPages = ['/privacy-policy', '/terms-of-service', '/refund-policy', '/changelog']
-      if (policyPages.includes(to.path)) {
-        return { top: 0 }
-      }
-      // Don't change scroll for other navigations
-      return false
-    }
-  },
-  ({ app, router }) => {
-    const pinia = createPinia()
-    app.use(pinia)
-    app.directive('tooltip', vTooltip)
-    app.directive('tooltip-overflow', vTooltipOverflow)
-
-    // Premium-only routes (Squill account, MCP consent) are hidden during the
-    // public launch. /auth/callback is intentionally not blocked — BigQuery's
-    // OAuth flow shares the same callback. Redirect any direct hits to the app.
-    if (!SHOW_PREMIUM) {
-      const premiumOnlyPaths = new Set(['/account', '/oauth/consent'])
-      router.beforeEach((to) => {
-        if (premiumOnlyPaths.has(to.path)) return '/app'
-      })
-    }
+router.afterEach((to) => {
+  const titles: Record<string, string> = {
+    '/': 'Squill — Local-first BigQuery canvas',
+    '/privacy-policy': 'Privacy Policy — Squill',
+    '/terms-of-service': 'Terms of Service — Squill',
   }
-)
+  document.title = titles[to.path] || titles['/']
+})
+
+const app = createApp(App)
+app.use(createPinia())
+app.use(router)
+app.directive('tooltip', vTooltip)
+app.directive('tooltip-overflow', vTooltipOverflow)
+app.mount('#app')

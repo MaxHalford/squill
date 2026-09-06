@@ -1,39 +1,30 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, provide, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, provide, computed, defineAsyncComponent } from 'vue'
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
 import OnboardingModal from '../components/OnboardingModal.vue'
-import UploadProgress from '../components/UploadProgress.vue'
 import BoxCreationButtons from '../components/BoxCreationButtons.vue'
 import DebugPanel from '../components/DebugPanel.vue'
 import { getBoxDefinition } from '../boxes'
 import type { Box } from '../types/canvas'
+import type { DatabaseEngine } from '../types/database'
 
 // Lazy-load modals - only loaded when opened
-const SnowflakeConnectionModal = defineAsyncComponent(() => import('../components/SnowflakeConnectionModal.vue'))
-const ClickHouseConnectionModal = defineAsyncComponent(() => import('../components/ClickHouseConnectionModal.vue'))
 const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/KeyboardShortcutsModal.vue'))
-const WhatsNewModal = defineAsyncComponent(() => import('../components/WhatsNewModal.vue'))
 import { useCanvasStore } from '../stores/canvas'
-import { useUserStore } from '../stores/user'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
 import { useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useSqlGlotStore } from '../stores/sqlglot'
-import { BACKEND_URL } from '@/services/backend'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
-import { sanitizeFileName } from '../utils/sqlSanitize'
 import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
-import { changelog, type ChangelogEntry } from '../data/changelog'
-import { loadItem, saveItem } from '../utils/storage'
 import { useToast } from '../composables/useToast'
 
 const { showToast } = useToast()
 
 const canvasStore = useCanvasStore()
-const userStore = useUserStore()
 const settingsStore = useSettingsStore()
 const duckdbStore = useDuckDBStore()
 const connectionsStore = useConnectionsStore()
@@ -42,19 +33,10 @@ const sqlglotStore = useSqlGlotStore()
 const canvasRef = ref<InstanceType<typeof InfiniteCanvas> | null>(null)
 const copiedBoxId = ref<number | null>(null)
 const copiedBoxIds = ref<number[]>([])
-const csvFileInputRef = ref<HTMLInputElement | null>(null)
 const isStoresReady = ref(false)
 const onboardingDismissed = ref(false)
-const showSnowflakeModal = ref(false)
-const showClickHouseModal = ref(false)
 const showShortcutsModal = ref(false)
-const showWhatsNewModal = ref(false)
-const whatsNewEntries = ref<ChangelogEntry[]>([])
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-
-// CSV upload progress state
-const uploadingFiles = ref<string[]>([])
-const uploadCurrentIndex = ref(0)
 
 // Registry for box query executors
 const boxExecutors = ref(new Map())
@@ -85,24 +67,10 @@ const executeBoxQuery = async (boxId: number) => {
   }
 }
 
-// Auto-run downstream dependents after a box completes execution
-const runDownstream = async (boxId: number, visited?: Set<number>) => {
-  if (!settingsStore.autoRunDownstream) return
-  const tracking = visited ?? new Set([boxId])
-  const downstreamIds = canvasStore.getDownstreamBoxIds(boxId)
-    .filter(id => !tracking.has(id) && boxExecutors.value.has(id))
-  for (const id of downstreamIds) tracking.add(id)
-  await Promise.all(downstreamIds.map(async (id) => {
-    await executeBoxQuery(id)
-    await runDownstream(id, tracking)
-  }))
-}
-
 // Provide the registry methods to all descendants
 provide('registerBoxExecutor', registerBoxExecutor)
 provide('unregisterBoxExecutor', unregisterBoxExecutor)
 provide('executeBoxQuery', executeBoxQuery)
-provide('runDownstream', runDownstream)
 
 // Stable DOM order: sort by ID so DOM nodes never move (z-index handles visual stacking)
 const sortedBoxes = computed(() => [...canvasStore.boxes].sort((a, b) => a.id - b.id))
@@ -122,9 +90,7 @@ const selectedSqlBox = computed(() => {
   return sqlBoxRefs.value.has(box.id) ? box : null
 })
 
-// Handle BigQuery selection from onboarding.
-// Web: redirects to Google (flow continues in AuthCallback.vue — code below doesn't run).
-// Desktop: runs the full OAuth inline (code below runs on success).
+// Connecting is always an explicit user action so the popup is never surprising.
 const handleSelectBigquery = async () => {
   try {
     await bigqueryStore.signInWithGoogle()
@@ -135,59 +101,6 @@ const handleSelectBigquery = async () => {
     const message = error instanceof Error ? error.message : String(error)
     console.error('BigQuery connection failed:', error)
     showToast(`BigQuery connection failed:\n\n${message}`)
-  }
-}
-
-// Handle DuckDB selection from onboarding
-const handleSelectDuckdb = async () => {
-  try {
-    // Initialize DuckDB
-    await duckdbStore.initialize()
-    // Create DuckDB connection entry so modal won't reappear
-    connectionsStore.addDuckDBConnection()
-
-    // Create default boxes if canvas is empty
-    if (canvasStore.boxes.length === 0) {
-      createDefaultBoxes()
-    }
-  } catch (error) {
-    console.error('DuckDB initialization failed:', error)
-    showToast('Failed to initialize DuckDB. Please try again.')
-  }
-}
-
-// Handle CSV selection from onboarding - open file picker
-const handleSelectCsv = () => {
-  csvFileInputRef.value?.click()
-}
-
-// Handle Snowflake selection from onboarding - show credentials modal
-const handleSelectSnowflake = () => {
-  showSnowflakeModal.value = true
-}
-
-// Handle ClickHouse selection from onboarding - show credentials modal
-const handleSelectClickHouse = () => {
-  showClickHouseModal.value = true
-}
-
-// Handle successful ClickHouse connection
-const handleClickHouseConnected = (connectionId: string) => {
-  console.log('ClickHouse connected:', connectionId)
-
-  // Create default boxes if canvas is empty
-  if (canvasStore.boxes.length === 0) {
-    createDefaultBoxes()
-  }
-}
-
-// Handle successful Snowflake connection from onboarding
-const handleSnowflakeConnected = (connectionId: string) => {
-  console.log('Snowflake connected:', connectionId)
-
-  // Create default boxes if canvas is empty
-  if (canvasStore.boxes.length === 0) {
-    createDefaultBoxes()
   }
 }
 
@@ -233,54 +146,9 @@ const handleShowShortcuts = () => {
   showShortcutsModal.value = true
 }
 
-const handleShowWhatsNew = (sinceDate: string) => {
-  const entries = changelog.filter(e => e.date > sinceDate)
-  if (entries.length > 0) {
-    whatsNewEntries.value = entries
-    showWhatsNewModal.value = true
-  }
-}
-
-// Handle CSV file input from file picker
-const handleCsvFileInput = async (event: Event) => {
-  const input = event.target as HTMLInputElement
-  const files = input.files
-  if (!files || files.length === 0) return
-
-  const csvFiles = Array.from(files).filter(
-    f => f.name.toLowerCase().endsWith('.csv') || f.type === 'text/csv'
-  )
-
-  if (csvFiles.length === 0) {
-    showToast('Please select CSV files only')
-    return
-  }
-
-  // Initialize DuckDB if needed (CSV files use DuckDB)
-  await duckdbStore.initialize()
-
-  // Get viewport center for positioning
-  const center = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
-
-  // Process CSV files using existing handler
-  await handleFileDrop({
-    csvFiles,
-    nonCsvFiles: [],
-    position: center
-  })
-
-  // Create DuckDB connection entry so modal closes
-  connectionsStore.addDuckDBConnection()
-
-  // Clear input for next use
-  input.value = ''
-}
-
 // Handle modal close (skip)
 const handleCloseOnboarding = () => {
-  // User chose to skip - they can use CSV drag-drop later
   onboardingDismissed.value = true
-  console.log('Onboarding skipped')
 }
 
 const selectBox = (id: number, eventData?: { shouldPan?: boolean }) => {
@@ -398,7 +266,7 @@ const handleRestoreQuery = async (data: { query: string; connectionId: string; c
   }
 
   // Create new SQL box with the query
-  const engine = data.connectionType as 'bigquery' | 'duckdb' | 'snowflake'
+  const engine = data.connectionType === 'bigquery' ? 'bigquery' : 'duckdb'
   const boxId = canvasStore.addBox('sql', position, engine, data.connectionId)
   canvasStore.updateBoxQuery(boxId, data.query)
 
@@ -410,164 +278,10 @@ const handleRestoreQuery = async (data: { query: string; connectionId: string; c
   }, 300)
 }
 
-const handleFileDrop = async ({ csvFiles, duckdbFiles, nonCsvFiles, position }: {
-  csvFiles: File[],
-  duckdbFiles?: File[],
-  nonCsvFiles: File[],
-  position: { x: number, y: number }
-}) => {
-  // Handle DuckDB files
-  if (duckdbFiles && duckdbFiles.length > 0) {
-    await handleImportDuckDBFiles(duckdbFiles)
-  }
-
-  // Show error for unsupported files
-  if (nonCsvFiles.length > 0) {
-    const fileNames = nonCsvFiles.map(f => f.name).join(', ')
-    showToast(`Only CSV and DuckDB files are supported. Skipped: ${fileNames}`)
-  }
-
-  // If no CSV files, exit early
-  if (csvFiles.length === 0) {
-    return
-  }
-
-  // Filter valid files first
-  const MAX_SIZE = 50 * 1024 * 1024
-  const validFiles = csvFiles.filter(file => {
-    if (file.size > MAX_SIZE) {
-      showToast(`File ${file.name} is too large (max 50MB)`)
-      return false
-    }
-    if (file.size === 0) {
-      showToast(`File ${file.name} is empty`)
-      return false
-    }
-    return true
-  })
-
-  if (validFiles.length === 0) return
-
-  // Start upload progress
-  uploadingFiles.value = validFiles.map(f => f.name)
-  uploadCurrentIndex.value = 0
-
-  let currentPosition = { ...position }
-
-  // Process files asynchronously
-  for (let i = 0; i < validFiles.length; i++) {
-    const file = validFiles[i]
-    uploadCurrentIndex.value = i
-
-    try {
-      // Load CSV into DuckDB (this is the slow part)
-      const tableName = await duckdbStore.loadCsvFile(file, null)
-
-      if (!tableName) {
-        console.error('Failed to load CSV')
-        continue
-      }
-
-      // Ensure DuckDB connection is registered (CSV always uses DuckDB)
-      const duckdbConnectionId = connectionsStore.addDuckDBConnection()
-
-      // Create SqlBox with correct query and name
-      const boxId = canvasStore.addBox('sql', currentPosition, 'duckdb', duckdbConnectionId)
-      const displayName = file.name.replace('.csv', '') + '_query'
-      canvasStore.updateBoxName(boxId, displayName)
-      canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${tableName}`)
-
-      // Associate table with box
-      duckdbStore.updateTableBoxId(tableName, boxId)
-
-      // Select the newly created box
-      canvasStore.selectBox(boxId)
-
-      // Auto-execute the query
-      await nextTick()
-      executeBoxQuery(boxId)
-
-      // Offset position for next file
-      currentPosition = {
-        x: currentPosition.x + 30,
-        y: currentPosition.y + 30
-      }
-
-    } catch (err: unknown) {
-      console.error(`Failed to load CSV ${file.name}:`, err)
-      showToast(`Failed to load ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
-
-  // Clear upload progress
-  uploadingFiles.value = []
-  uploadCurrentIndex.value = 0
-}
-
-// Import DuckDB files: attach, register connection, create query box
-const handleImportDuckDBFiles = async (duckdbFiles: File[]) => {
-  for (const file of duckdbFiles) {
-    try {
-      const { alias, tables } = await duckdbStore.attachDuckDBFile(file)
-
-      // Register as a new connection
-      const connectionId = `duckdb-${alias}`
-      connectionsStore.upsertConnection({
-        id: connectionId,
-        type: 'duckdb',
-        name: file.name.replace(/\.duckdb$/i, ''),
-        database: sanitizeFileName(file.name),
-        createdAt: Date.now(),
-      })
-
-      // Activate the new connection
-      connectionsStore.setActiveConnection(connectionId)
-
-      // Create a query box for the first table (like CSV import)
-      if (tables.length > 0) {
-        const firstTable = tables[0]
-        const tableName = `"${alias}"."main"."${firstTable}"`
-        const position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
-        const boxId = canvasStore.addBox('sql', position, 'duckdb', connectionId)
-        canvasStore.updateBoxName(boxId, `${alias}.${firstTable}`)
-        canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${tableName}`)
-        selectBox(boxId, { shouldPan: true })
-
-        await nextTick()
-        setTimeout(async () => {
-          await executeBoxQuery(boxId)
-        }, 100)
-      }
-
-      console.log(`Imported DuckDB: ${alias} with tables: ${tables.join(', ')}`)
-    } catch (err: unknown) {
-      console.error(`Failed to import DuckDB file ${file.name}:`, err)
-      showToast(`Failed to import ${file.name}: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }
-}
-
-// Handle import from MenuBar: routes CSV and DuckDB files to their handlers
-const handleImportFiles = async (files: File[]) => {
-  const csvFiles = files.filter(f => f.name.toLowerCase().endsWith('.csv'))
-  const duckdbFiles = files.filter(f => f.name.toLowerCase().endsWith('.duckdb'))
-
-  if (csvFiles.length > 0) {
-    await duckdbStore.initialize()
-    const position = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
-    await handleFileDrop({ csvFiles, nonCsvFiles: [], position })
-    connectionsStore.addDuckDBConnection()
-  }
-
-  if (duckdbFiles.length > 0) {
-    await handleImportDuckDBFiles(duckdbFiles)
-  }
-}
-
 const handleQueryTableFromSchema = async (data: {
   tableName: string,
   boxName?: string,
-  engine: 'bigquery' | 'clickhouse' | 'duckdb' | 'snowflake',
+  engine: 'bigquery',
   connectionId?: string
 }) => {
   try {
@@ -590,16 +304,7 @@ const handleQueryTableFromSchema = async (data: {
     const query = generateSelectQuery(data.tableName)
     const boxName = generateQueryBoxName(data.boxName || data.tableName)
 
-    // Get connection ID based on engine
-    let connectionId: string | undefined
-    if (data.connectionId) {
-      // Use provided connection ID
-      connectionId = data.connectionId
-    } else if (data.engine === 'duckdb') {
-      connectionId = 'duckdb-local'
-    } else {
-      connectionId = connectionsStore.getConnectionsByType('bigquery')[0]?.id
-    }
+    const connectionId = data.connectionId || connectionsStore.getConnectionsByType('bigquery')[0]?.id
 
     // Create box with appropriate engine and connection
     const boxId = canvasStore.addBox('sql', position, data.engine, connectionId)
@@ -610,12 +315,6 @@ const handleQueryTableFromSchema = async (data: {
 
     // Select the newly created box and pan to it
     selectBox(boxId, { shouldPan: true })
-
-    // Auto-execute the query after rendering (same pattern as CSV)
-    await nextTick()
-    setTimeout(async () => {
-      await executeBoxQuery(boxId)
-    }, 100)
 
   } catch (error) {
     console.error('Failed to create query box:', error)
@@ -660,7 +359,7 @@ const handleShowColumnAnalytics = (data: {
   clickX: number
   clickY: number
   // Source engine info for running analytics against the source database
-  sourceEngine?: string
+  sourceEngine?: DatabaseEngine
   originalQuery?: string
   connectionId?: string
   availableColumns?: string[]
@@ -683,7 +382,6 @@ const handleShowColumnAnalytics = (data: {
       columnName: data.columnName,
       columnType: data.columnType,
       typeCategory: data.typeCategory,
-      autoRun: true,  // Run immediately when newly created
       // Source-based analytics fields
       sourceEngine: data.sourceEngine,
       originalQuery: data.originalQuery,
@@ -710,7 +408,7 @@ const handleShowColumnAnalytics = (data: {
 
 const handleShowExplain = (data: {
   planData: unknown
-  engine: string
+  engine: DatabaseEngine
   query: string
   clickX: number
   clickY: number
@@ -807,8 +505,6 @@ const handleCreateQueryBox = async (
   canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${tableName}`)
   canvasStore.updateBoxDependencies(boxId, [sourceBox.id])
   selectBox(boxId, { shouldPan: true })
-  await nextTick()
-  setTimeout(() => executeBoxQuery(boxId), 100)
 }
 
 // ============================================
@@ -1080,59 +776,6 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 }
 
-// Cursor awareness — must match --palette-* vars in style.css
-const CURSOR_COLORS = ['#9333ea', '#f87171', '#81d4fa', '#aed581', '#ffcc80']
-const guestColorIndex = Math.floor(Math.random() * CURSOR_COLORS.length)
-const cursorColor = computed(() => {
-  const seed = userStore.user?.id
-  if (seed) {
-    const hash = [...seed].reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-    return CURSOR_COLORS[hash % CURSOR_COLORS.length]
-  }
-  return CURSOR_COLORS[guestColorIndex]
-})
-const handleCursorMove = (x: number, y: number) => {
-  if (canvasStore.persistenceMode !== 'synced') return
-  const name = userStore.user?.firstName ?? userStore.user?.email?.split('@')[0] ?? 'Guest'
-  canvasStore.setLocalCursor(x, y, name, cursorColor.value)
-}
-const handleCursorLeave = () => {
-  canvasStore.clearLocalCursor()
-}
-
-/**
- * Enable real-time canvas sync for the active canvas when the user is Pro.
- * Sharing has been removed, so there is no recipient/permission path —
- * Pro users own and sync their own canvases via the same backend.
- */
-const enableSyncIfPro = async (canvasId: string, meta?: { name: string }) => {
-  if (!userStore.isPro || !userStore.sessionToken) return
-  try {
-    await fetch(`${BACKEND_URL}/canvas`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userStore.sessionToken}` },
-      body: JSON.stringify({ id: canvasId, name: meta?.name ?? 'Canvas' }),
-    })
-  } catch (err) {
-    console.warn('[collab] Failed to register canvas on server:', err)
-  }
-  canvasStore.enableSync(canvasId)
-}
-
-const initCollaboration = async () => {
-  const activeId = canvasStore.activeCanvasId
-  if (activeId) {
-    const meta = canvasStore.canvasIndex.find(c => c.id === activeId)
-    await enableSyncIfPro(activeId, meta)
-  }
-}
-
-watch(() => canvasStore.activeCanvasId, async (newId, oldId) => {
-  if (!oldId || !newId) return
-  const meta = canvasStore.canvasIndex.find(c => c.id === newId)
-  await enableSyncIfPro(newId, meta)
-})
-
 onMounted(async () => {
   // Await all stores that need hydration before rendering.
   // DuckDB is included because it hosts the _schemas table (persisted via IDB).
@@ -1142,16 +785,6 @@ onMounted(async () => {
     settingsStore.ready,
     duckdbStore.initialize(),
   ])
-
-  // Ensure DuckDB local connection always exists in the selector
-  connectionsStore.addDuckDBConnection()
-
-  // Re-attach any imported DuckDB files from previous sessions (parallel)
-  await Promise.all(
-    connectionsStore.connections
-      .filter(conn => conn.type === 'duckdb' && conn.database)
-      .map(conn => duckdbStore.reattachDuckDBFile(conn.database!, conn.id.replace(/^duckdb-/, '')).catch(() => {}))
-  )
 
   // Clean up orphaned tables/views from previous sessions
   runGarbageCollect()
@@ -1164,19 +797,6 @@ onMounted(async () => {
   await nextTick()
   isStoresReady.value = true
 
-  // Check for new changelog entries since last visit
-  const lastVisit = await loadItem<string>('lastCanvasVisit')
-  const newEntries = changelog.filter(e => !lastVisit || e.date > lastVisit)
-  if (newEntries.length > 0) {
-    whatsNewEntries.value = newEntries
-    showWhatsNewModal.value = true
-  }
-  const today = new Date().toISOString().slice(0, 10)
-  await saveItem('lastCanvasVisit', today)
-
-  // Enable collaboration for Pro users, or handle incoming share links
-  await initCollaboration()
-
   window.addEventListener('keydown', handleKeyDown)
 
   // Set canvas ref in store so it can be used when adding boxes
@@ -1184,28 +804,13 @@ onMounted(async () => {
     canvasStore.setCanvasRef(canvasRef.value)
   }
 
-  if (canvasStore.persistenceMode === 'synced') {
-    // Boxes arrive asynchronously from Yjs — fit to view once the first batch lands
-    const stopWatch = watch(
-      () => canvasStore.boxes.length,
-      async (len) => {
-        if (len > 0) {
-          stopWatch()
-          await nextTick()
-          canvasRef.value?.fitToView()
-        }
-      },
-    )
-    // Give up after 15s (empty canvas or connection failure)
-    setTimeout(stopWatch, 15_000)
-  } else {
-    // Local mode: boxes are already loaded from IDB
-    await nextTick()
-    canvasRef.value?.fitToView()
-  }
+  await nextTick()
+  canvasRef.value?.fitToView()
 
-  // Restore BigQuery session (refresh access token from backend)
-  bigqueryStore.restoreSession()
+  // Preload Google's script without requesting a token or opening a popup.
+  bigqueryStore.restoreSession().catch(error => {
+    console.warn('Google authorization could not be preloaded:', error)
+  })
 })
 
 onUnmounted(() => {
@@ -1219,7 +824,6 @@ onUnmounted(() => {
       @box-created="handleBoxCreated"
       @connection-added="handleConnectionAdded"
       @show-shortcuts="handleShowShortcuts"
-      @import-files="handleImportFiles"
     />
 
     <!-- Keyboard Shortcuts Modal -->
@@ -1228,55 +832,17 @@ onUnmounted(() => {
       @close="showShortcutsModal = false"
     />
 
-    <!-- What's New Modal -->
-    <WhatsNewModal
-      :show="showWhatsNewModal"
-      :entries="whatsNewEntries"
-      @close="showWhatsNewModal = false"
-    />
-
     <!-- Onboarding Modal -->
     <OnboardingModal
       :show="showOnboarding"
       @close="handleCloseOnboarding"
       @select-bigquery="handleSelectBigquery"
-      @select-duckdb="handleSelectDuckdb"
-      @select-csv="handleSelectCsv"
-      @select-snowflake="handleSelectSnowflake"
-      @select-clickhouse="handleSelectClickHouse"
     />
-
-    <!-- Snowflake Connection Modal -->
-    <SnowflakeConnectionModal
-      :show="showSnowflakeModal"
-      @close="showSnowflakeModal = false"
-      @connected="handleSnowflakeConnected"
-    />
-
-    <!-- ClickHouse Connection Modal -->
-    <ClickHouseConnectionModal
-      :show="showClickHouseModal"
-      @close="showClickHouseModal = false"
-      @connected="handleClickHouseConnected"
-    />
-
-    <!-- Hidden file input for CSV picker -->
-    <input
-      ref="csvFileInputRef"
-      type="file"
-      accept=".csv,text/csv"
-      multiple
-      style="display: none"
-      @change="handleCsvFileInput"
-    >
 
     <InfiniteCanvas
       ref="canvasRef"
       :boxes="canvasStore.boxes"
       @canvas-click="deselectBox"
-      @file-drop="handleFileDrop"
-      @cursor-move="handleCursorMove"
-      @cursor-leave="handleCursorLeave"
     >
       <!-- Dependency arrows (rendered behind boxes) -->
       <DependencyArrows :boxes="canvasStore.boxes" />
@@ -1289,9 +855,9 @@ onUnmounted(() => {
       />
 
       <component
+        :is="getBoxComponent(box.type)"
         v-for="box in sortedBoxes"
         :key="box.id"
-        :is="getBoxComponent(box.type)"
         :ref="(el: any) => registerBoxRef(box, el)"
         :box-id="box.id"
         :initial-x="box.x"
@@ -1314,16 +880,10 @@ onUnmounted(() => {
       />
     </InfiniteCanvas>
 
-    <UploadProgress
-      :files="uploadingFiles"
-      :current-index="uploadCurrentIndex"
-    />
-
     <DebugPanel
       v-if="isLocalhost && canvasRef"
       :zoom="canvasRef.zoom"
       :visible-box-count="sortedBoxes.length"
-      @show-whats-new="handleShowWhatsNew"
     />
 
     <!-- Bottom progress bar for DuckDB init and schema refresh -->
