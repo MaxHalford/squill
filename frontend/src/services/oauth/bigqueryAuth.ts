@@ -60,14 +60,15 @@ async function requestToken(
   clientId: string,
   options: { prompt?: string; hint?: string } = {},
 ): Promise<GoogleTokenResponse> {
-  if (!clientId) throw new Error('Google OAuth client ID is not configured.')
+  const normalizedClientId = clientId.trim()
+  if (!normalizedClientId) throw new Error('Google OAuth client ID is not configured.')
   if (pendingRequest) return pendingRequest
 
   const state = crypto.randomUUID()
   const channel = new BroadcastChannel(`${OAUTH_RESPONSE_CHANNEL_PREFIX}${state}`)
   const redirectUri = new URL(`${import.meta.env.BASE_URL}oauth-callback.html`, window.location.origin).toString()
   const authorizationUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-  authorizationUrl.searchParams.set('client_id', clientId)
+  authorizationUrl.searchParams.set('client_id', normalizedClientId)
   authorizationUrl.searchParams.set('redirect_uri', redirectUri)
   authorizationUrl.searchParams.set('response_type', 'token')
   authorizationUrl.searchParams.set('scope', BIGQUERY_SCOPES.join(' '))
