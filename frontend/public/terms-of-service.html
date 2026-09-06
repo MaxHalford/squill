@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Squill terms of service">
+    <title>Terms of Service — Squill</title>
+    <style>
+      :root { color-scheme: light dark; font: 16px/1.6 system-ui, sans-serif; }
+      body { margin: 0; background: Canvas; color: CanvasText; }
+      main { max-width: 48rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+      h1, h2 { line-height: 1.25; }
+      a { color: LinkText; }
+      .back { display: inline-block; margin-bottom: 1rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="back" href="./">← Back to Squill</a>
+      <h1>Terms of Service</h1>
+      <p><strong>Last updated: September 6, 2026</strong></p>
+
+      <h2>The application</h2>
+      <p>Squill is an open-source, static, browser-based BigQuery and DuckDB client. It stores application data locally and sends authorized BigQuery requests directly from your browser to Google. No Squill account or paid subscription is provided.</p>
+
+      <h2>Your responsibility</h2>
+      <p>You are responsible for using only Google Cloud projects and data you are authorized to access, reviewing every query before running it, understanding its BigQuery usage and cost, protecting your browser profile and device, complying with applicable policies, and maintaining backups of local Squill data you need.</p>
+      <p>Squill requests read-only Google OAuth scopes and does not automatically execute downstream queries. A query is submitted only following an explicit run action, but read queries can still consume BigQuery resources and incur charges.</p>
+
+      <h2>Google services</h2>
+      <p>BigQuery authorization and API requests are provided by Google and are subject to <a href="https://cloud.google.com/terms">Google Cloud terms</a>. Google may expire or revoke access tokens, require renewed consent, limit API access, or change its services independently of Squill.</p>
+
+      <h2>Local data</h2>
+      <p>Canvas documents, settings, query history, connection metadata, and cached results may be stored in your browser. There is no server-side backup or recovery service. Clearing site data, changing browser profiles, or losing the device may permanently remove this information.</p>
+
+      <h2>Availability, warranty, and liability</h2>
+      <p>Squill is provided as-is and without warranties of availability, fitness, correctness, security, or non-infringement, to the extent permitted by law. To the maximum extent permitted by law, the project maintainers are not liable for query charges, data loss, unauthorized access, business interruption, lost profits, or indirect or consequential damages arising from use of Squill.</p>
+
+      <h2>Open source, changes, and contact</h2>
+      <p>Squill's source code and license are available at <a href="https://github.com/MaxHalford/squill">github.com/MaxHalford/squill</a>. Changes to these terms will be published here. For questions, <a href="https://github.com/MaxHalford/squill/issues">open an issue on GitHub</a>.</p>
+    </main>
+  </body>
+</html>

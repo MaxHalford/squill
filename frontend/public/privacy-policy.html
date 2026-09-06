@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Squill privacy policy">
+    <title>Privacy Policy — Squill</title>
+    <style>
+      :root { color-scheme: light dark; font: 16px/1.6 system-ui, sans-serif; }
+      body { margin: 0; background: Canvas; color: CanvasText; }
+      main { max-width: 48rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+      h1, h2 { line-height: 1.25; }
+      a { color: LinkText; }
+      .back { display: inline-block; margin-bottom: 1rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="back" href="./">← Back to Squill</a>
+      <h1>Privacy Policy</h1>
+      <p><strong>Last updated: September 6, 2026</strong></p>
+
+      <h2>Summary</h2>
+      <p>Squill is a static, local-first BigQuery and DuckDB client. Squill has no application backend, user accounts, subscriptions, advertising, or analytics. Your queries, settings, canvas data, connection metadata, and cached results are stored by your browser on your device.</p>
+
+      <h2>Google authorization</h2>
+      <p>When you connect BigQuery, Squill uses Google Identity Services in your browser. Google issues a short-lived access token directly to the page.</p>
+      <ul>
+        <li>Access tokens are kept in memory and are not written to browser storage.</li>
+        <li>Squill stores the Google account email and selected Google Cloud project locally so you can recognize and reuse a connection.</li>
+        <li>Squill does not receive or store your Google password.</li>
+        <li>There is no Squill server to receive your token, queries, or results.</li>
+        <li>You can revoke Squill's access from your Google Account permissions at any time.</li>
+      </ul>
+      <p>Squill requests read-only Google scopes needed to identify the selected account, discover accessible projects, inspect BigQuery metadata, and run BigQuery queries. It does not request BigQuery write access. Google's handling of this information is governed by <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>.</p>
+
+      <h2>Query execution</h2>
+      <p>A BigQuery query is sent directly from your browser to the Google BigQuery API only when you explicitly run it. Squill does not automatically execute downstream queries. BigQuery usage and charges, if any, are governed by your Google Cloud project and Google Cloud terms.</p>
+      <p>DuckDB WebAssembly runs on your device. BigQuery results are copied into this in-browser database so Squill can display and work with them locally.</p>
+
+      <h2>Local storage</h2>
+      <p>Squill uses IndexedDB and browser storage for canvas documents, query history, settings, non-secret connection metadata, schema caches, and query-result caches. This data remains on the device and browser profile where it was created. Clearing Squill's site data removes it.</p>
+      <p>Because Squill has no backend, it cannot recover, synchronize, or remotely delete local data for you.</p>
+
+      <h2>Network requests</h2>
+      <p>The app may contact Google Identity Services and OAuth endpoints for authorization, Google Cloud Resource Manager to list accessible projects, Google BigQuery APIs for metadata and explicitly-run queries, static asset hosts required by the in-browser SQL tooling, and GitHub Pages to load the application. Squill does not send this data to an operator-controlled application server.</p>
+
+      <h2>Contact and changes</h2>
+      <p>Material changes will be published on this page. For questions or security reports, <a href="https://github.com/MaxHalford/squill/issues">open an issue on GitHub</a>.</p>
+    </main>
+  </body>
+</html>
