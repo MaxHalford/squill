@@ -19,7 +19,7 @@ const router = createRouter({
 
 router.afterEach((to) => {
   const titles: Record<string, string> = {
-    '/': 'Squill — Local-first BigQuery canvas',
+    '/': 'Squill — Local-first SQL canvas',
     '/privacy-policy': 'Privacy Policy — Squill',
     '/terms-of-service': 'Terms of Service — Squill',
   }

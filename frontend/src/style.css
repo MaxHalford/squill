@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Patrick Hand SC';
+  src: url('./assets/patrick-hand-sc-latin-400-normal.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   /* ===== TYPOGRAPHY ===== */
 
