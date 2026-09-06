@@ -15,7 +15,7 @@ const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
-import { useConnectionsStore } from '../stores/connections'
+import { LOCAL_DUCKDB_CONNECTION_ID, useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useSqlGlotStore } from '../stores/sqlglot'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
@@ -77,7 +77,8 @@ const sortedBoxes = computed(() => [...canvasStore.boxes].sort((a, b) => a.id - 
 
 // Computed: show onboarding when there are no connections, no boxes, and not dismissed
 const showOnboarding = computed(() => {
-  return isStoresReady.value && connectionsStore.connections.length === 0 && canvasStore.boxes.length === 0 && !onboardingDismissed.value
+  const hasBigQueryConnection = connectionsStore.getConnectionsByType('bigquery').length > 0
+  return isStoresReady.value && !hasBigQueryConnection && canvasStore.boxes.length === 0 && !onboardingDismissed.value
 })
 
 // Computed: get the currently selected SQL box for creation buttons
@@ -101,6 +102,14 @@ const handleSelectBigquery = async () => {
     const message = error instanceof Error ? error.message : String(error)
     console.error('BigQuery connection failed:', error)
     showToast(`BigQuery connection failed:\n\n${message}`)
+  }
+}
+
+const handleSelectDuckdb = () => {
+  connectionsStore.setActiveConnection(LOCAL_DUCKDB_CONNECTION_ID)
+  onboardingDismissed.value = true
+  if (canvasStore.boxes.length === 0) {
+    createDefaultBoxes()
   }
 }
 
@@ -581,7 +590,8 @@ const handleKeyDown = (e: KeyboardEvent) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'j' && !isInTextInput) {
     e.preventDefault()
     e.stopPropagation()
-    const boxId = canvasStore.addBox('sql')
+    const connection = connectionsStore.activeConnection
+    const boxId = canvasStore.addBox('sql', null, connection?.type || 'duckdb', connection?.id)
     selectBox(boxId, { shouldPan: true })
     setTimeout(() => {
       sqlBoxRefs.value.get(boxId)?.focusEditor()
@@ -836,6 +846,7 @@ onUnmounted(() => {
     <OnboardingModal
       :show="showOnboarding"
       @close="handleCloseOnboarding"
+      @select-duckdb="handleSelectDuckdb"
       @select-bigquery="handleSelectBigquery"
     />
 

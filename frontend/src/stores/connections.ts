@@ -17,6 +17,14 @@ interface TokenEntry {
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 const EXPIRY_SKEW_MS = 60_000
+export const LOCAL_DUCKDB_CONNECTION_ID = 'duckdb-local'
+
+const createLocalDuckDBConnection = (): Connection => ({
+  id: LOCAL_DUCKDB_CONNECTION_ID,
+  type: 'duckdb',
+  name: 'DuckDB (local)',
+  createdAt: 0,
+})
 
 export const useConnectionsStore = defineStore('connections', () => {
   const connections = ref<Connection[]>([])
@@ -37,7 +45,10 @@ export const useConnectionsStore = defineStore('connections', () => {
   }
 
   const hasValidToken = (connectionId: string) => getAccessToken(connectionId) !== null
-  const isConnectionExpired = (connectionId: string) => !hasValidToken(connectionId)
+  const isConnectionExpired = (connectionId: string) => {
+    const connection = connections.value.find(item => item.id === connectionId)
+    return connection?.type === 'bigquery' ? !hasValidToken(connectionId) : false
+  }
   const isActiveTokenExpired = computed(() =>
     activeConnectionId.value ? isConnectionExpired(activeConnectionId.value) : false,
   )
@@ -53,10 +64,13 @@ export const useConnectionsStore = defineStore('connections', () => {
   const loadState = async () => {
     const stored = await loadItem<unknown>('connections')
     const result = ConnectionsStateSchema.safeParse(stored)
-    if (!result.success) return
+    const storedConnections = result.success ? result.data.connections : []
 
-    // Migrate old installations by retaining only non-secret BigQuery metadata.
-    connections.value = result.data.connections
+    // Keep DuckDB as an explicit local engine and retain only non-secret
+    // metadata for supported external connections.
+    connections.value = [
+      createLocalDuckDBConnection(),
+      ...storedConnections
       .filter(connection => connection.type === 'bigquery')
       .map(connection => ({
         id: connection.id,
@@ -66,11 +80,13 @@ export const useConnectionsStore = defineStore('connections', () => {
         email: connection.email,
         projectId: connection.projectId,
         schemaProjectIds: connection.schemaProjectIds,
-      }))
+      })),
+    ]
 
-    activeConnectionId.value = connections.value.some(connection => connection.id === result.data.activeConnectionId)
-      ? result.data.activeConnectionId
-      : connections.value[0]?.id || null
+    const storedActiveId = result.success ? result.data.activeConnectionId : null
+    activeConnectionId.value = connections.value.some(connection => connection.id === storedActiveId)
+      ? storedActiveId
+      : LOCAL_DUCKDB_CONNECTION_ID
     saveState()
   }
 
@@ -121,7 +137,7 @@ export const useConnectionsStore = defineStore('connections', () => {
 
   const refreshAccessToken = async (connectionId: string): Promise<string> => {
     const connection = connections.value.find(item => item.id === connectionId)
-    if (!connection?.email) throw new Error('BigQuery connection not found.')
+    if (connection?.type !== 'bigquery' || !connection.email) throw new Error('BigQuery connection not found.')
     const authorization = await authorizeBigQuery(GOOGLE_CLIENT_ID, { expectedEmail: connection.email })
     setAccessToken(connectionId, authorization.accessToken, authorization.expiresIn)
     return authorization.accessToken
@@ -137,6 +153,7 @@ export const useConnectionsStore = defineStore('connections', () => {
   }
 
   const removeConnection = (connectionId: string) => {
+    if (connectionId === LOCAL_DUCKDB_CONNECTION_ID) return
     clearAccessToken(connectionId)
     connections.value = connections.value.filter(connection => connection.id !== connectionId)
     if (activeConnectionId.value === connectionId) {

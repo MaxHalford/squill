@@ -1,4 +1,4 @@
-/** BigQuery is the only persisted external connection. DuckDB is internal. */
+/** BigQuery is an external connection; DuckDB is a local connection. */
 export type ConnectionType = 'bigquery' | 'duckdb'
 
 /** Persisted connection metadata. OAuth access tokens live in memory only. */

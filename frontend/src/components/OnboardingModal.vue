@@ -8,6 +8,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  selectDuckdb: []
   selectBigquery: []
 }>()
 
@@ -55,12 +56,26 @@ onUnmounted(() => {
               Welcome to Squill
             </h1>
             <p class="modal-subtitle">
-              Connect BigQuery. Your canvases and query history stay in this browser.
+              Query locally with DuckDB, or connect BigQuery. Your work stays in this browser.
             </p>
           </div>
 
           <!-- Options Grid -->
           <div class="options-grid">
+            <button
+              class="option-card"
+              aria-label="Use DuckDB locally in this browser"
+              @click="emit('selectDuckdb')"
+            >
+              <img
+                :src="DATABASE_INFO.duckdb.logo"
+                :alt="DATABASE_INFO.duckdb.name"
+                class="option-icon"
+              >
+              <h2>{{ DATABASE_INFO.duckdb.name }}</h2>
+              <p>Write and run SQL locally; no account or network required</p>
+              <span class="option-badge">{{ DATABASE_INFO.duckdb.badge }}</span>
+            </button>
             <button
               class="option-card"
               aria-label="Connect to BigQuery cloud data warehouse"

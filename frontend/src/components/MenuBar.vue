@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getMenuBoxDefinitions } from '../boxes'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useCanvasStore } from '../stores/canvas'
-import { useConnectionsStore } from '../stores/connections'
+import { LOCAL_DUCKDB_CONNECTION_ID, useConnectionsStore } from '../stores/connections'
 import { useToast } from '../composables/useToast'
 import SettingsPanel from './SettingsPanel.vue'
 
@@ -24,10 +24,10 @@ const isConnecting = ref(false)
 const isLoadingProjects = ref(false)
 
 const bigQueryConnections = computed(() => connectionsStore.getConnectionsByType('bigquery'))
-const activeConnection = computed(() => {
-  const active = connectionsStore.activeConnection
-  return active?.type === 'bigquery' ? active : bigQueryConnections.value[0] || null
-})
+const activeConnection = computed(() => connectionsStore.activeConnection)
+const localConnection = computed(() =>
+  connectionsStore.connections.find(connection => connection.id === LOCAL_DUCKDB_CONNECTION_ID) || null,
+)
 const needsAuthorization = computed(() =>
   activeConnection.value ? connectionsStore.isConnectionExpired(activeConnection.value.id) : false,
 )
@@ -47,8 +47,8 @@ const handleOutsideClick = (event: MouseEvent) => {
 }
 
 const addBox = (type: Parameters<typeof canvasStore.addBox>[0]) => {
-  const connectionId = activeConnection.value?.id
-  const boxId = canvasStore.addBox(type, null, 'bigquery', connectionId)
+  const connection = activeConnection.value || localConnection.value
+  const boxId = canvasStore.addBox(type, null, connection?.type || 'duckdb', connection?.id)
   emit('box-created', boxId)
   closeMenus()
 }
@@ -107,6 +107,11 @@ const chooseConnection = async (connectionId: string) => {
     const message = error instanceof Error ? error.message : String(error)
     showToast(`Could not use this connection: ${message}`)
   }
+}
+
+const chooseDuckDB = () => {
+  connectionsStore.setActiveConnection(LOCAL_DUCKDB_CONNECTION_ID)
+  closeMenus()
 }
 
 const chooseProject = (event: Event) => {
@@ -180,12 +185,21 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
       <div class="menu-item" :class="{ active: openMenu === 'connection' }">
         <button class="menu-button" @click.stop="toggleMenu('connection')">
           <span class="menu-text">
-            {{ activeConnection?.email || 'Connect BigQuery' }}
+            {{ activeConnection?.type === 'duckdb' ? 'DuckDB (local)' : (activeConnection?.email || 'Connect BigQuery') }}
             <span v-if="needsAuthorization" class="token-expired-indicator"> • authorize</span>
           </span>
           <span class="menu-caret">▾</span>
         </button>
         <div v-if="openMenu === 'connection'" class="dropdown os-dropdown">
+          <button
+            class="dropdown-item"
+            :class="{ selected: activeConnection?.id === LOCAL_DUCKDB_CONNECTION_ID }"
+            @click="chooseDuckDB"
+          >
+            <span class="item-text">DuckDB (local)</span>
+            <span class="item-hint">no sign-in</span>
+          </button>
+          <div class="dropdown-divider" />
           <button class="dropdown-item" :disabled="isConnecting" @click="connectBigQuery">
             <span class="item-text">{{ isConnecting ? 'Opening Google…' : 'Add Google account…' }}</span>
           </button>
@@ -205,17 +219,19 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
               <span v-if="connectionsStore.isConnectionExpired(connection.id)" class="item-hint">authorize</span>
             </button>
             <div class="dropdown-divider" />
-            <button class="dropdown-item" :disabled="isConnecting" @click="authorizeActiveConnection">
-              <span class="item-text">Authorize active account</span>
-            </button>
-            <button class="dropdown-item dropdown-item-danger" @click="disconnectActive">
-              <span class="item-text">Disconnect active account</span>
-            </button>
+            <template v-if="activeConnection?.type === 'bigquery'">
+              <button class="dropdown-item" :disabled="isConnecting" @click="authorizeActiveConnection">
+                <span class="item-text">Authorize active account</span>
+              </button>
+              <button class="dropdown-item dropdown-item-danger" @click="disconnectActive">
+                <span class="item-text">Disconnect active account</span>
+              </button>
+            </template>
           </template>
         </div>
       </div>
 
-      <label v-if="activeConnection && bigqueryStore.projects.length" class="project-picker">
+      <label v-if="activeConnection?.type === 'bigquery' && bigqueryStore.projects.length" class="project-picker">
         <span class="sr-only">Billing project</span>
         <select
           :value="activeConnection.projectId || bigqueryStore.projectId || ''"

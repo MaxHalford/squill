@@ -1,7 +1,4 @@
-/**
- * BigQuery is the only external query engine. DuckDB runs locally to cache
- * results and evaluate transformations between canvas boxes.
- */
+/** BigQuery runs remotely; DuckDB is also available as a local query engine. */
 export type DatabaseEngine = 'duckdb' | 'bigquery'
 
 export const DATABASE_ENGINES: readonly DatabaseEngine[] = ['duckdb', 'bigquery'] as const
@@ -23,18 +20,20 @@ export interface DatabaseInfo {
   dataPrivacy: string
 }
 
+const PUBLIC_BASE_URL = import.meta.env.BASE_URL
+
 export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
   duckdb: {
     id: 'duckdb',
     name: 'DuckDB',
     shortName: 'DK',
-    logo: '/logos/duckdb.svg',
+    logo: `${PUBLIC_BASE_URL}logos/duckdb.svg`,
     color: '#FFF100',
     textColor: '#2e2e2e',
     connectionType: 'client',
     badge: 'Runs locally',
-    shortDescription: 'In-browser result cache and transformation engine',
-    longDescription: 'DuckDB WebAssembly runs entirely in your browser and stores BigQuery results locally for display and canvas transformations.',
+    shortDescription: 'Run SQL locally in your browser',
+    longDescription: 'DuckDB WebAssembly runs entirely in your browser for local SQL queries, result display, and canvas transformations.',
     authMethod: 'None',
     dataPrivacy: 'Processing happens locally in your browser.',
   },
@@ -42,7 +41,7 @@ export const DATABASE_INFO: Record<DatabaseEngine, DatabaseInfo> = {
     id: 'bigquery',
     name: 'BigQuery',
     shortName: 'BQ',
-    logo: '/logos/bigquery.svg',
+    logo: `${PUBLIC_BASE_URL}logos/bigquery.svg`,
     color: '#4285F4',
     textColor: '#FFFFFF',
     connectionType: 'client',

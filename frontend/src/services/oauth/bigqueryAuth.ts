@@ -76,7 +76,13 @@ function getTokenClient(clientId: string): GoogleTokenClient {
         rejectPending = null
       },
       error_callback: (error) => {
-        rejectPending?.(new Error(error.message || error.type || 'Google authorization was cancelled.'))
+        let message = error.message || error.type || 'Google authorization was cancelled.'
+        if (error.type === 'popup_closed') {
+          message = 'Google sign-in closed before authorization finished. If it closed immediately, add https://maxhalford.github.io as an authorized JavaScript origin in your Google OAuth client, then try again.'
+        } else if (error.type === 'popup_failed_to_open') {
+          message = 'The browser blocked the Google sign-in popup. Allow popups for this site, then try again.'
+        }
+        rejectPending?.(new Error(message))
         pendingRequest = null
         resolvePending = null
         rejectPending = null
