@@ -39,7 +39,7 @@ Squill is a static, local-first BigQuery client. Squill has no application backe
 
 ## Google authorization
 
-When you connect BigQuery, Squill uses Google Identity Services in your browser. Google issues a short-lived access token directly to the page.
+          When you connect to BigQuery, Squill uses Google Identity Services in your browser. Google issues a short-lived access token directly to the page.
 
 - Access tokens are kept in memory and are not written to browser storage.
 - Squill stores the Google account email and selected Google Cloud project locally so you can recognize and reuse a connection.

@@ -192,7 +192,7 @@ defineExpose({ navigateToTable })
             <span v-if="connectionsStore.isConnectionExpired(connection.id)">authorize</span>
           </button>
           <p v-if="connections.length === 0" class="empty">
-            Connect BigQuery from the menu.
+            Connect to BigQuery from the menu.
           </p>
         </section>
 

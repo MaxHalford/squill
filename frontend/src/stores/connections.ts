@@ -131,11 +131,13 @@ export const useConnectionsStore = defineStore('connections', () => {
     if (!GOOGLE_CLIENT_ID) {
       throw new Error('Google OAuth is not configured. Set the GOOGLE_CLIENT_ID GitHub Actions variable.')
     }
-    // For the first connection, an empty prompt lets Google reuse an existing
-    // grant/account and only show UI when consent is actually needed. Adding a
-    // second account still opens the account chooser explicitly.
+    // The first connection must complete Google's explicit consent flow. Once
+    // Squill knows the account, token refreshes can use its email as a hint and
+    // reuse the existing grant with Google's low-friction popup.
     const hasBigQueryConnection = connections.value.some(connection => connection.type === 'bigquery')
-    const authorization = await authorizeBigQuery(GOOGLE_CLIENT_ID, { selectAccount: hasBigQueryConnection })
+    const authorization = await authorizeBigQuery(GOOGLE_CLIENT_ID, {
+      prompt: hasBigQueryConnection ? 'select_account' : 'consent',
+    })
     return addBigQueryConnection(authorization.email, authorization.accessToken, authorization.expiresIn)
   }
 

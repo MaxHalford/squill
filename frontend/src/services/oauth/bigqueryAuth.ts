@@ -22,6 +22,8 @@ export interface BigQueryAuthorization {
   expiresIn: number
 }
 
+export type BigQueryAuthorizationPrompt = 'consent' | 'select_account'
+
 let scriptPromise: Promise<void> | null = null
 let tokenClient: GoogleTokenClient | null = null
 let tokenClientId = ''
@@ -116,10 +118,10 @@ async function requestToken(
 
 export async function authorizeBigQuery(
   clientId: string,
-  options: { selectAccount?: boolean; expectedEmail?: string } = {},
+  options: { prompt?: BigQueryAuthorizationPrompt; expectedEmail?: string } = {},
 ): Promise<BigQueryAuthorization> {
   const response = await requestToken(clientId, {
-    prompt: options.selectAccount ? 'select_account' : '',
+    prompt: options.prompt ?? '',
     hint: options.expectedEmail,
   })
 

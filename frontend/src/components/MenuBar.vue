@@ -185,7 +185,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
       <div class="menu-item" :class="{ active: openMenu === 'connection' }">
         <button class="menu-button" @click.stop="toggleMenu('connection')">
           <span class="menu-text">
-            {{ activeConnection?.type === 'duckdb' ? 'DuckDB (local)' : (activeConnection?.email || 'Connect BigQuery') }}
+            {{ activeConnection?.type === 'duckdb' ? 'DuckDB (local)' : (activeConnection?.email || 'Connect to BigQuery') }}
             <span v-if="needsAuthorization" class="token-expired-indicator"> • authorize</span>
           </span>
           <span class="menu-caret">▾</span>
@@ -201,7 +201,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
           </button>
           <div class="dropdown-divider" />
           <button class="dropdown-item" :disabled="isConnecting" @click="connectBigQuery">
-            <span class="item-text">{{ isConnecting ? 'Opening Google…' : 'Add Google account…' }}</span>
+            <span class="item-text">{{ isConnecting ? 'Connecting to BigQuery' : 'Connect to BigQuery' }}</span>
           </button>
           <template v-if="bigQueryConnections.length">
             <div class="dropdown-divider" />

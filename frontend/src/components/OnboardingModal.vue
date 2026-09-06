@@ -56,7 +56,7 @@ onUnmounted(() => {
               Welcome to Squill
             </h1>
             <p class="modal-subtitle">
-              Query locally with DuckDB, or connect BigQuery. Your work stays in this browser.
+              Query locally with DuckDB, or connect to BigQuery. Your work stays in this browser.
             </p>
           </div>
 
