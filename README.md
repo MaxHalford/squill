@@ -2,13 +2,15 @@
 
 [![CI](https://github.com/MaxHalford/squill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MaxHalford/squill/actions/workflows/ci.yml)
 
-Squill is a static, local-first BigQuery canvas. It runs on GitHub Pages, sends BigQuery API requests directly from your browser to Google, and stores canvases, settings, history, schema caches, and query-result caches on your device.
+Squill is a static, local-first SQL canvas for exploring data with connected queries, schemas, notes, and column-analysis tools. It runs entirely in the browser and stores canvases, settings, history, schema caches, and query-result caches on your device.
 
 There is no Squill backend, user account, subscription, server-side credential store, or analytics service.
 
-## Security and authorization
+Queries can run locally with DuckDB or directly against a connected data warehouse. BigQuery is the first supported cloud warehouse; the canvas itself is not tied to a particular SQL engine.
 
-Squill uses the Google Identity Services browser token flow.
+## BigQuery authorization
+
+The optional BigQuery connection uses the Google Identity Services browser token flow and sends API requests directly from your browser to Google.
 
 - Google access tokens are short-lived and kept in memory only.
 - Refresh tokens and OAuth client secrets are never used or stored.
@@ -18,6 +20,8 @@ Squill uses the Google Identity Services browser token flow.
 - Queries never run automatically. Creating a dependent query or column-analysis box does not execute it.
 
 ## Local development
+
+DuckDB works without any cloud configuration. To develop with BigQuery:
 
 1. Create a Google OAuth 2.0 **Web application** client.
 2. Add `http://localhost:5173` as an authorized JavaScript origin.

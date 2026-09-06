@@ -28,9 +28,6 @@ const activeConnection = computed(() => connectionsStore.activeConnection)
 const localConnection = computed(() =>
   connectionsStore.connections.find(connection => connection.id === LOCAL_DUCKDB_CONNECTION_ID) || null,
 )
-const needsAuthorization = computed(() =>
-  activeConnection.value ? connectionsStore.isConnectionExpired(activeConnection.value.id) : false,
-)
 const boxDefinitions = computed(() => getMenuBoxDefinitions())
 const canvases = computed(() => canvasStore.getCanvasList())
 
@@ -79,21 +76,6 @@ const connectBigQuery = async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     showToast(`Could not connect to BigQuery: ${message}`)
-  } finally {
-    isConnecting.value = false
-  }
-}
-
-const authorizeActiveConnection = async () => {
-  const connection = activeConnection.value
-  if (!connection) return connectBigQuery()
-  isConnecting.value = true
-  try {
-    await loadProjects(connection.id)
-    closeMenus()
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    showToast(`Could not authorize BigQuery: ${message}`)
   } finally {
     isConnecting.value = false
   }
@@ -186,7 +168,6 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
         <button class="menu-button" @click.stop="toggleMenu('connection')">
           <span class="menu-text">
             {{ activeConnection?.type === 'duckdb' ? 'DuckDB (local)' : (activeConnection?.email || 'Connect to BigQuery') }}
-            <span v-if="needsAuthorization" class="token-expired-indicator"> • authorize</span>
           </span>
           <span class="menu-caret">▾</span>
         </button>
@@ -216,13 +197,9 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
               @click="chooseConnection(connection.id)"
             >
               <span class="item-text">{{ connection.email }}</span>
-              <span v-if="connectionsStore.isConnectionExpired(connection.id)" class="item-hint">authorize</span>
             </button>
             <div class="dropdown-divider" />
             <template v-if="activeConnection?.type === 'bigquery'">
-              <button class="dropdown-item" :disabled="isConnecting" @click="authorizeActiveConnection">
-                <span class="item-text">Authorize active account</span>
-              </button>
               <button class="dropdown-item dropdown-item-danger" @click="disconnectActive">
                 <span class="item-text">Disconnect active account</span>
               </button>
@@ -371,11 +348,6 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   height: 14px;
   flex-shrink: 0;
   margin-right: var(--space-1);
-}
-
-.token-expired-indicator {
-  color: var(--color-error);
-  font-weight: 600;
 }
 
 /* Dropdown base */

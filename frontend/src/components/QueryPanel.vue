@@ -311,7 +311,17 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
   // Token acquisition must be initiated by the same user gesture as Run.
   // Once Google returns, continue the exact query the user asked to execute.
   const connection = boxConnection.value
-  if (connection?.type === 'bigquery') {
+  const queryForAuthorization = cleanQueryForExecution(
+    overrideQuery ?? editorRef.value?.getQuery() ?? queryText.value,
+  )
+  const engineForAuthorization = getEffectiveEngine(
+    connection?.type,
+    queryForAuthorization,
+    duckdbStore.getTableNames,
+    connection?.id,
+    canvasStore.boxes,
+  )
+  if (connection && engineForAuthorization === 'bigquery') {
     try {
       await bigqueryStore.ensureAccessToken(connection.id)
     } catch (err) {
