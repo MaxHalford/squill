@@ -65,6 +65,7 @@ function getTokenClient(clientId: string): GoogleTokenClient {
     tokenClient = oauth.initTokenClient({
       client_id: clientId,
       scope: BIGQUERY_SCOPES.join(' '),
+      prompt: '',
       callback: (response) => {
         if (response.error) {
           rejectPending?.(new Error(response.error_description || response.error))
@@ -107,7 +108,7 @@ async function requestToken(
     rejectPending = reject
     client.requestAccessToken({
       prompt: options.prompt ?? '',
-      hint: options.hint,
+      login_hint: options.hint,
     })
   })
   return pendingRequest

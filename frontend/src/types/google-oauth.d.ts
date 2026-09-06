@@ -15,7 +15,7 @@ export interface GoogleUserInfo {
 }
 
 export interface GoogleTokenClient {
-  requestAccessToken: (config?: { prompt?: string; hint?: string }) => void
+  requestAccessToken: (config?: { prompt?: string; login_hint?: string }) => void
 }
 
 export interface GoogleOAuthError {
@@ -31,6 +31,7 @@ declare global {
           initTokenClient: (config: {
             client_id: string
             scope: string
+            prompt?: string
             callback: (response: GoogleTokenResponse) => void
             error_callback?: (error: GoogleOAuthError) => void
             state?: string
