@@ -297,12 +297,11 @@ onUnmounted(() => {
 .resizable-box.selected {
   z-index: 10;
   border-color: var(--color-accent);
+  box-shadow: var(--box-shadow-selected);
 }
 
 .resizable-box.dragging {
   z-index: 100;
-  /* Simplified shadow during drag for smooth movement */
-  box-shadow: var(--shadow-sm) !important;
   outline: none !important;
   /* GPU-accelerate during drag only */
   will-change: transform;

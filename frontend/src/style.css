@@ -99,7 +99,7 @@
   --box-border-width: var(--border-width-thick);
   --box-border-color: var(--border-primary);
   --box-border-radius: var(--border-radius-none);
-  --box-shadow: var(--shadow-md);
+  --box-shadow: none;
   --box-shadow-selected: var(--shadow-lg);
   --box-header-bg: var(--surface-inverse);
   --box-header-text: var(--text-inverse);
