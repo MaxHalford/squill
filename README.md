@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/MaxHalford/squill/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MaxHalford/squill/actions/workflows/ci.yml)
 
-I am not satisfied with existing SQL editors, so I built my own. It's free, it's private, it doesn't get it your way. Enjoy!
+I am not satisfied with existing SQL editors, so I built my own. It's free, it's private, it doesn't get in your way. Enjoy!
 
 ## Local development
 
