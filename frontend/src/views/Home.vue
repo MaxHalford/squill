@@ -728,10 +728,19 @@ const handleKeyDown = (e: KeyboardEvent) => {
 }
 
 onMounted(async () => {
-  // Await all stores that need hydration before rendering.
-  // DuckDB is included because it hosts the _schemas table (persisted via IDB).
+  window.addEventListener('keydown', handleKeyDown)
+
+  // Set canvas ref in store so it can be used when adding boxes.
+  if (canvasRef.value) {
+    canvasStore.setCanvasRef(canvasRef.value)
+  }
+
+  // Fit as soon as the saved boxes render, without waiting for database startup.
   await Promise.all([
-    canvasStore.loadState(),
+    canvasStore.loadState().then(async () => {
+      await nextTick()
+      canvasRef.value?.fitToView()
+    }),
     connectionsStore.ready,
     settingsStore.ready,
     openAIStore.ready,
@@ -745,17 +754,6 @@ onMounted(async () => {
   sqlglotStore.initialize().catch(err => {
     console.warn('SQLGlot initialization failed:', err)
   })
-
-  await nextTick()
-  window.addEventListener('keydown', handleKeyDown)
-
-  // Set canvas ref in store so it can be used when adding boxes
-  if (canvasRef.value) {
-    canvasStore.setCanvasRef(canvasRef.value)
-  }
-
-  await nextTick()
-  canvasRef.value?.fitToView()
 
   // Preload Google's script without requesting a token or opening a popup.
   bigqueryStore.restoreSession().catch(error => {
