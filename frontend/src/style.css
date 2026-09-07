@@ -526,3 +526,79 @@ html.dark .canvas-waves {
 .canvas-none {
   background-image: none !important;
 }
+
+/* ===== GUIDED TUTORIAL ===== */
+
+.shepherd-modal-overlay-container {
+  z-index: 10004 !important;
+}
+
+.shepherd-element.squill-tour {
+  z-index: 10005;
+  max-width: 360px;
+  border: var(--border-width-thick) solid var(--border-primary);
+  border-radius: 0;
+  background: var(--surface-primary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-family-ui);
+}
+
+.shepherd-element.squill-tour .shepherd-arrow::before {
+  background: var(--surface-primary);
+  border: solid var(--border-primary);
+  border-width: 0 var(--border-width-thin) var(--border-width-thin) 0;
+}
+
+.shepherd-element.squill-tour .shepherd-header,
+.shepherd-element.squill-tour .shepherd-footer {
+  background: var(--surface-primary);
+  border-radius: 0;
+}
+
+.shepherd-element.squill-tour .shepherd-header {
+  padding: var(--space-3) var(--space-3) 0;
+}
+
+.shepherd-element.squill-tour .shepherd-title {
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
+  font-weight: 700;
+}
+
+.shepherd-element.squill-tour .shepherd-text {
+  padding: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-normal);
+}
+
+.shepherd-element.squill-tour .shepherd-footer {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.shepherd-element.squill-tour .shepherd-button {
+  border: var(--border-width-thin) solid var(--border-primary);
+  border-radius: 0;
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  font: inherit;
+  padding: var(--space-2) var(--space-3);
+}
+
+.shepherd-element.squill-tour .shepherd-button:hover {
+  background: var(--text-secondary);
+}
+
+.shepherd-element.squill-tour .shepherd-button-secondary {
+  background: var(--surface-primary);
+  color: var(--text-primary);
+}
+
+.shepherd-element.squill-tour .shepherd-button-secondary:hover {
+  background: var(--surface-secondary);
+}
+
+.shepherd-element.squill-tour .shepherd-cancel-icon {
+  color: var(--text-secondary);
+}

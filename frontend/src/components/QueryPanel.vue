@@ -18,8 +18,12 @@ import { getEffectiveEngine, isLocalConnectionType, type TableReferenceWithPosit
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
 import { useQueryExecution } from '../composables/useQueryExecution'
 import { useCanvasStore } from '../stores/canvas'
+import { useQueryHistoryStore } from '../stores/queryHistory'
+import { useOpenAIStore } from '../stores/openai'
 import { buildCTEQuery } from '../utils/cteResolver'
 import type { SchemaNamespace } from '../utils/schemaBuilder'
+import { isFixableError } from '../utils/errorClassifier'
+import { suggestSqlFix, type LineSuggestion } from '../services/openai'
 import { getConnectionDisplayName } from '../utils/connectionHelpers'
 import { type DatabaseEngine, type QueryCompleteEvent } from '../types/database'
 
@@ -36,6 +40,8 @@ const duckdbStore = useDuckDBStore()
 const settingsStore = useSettingsStore()
 const queryResultsStore = useQueryResultsStore()
 const canvasStore = useCanvasStore()
+const queryHistoryStore = useQueryHistoryStore()
+const openAIStore = useOpenAIStore()
 const { executeQuery } = useQueryExecution()
 
 // Inject canvas zoom for splitter dragging (defaults to 1 when not on canvas)
@@ -105,6 +111,11 @@ const error = ref<string | null>(null)
 const detectedEngine = ref<string | null>(null)
 let abortController: AbortController | null = null
 let backgroundLoadController: AbortController | null = null
+let fixAbortController: AbortController | null = null
+
+const suggestion = ref<LineSuggestion | null>(null)
+const isFetchingFix = ref(false)
+const fixError = ref<string | null>(null)
 
 // BigQuery job reference for post-execution explain
 const lastBigQueryJobRef = ref<{ projectId: string; jobId: string } | null>(null)
@@ -147,6 +158,9 @@ watch(queryText, (newQuery) => {
   if (!isUpdatingFromProp) {
     emit('update:modelValue', newQuery)
   }
+  suggestion.value = null
+  fixError.value = null
+  fixAbortController?.abort()
 })
 
 // ---------------------------------------------------------------------------
@@ -183,6 +197,16 @@ const isEngineLoading = computed(() => {
   if (!duckdbStore.isInitialized && duckdbStore.initError) return true
   if (isConnectionMissing.value) return true
   return false
+})
+
+const canSuggestFix = computed(() => {
+  return Boolean(
+    openAIStore.hasApiKey &&
+    error.value &&
+    !suggestion.value &&
+    !isFetchingFix.value &&
+    isFixableError(error.value, currentDialect.value),
+  )
 })
 
 // Editor schema for CodeMirror autocompletion.
@@ -308,6 +332,9 @@ const handleRequestMoreData = async (neededRows: number) => {
 // ---------------------------------------------------------------------------
 
 const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => {
+  fixAbortController?.abort()
+  suggestion.value = null
+  fixError.value = null
   // Token acquisition must be initiated by the same user gesture as Run.
   // Once Google returns, continue the exact query the user asked to execute.
   const connection = boxConnection.value
@@ -464,6 +491,58 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
   }
 }
 
+const requestFix = async () => {
+  const errorMessage = error.value
+  if (!errorMessage || !canSuggestFix.value) return
+
+  const query = editorRef.value?.getQuery() || queryText.value
+  const connectionId = boxConnection.value?.id
+
+  fixAbortController?.abort()
+  const controller = new AbortController()
+  fixAbortController = controller
+  isFetchingFix.value = true
+  fixError.value = null
+
+  try {
+    await queryHistoryStore.ready
+    if (controller.signal.aborted) return
+
+    const sampleQueries = connectionId
+      ? queryHistoryStore.getHistory({ connectionId, limit: 3, successOnly: true }).map(entry => entry.query)
+      : []
+
+    const fix = await suggestSqlFix({
+      apiKey: openAIStore.apiKey,
+      query,
+      errorMessage,
+      databaseDialect: currentDialect.value,
+      schema: editorSchema.value,
+      sampleQueries,
+      signal: controller.signal,
+    })
+
+    if ((editorRef.value?.getQuery() || queryText.value) !== query || error.value !== errorMessage) return
+    suggestion.value = fix
+  } catch (fixRequestError) {
+    if (fixRequestError instanceof Error && fixRequestError.name === 'AbortError') return
+    fixError.value = fixRequestError instanceof Error
+      ? fixRequestError.message
+      : 'Could not get a fix suggestion'
+  } finally {
+    isFetchingFix.value = false
+    if (fixAbortController === controller) fixAbortController = null
+  }
+}
+
+const handleAcceptSuggestion = () => {
+  if (!suggestion.value || suggestion.value.noRelevantFix) return
+  editorRef.value?.acceptSuggestion()
+  suggestion.value = null
+  error.value = null
+  fixError.value = null
+}
+
 const explainQuery = async (event: { clientX: number; clientY: number }) => {
   const query = cleanQueryForExecution(editorRef.value?.getQuery() ?? queryText.value)
   if (!query.trim()) return
@@ -509,6 +588,7 @@ const stopQuery = () => {
     backgroundLoadController = null
     if (props.boxId !== null) queryResultsStore.setBackgroundLoading(props.boxId, false)
   }
+  fixAbortController?.abort()
 }
 
 
@@ -579,6 +659,7 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', handleMouseUp)
   resizeObserver?.disconnect()
   if (schemaTimeout) clearTimeout(schemaTimeout)
+  fixAbortController?.abort()
 
   if (backgroundLoadController) {
     backgroundLoadController.abort()
@@ -628,6 +709,7 @@ defineExpose({
       :disabled="isEngineLoading"
       :dialect="currentDialect"
       :schema="editorSchema"
+      :suggestion="suggestion?.noRelevantFix ? null : suggestion"
       :connection-type="boxConnection?.type"
       :connection-id="boxConnection?.id"
       :explain-disabled-reason="explainDisabledReason"
@@ -636,6 +718,8 @@ defineExpose({
       @stop="stopQuery"
       @explain="explainQuery"
       @explode="emit('explode')"
+      @accept-suggestion="handleAcceptSuggestion"
+      @dismiss-suggestion="suggestion = null"
       @navigate-to-table="emit('navigate-to-table', $event)"
       @activate="handleEditorActivate"
       @ready="() => {}"
@@ -653,6 +737,10 @@ defineExpose({
         :table-name="resultTableName"
         :stats="queryStats"
         :error="error"
+        :is-fetching-fix="isFetchingFix"
+        :no-relevant-fix="suggestion?.noRelevantFix"
+        :can-suggest-fix="canSuggestFix"
+        :fix-error="fixError"
         :box-name="boxName"
         :box-id="boxId"
         :connection-name="connectionDisplayName"
@@ -664,6 +752,7 @@ defineExpose({
         @request-more-data="handleRequestMoreData"
         @run-query="runQuery()"
         @stop-query="stopQuery"
+        @suggest-fix="requestFix"
       />
     </div>
   </div>

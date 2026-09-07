@@ -31,11 +31,11 @@ const goBack = () => {
 const markdownContent = `
 # Privacy Policy
 
-**Last Updated: September 6, 2026**
+**Last Updated: September 7, 2026**
 
 ## Summary
 
-Squill is a static, local-first BigQuery client. Squill has no application backend, no user accounts, no subscriptions, no advertising, and no analytics. Your queries, settings, canvas data, connection metadata, and cached results are stored by your browser on your device.
+Squill is a static, local-first SQL canvas. Squill has no application backend, no user accounts, no subscriptions, no advertising, and no analytics. Your queries, settings, canvas data, connection metadata, and cached results are stored by your browser on your device.
 
 ## Google authorization
 
@@ -61,6 +61,12 @@ Squill uses IndexedDB and browser storage for canvas documents, query history, s
 
 Because Squill has no backend, it cannot recover, synchronize, or remotely delete local data for you.
 
+## Optional OpenAI line fixer
+
+You may save your own OpenAI API key in Settings. The key is stored unencrypted in IndexedDB on your current browser profile. It is never sent to Squill or an operator-controlled server, but someone with access to your browser profile—or malicious code running on the Squill page—may be able to read it. You can remove it in Settings or with Reset all data.
+
+When you explicitly click Suggest fix after a query error, Squill sends the failed SQL query, database error, relevant schema names, and up to three recent successful queries directly from your browser to OpenAI. Accepting a suggestion edits one SQL line; it does not execute the query. OpenAI's handling of submitted data is governed by [OpenAI's policies](https://openai.com/policies/).
+
 ## Network requests
 
 The app may contact:
@@ -68,6 +74,7 @@ The app may contact:
 - Google Identity Services and Google OAuth endpoints for authorization
 - Google Cloud Resource Manager to list accessible projects
 - Google BigQuery APIs for metadata and queries
+- OpenAI's Responses API, only when you explicitly request a line fix and have saved a key
 - Static asset hosts required by the in-browser SQL tooling
 - GitHub Pages to load the application itself
 

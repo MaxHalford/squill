@@ -24,6 +24,7 @@
     "dompurify": "^3.4.2",
     "marked": "^17.0.1",
     "pinia": "^3.0.4",
+    "shepherd.js": "^15.3.0",
     "treeflex": "^2.0.1",
     "vue": "^3.5.24",
     "vue-router": "^4.6.3",

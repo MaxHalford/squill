@@ -3,7 +3,6 @@ import { ref, onMounted, onUnmounted, nextTick, provide, computed, defineAsyncCo
 import InfiniteCanvas from '../components/InfiniteCanvas.vue'
 import MenuBar from '../components/MenuBar.vue'
 import DependencyArrows from '../components/DependencyArrows.vue'
-import OnboardingModal from '../components/OnboardingModal.vue'
 import BoxCreationButtons from '../components/BoxCreationButtons.vue'
 import DebugPanel from '../components/DebugPanel.vue'
 import { getBoxDefinition } from '../boxes'
@@ -15,11 +14,11 @@ const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
-import { LOCAL_DUCKDB_CONNECTION_ID, useConnectionsStore } from '../stores/connections'
+import { useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
+import { useOpenAIStore } from '../stores/openai'
 import { useSqlGlotStore } from '../stores/sqlglot'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
-import { DEFAULT_NOTE_CONTENT, DEFAULT_ADD_HINT_CONTENT } from '../constants/defaultQueries'
 import { useToast } from '../composables/useToast'
 
 const { showToast } = useToast()
@@ -29,14 +28,18 @@ const settingsStore = useSettingsStore()
 const duckdbStore = useDuckDBStore()
 const connectionsStore = useConnectionsStore()
 const bigqueryStore = useBigQueryStore()
+const openAIStore = useOpenAIStore()
 const sqlglotStore = useSqlGlotStore()
 const canvasRef = ref<InstanceType<typeof InfiniteCanvas> | null>(null)
 const copiedBoxId = ref<number | null>(null)
 const copiedBoxIds = ref<number[]>([])
-const isStoresReady = ref(false)
-const onboardingDismissed = ref(false)
 const showShortcutsModal = ref(false)
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+const handleStartTutorial = async () => {
+  const { startTutorial } = await import('../composables/useTutorial')
+  startTutorial()
+}
 
 // Registry for box query executors
 const boxExecutors = ref(new Map())
@@ -75,12 +78,6 @@ provide('executeBoxQuery', executeBoxQuery)
 // Stable DOM order: sort by ID so DOM nodes never move (z-index handles visual stacking)
 const sortedBoxes = computed(() => [...canvasStore.boxes].sort((a, b) => a.id - b.id))
 
-// Computed: show onboarding when there are no connections, no boxes, and not dismissed
-const showOnboarding = computed(() => {
-  const hasBigQueryConnection = connectionsStore.getConnectionsByType('bigquery').length > 0
-  return isStoresReady.value && !hasBigQueryConnection && canvasStore.boxes.length === 0 && !onboardingDismissed.value
-})
-
 // Computed: get the currently selected SQL box for creation buttons
 // Only returns the box if it's actually mounted (ref exists)
 const selectedSqlBox = computed(() => {
@@ -91,49 +88,6 @@ const selectedSqlBox = computed(() => {
   return sqlBoxRefs.value.has(box.id) ? box : null
 })
 
-// Connecting is always an explicit user action so the popup is never surprising.
-const handleSelectBigquery = async () => {
-  try {
-    await bigqueryStore.signInWithGoogle()
-    if (canvasStore.boxes.length === 0) {
-      createDefaultBoxes()
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error('BigQuery connection failed:', error)
-    showToast(`BigQuery connection failed:\n\n${message}`)
-  }
-}
-
-const handleSelectDuckdb = () => {
-  connectionsStore.setActiveConnection(LOCAL_DUCKDB_CONNECTION_ID)
-  onboardingDismissed.value = true
-  if (canvasStore.boxes.length === 0) {
-    createDefaultBoxes()
-  }
-}
-
-// Create welcome post-it notes when a connection is added on an empty canvas
-const createDefaultBoxes = () => {
-  const center = canvasRef.value?.getViewportCenter() || { x: 400, y: 300 }
-
-  // Two post-its side by side
-  const gap = 80
-  const noteWidth = 400
-
-  // Welcome note on the left
-  const welcomeX = center.x - gap / 2 - noteWidth / 2
-  const welcomeId = canvasStore.addBox('note', { x: welcomeX, y: center.y })
-  canvasStore.updateBoxQuery(welcomeId, DEFAULT_NOTE_CONTENT)
-  canvasStore.updateBoxName(welcomeId, 'welcome')
-
-  // Add button hint on the right
-  const hintX = center.x + gap / 2 + noteWidth / 2
-  const hintId = canvasStore.addBox('note', { x: hintX, y: center.y })
-  canvasStore.updateBoxQuery(hintId, DEFAULT_ADD_HINT_CONTENT)
-  canvasStore.updateBoxName(hintId, 'getting-started')
-}
-
 // Handle box created from MenuBar
 const handleBoxCreated = (boxId: number) => {
   selectBox(boxId, { shouldPan: true })
@@ -142,22 +96,9 @@ const handleBoxCreated = (boxId: number) => {
   }, 300)
 }
 
-// Handle connection added from MenuBar
-const handleConnectionAdded = () => {
-  // Create default boxes if canvas is empty
-  if (canvasStore.boxes.length === 0) {
-    createDefaultBoxes()
-  }
-}
-
 // Handle showing keyboard shortcuts modal
 const handleShowShortcuts = () => {
   showShortcutsModal.value = true
-}
-
-// Handle modal close (skip)
-const handleCloseOnboarding = () => {
-  onboardingDismissed.value = true
 }
 
 const selectBox = (id: number, eventData?: { shouldPan?: boolean }) => {
@@ -793,6 +734,7 @@ onMounted(async () => {
     canvasStore.loadState(),
     connectionsStore.ready,
     settingsStore.ready,
+    openAIStore.ready,
     duckdbStore.initialize(),
   ])
 
@@ -805,8 +747,6 @@ onMounted(async () => {
   })
 
   await nextTick()
-  isStoresReady.value = true
-
   window.addEventListener('keydown', handleKeyDown)
 
   // Set canvas ref in store so it can be used when adding boxes
@@ -832,22 +772,14 @@ onUnmounted(() => {
   <div class="page">
     <MenuBar
       @box-created="handleBoxCreated"
-      @connection-added="handleConnectionAdded"
       @show-shortcuts="handleShowShortcuts"
+      @start-tutorial="handleStartTutorial"
     />
 
     <!-- Keyboard Shortcuts Modal -->
     <KeyboardShortcutsModal
       :show="showShortcutsModal"
       @close="showShortcutsModal = false"
-    />
-
-    <!-- Onboarding Modal -->
-    <OnboardingModal
-      :show="showOnboarding"
-      @close="handleCloseOnboarding"
-      @select-duckdb="handleSelectDuckdb"
-      @select-bigquery="handleSelectBigquery"
     />
 
     <InfiniteCanvas

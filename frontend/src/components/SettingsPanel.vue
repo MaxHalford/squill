@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useSettingsStore } from '../stores/settings'
+import { useOpenAIStore } from '../stores/openai'
 import { useDialog } from '../composables/useDialog'
 
 const { confirm } = useDialog()
 
-defineProps<{
+const props = defineProps<{
   show: boolean
 }>()
 
@@ -14,6 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const settingsStore = useSettingsStore()
+const openAIStore = useOpenAIStore()
 
 // Accent color palette presets
 const accentColors = [
@@ -28,6 +30,40 @@ const accentColors = [
 const fetchBatchInputValue = ref<number | string>(settingsStore.fetchBatchSize)
 const paginationInputValue = ref<number | string>(settingsStore.paginationSize)
 const editorFontSizeInputValue = ref<number | string>(settingsStore.editorFontSize)
+const openAIApiKeyInput = ref('')
+const showOpenAIApiKey = ref(false)
+const isSavingOpenAIApiKey = ref(false)
+const openAIKeyStatus = ref('')
+
+watch(() => props.show, (show) => {
+  if (!show) {
+    openAIApiKeyInput.value = ''
+    showOpenAIApiKey.value = false
+    openAIKeyStatus.value = ''
+  }
+})
+
+const saveOpenAIApiKey = async () => {
+  if (!openAIApiKeyInput.value.trim()) return
+  isSavingOpenAIApiKey.value = true
+  openAIKeyStatus.value = ''
+  try {
+    await openAIStore.setApiKey(openAIApiKeyInput.value)
+    openAIApiKeyInput.value = ''
+    showOpenAIApiKey.value = false
+    openAIKeyStatus.value = 'Saved on this browser profile'
+  } catch (error) {
+    openAIKeyStatus.value = error instanceof Error ? error.message : 'Could not save the key'
+  } finally {
+    isSavingOpenAIApiKey.value = false
+  }
+}
+
+const clearOpenAIApiKey = async () => {
+  await openAIStore.clearApiKey()
+  openAIApiKeyInput.value = ''
+  openAIKeyStatus.value = 'Removed from this browser profile'
+}
 
 // Handle fetch batch size changes with debouncing
 let fetchBatchDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -380,6 +416,64 @@ const handleResetAll = async () => {
               </div>
             </div>
 
+            <div class="settings-section">
+              <div class="setting-header">
+                OpenAI line fixer
+              </div>
+              <div class="setting-description">
+                Optional. Your key is stored unencrypted in IndexedDB on this browser profile and sent only to OpenAI. Squill has no server. A failed query, its error, relevant schema names, and up to three successful queries are sent only when you click Suggest fix.
+              </div>
+
+              <div class="api-key-status">
+                {{ openAIStore.hasApiKey ? 'An API key is saved' : 'No API key saved' }}
+              </div>
+              <div class="api-key-row">
+                <input
+                  v-model="openAIApiKeyInput"
+                  :type="showOpenAIApiKey ? 'text' : 'password'"
+                  class="setting-input-key"
+                  placeholder="Paste a new key"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  @keydown.enter="saveOpenAIApiKey"
+                >
+                <button
+                  type="button"
+                  class="secondary-button"
+                  :aria-label="showOpenAIApiKey ? 'Hide API key' : 'Show API key'"
+                  @click="showOpenAIApiKey = !showOpenAIApiKey"
+                >
+                  {{ showOpenAIApiKey ? 'Hide' : 'Show' }}
+                </button>
+              </div>
+              <div class="api-key-actions">
+                <button
+                  type="button"
+                  class="action-button"
+                  :disabled="!openAIApiKeyInput.trim() || isSavingOpenAIApiKey"
+                  @click="saveOpenAIApiKey"
+                >
+                  {{ isSavingOpenAIApiKey ? 'Saving…' : (openAIStore.hasApiKey ? 'Replace key' : 'Save key') }}
+                </button>
+                <button
+                  v-if="openAIStore.hasApiKey"
+                  type="button"
+                  class="secondary-button"
+                  @click="clearOpenAIApiKey"
+                >
+                  Remove key
+                </button>
+              </div>
+              <div v-if="openAIKeyStatus" class="api-key-feedback" role="status">
+                {{ openAIKeyStatus }}
+              </div>
+              <div class="api-key-warning">
+                Anyone with access to this browser profile—or malicious code running on this page—may be able to read the key. Use a dedicated OpenAI project with restricted permissions and a spending limit.
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Manage OpenAI keys</a>
+              </div>
+            </div>
+
             <div class="settings-section settings-section-danger">
               <div class="setting-header">
                 Reset
@@ -544,6 +638,71 @@ const handleResetAll = async () => {
 .setting-input-number:disabled {
   background: var(--surface-secondary);
   cursor: not-allowed;
+}
+
+.api-key-status,
+.api-key-feedback {
+  color: var(--text-secondary);
+  font-size: var(--font-size-caption);
+  margin-bottom: var(--space-2);
+}
+
+.api-key-row,
+.api-key-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.api-key-row {
+  margin-bottom: var(--space-2);
+}
+
+.setting-input-key {
+  min-width: 0;
+  flex: 1;
+  padding: var(--space-2);
+  border: var(--border-width-thin) solid var(--border-secondary);
+  background: var(--surface-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-body-sm);
+}
+
+.setting-input-key:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.api-key-actions {
+  margin-bottom: var(--space-2);
+}
+
+.api-key-actions .action-button,
+.api-key-actions .secondary-button {
+  width: auto;
+}
+
+.api-key-warning {
+  color: var(--text-secondary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-normal);
+}
+
+.api-key-warning a {
+  color: var(--text-primary);
+}
+
+.secondary-button {
+  padding: var(--space-2);
+  border: var(--border-width-thin) solid var(--border-secondary);
+  background: var(--surface-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.secondary-button:hover {
+  background: var(--surface-secondary);
 }
 
 /* Remove number input spinners for cleaner look */

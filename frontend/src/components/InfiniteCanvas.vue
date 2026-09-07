@@ -482,6 +482,7 @@ onUnmounted(() => {
   <div
     ref="canvasRef"
     class="infinite-canvas"
+    data-tour="canvas"
     :class="[canvasPatternClass, { 'low-zoom': isLowZoom }]"
     @mousedown="handleMouseDown"
   >

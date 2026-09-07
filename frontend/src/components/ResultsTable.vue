@@ -27,6 +27,8 @@ const props = withDefaults(defineProps<{
   error?: string | null
   isFetchingFix?: boolean
   noRelevantFix?: boolean
+  canSuggestFix?: boolean
+  fixError?: string | null
   boxName?: string
   showRowDetail?: boolean
   showAnalytics?: boolean
@@ -39,6 +41,7 @@ const props = withDefaults(defineProps<{
   tableName: null,
   stats: null,
   error: null,
+  fixError: null,
   boxName: undefined,
   connectionName: undefined,
   showRowDetail: true,
@@ -54,6 +57,7 @@ const emit = defineEmits<{
   'request-more-data': [neededRows: number]
   'run-query': []
   'stop-query': []
+  'suggest-fix': []
 }>()
 
 // Elapsed timer for running queries
@@ -911,11 +915,15 @@ defineExpose({ resetPagination, triggerReveal, refresh })
         </div>
         <div
           class="fix-status-wrapper"
-          :class="{ 'has-content': isFetchingFix || noRelevantFix }"
+          :class="{ 'has-content': isFetchingFix || noRelevantFix || fixError || canSuggestFix }"
         >
           <div class="fix-status-inner">
             <span v-if="isFetchingFix">Getting fix suggestion...</span>
             <span v-else-if="noRelevantFix">No relevant fix found</span>
+            <span v-else-if="fixError" class="fix-error">{{ fixError }}</span>
+            <button v-else-if="canSuggestFix" class="fix-button" @click="emit('suggest-fix')">
+              Suggest fix
+            </button>
           </div>
         </div>
       </div>
@@ -1360,6 +1368,28 @@ defineExpose({ resetPagination, triggerReveal, refresh })
   font-weight: normal;
   font-style: italic;
   font-size: var(--font-size-caption);
+}
+
+.fix-button {
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width-thin) solid var(--border-primary);
+  background: var(--surface-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-style: normal;
+}
+
+.fix-button:hover {
+  background: var(--surface-secondary);
+}
+
+.fix-error {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--color-error);
+  font-style: normal;
 }
 
 /* Table Container - scrollable region */

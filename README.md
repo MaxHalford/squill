@@ -8,6 +8,8 @@ There is no Squill backend, user account, subscription, server-side credential s
 
 Queries can run locally with DuckDB or directly against a connected data warehouse. BigQuery is the first supported cloud warehouse; the canvas itself is not tied to a particular SQL engine.
 
+An optional OpenAI-powered line fixer can suggest a single-line edit after a failed query. Users supply their own API key, which Squill stores locally in the browser with an explicit warning. Suggestions are requested and accepted manually, and never run a query.
+
 ## BigQuery authorization
 
 The optional BigQuery connection uses the Google Identity Services browser token flow and sends API requests directly from your browser to Google.

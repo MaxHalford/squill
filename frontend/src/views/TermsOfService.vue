@@ -31,11 +31,11 @@ const goBack = () => {
 const markdownContent = `
 # Terms of Service
 
-**Last Updated: September 6, 2026**
+**Last Updated: September 7, 2026**
 
 ## The application
 
-Squill is an open-source, static, browser-based BigQuery client. It stores application data locally and sends authorized BigQuery requests directly from your browser to Google. No Squill account or paid subscription is provided.
+Squill is an open-source, static, browser-based SQL canvas. It stores application data locally and sends explicitly requested BigQuery and optional OpenAI requests directly from your browser to those providers. No Squill account or paid subscription is provided.
 
 ## Your responsibility
 
@@ -45,6 +45,7 @@ You are responsible for:
 - reviewing every query before running it;
 - understanding the BigQuery usage and cost associated with a query;
 - protecting access to your browser profile and device;
+- protecting any OpenAI API key you choose to store locally and controlling its project permissions and spending limits;
 - complying with Google Cloud's terms and your organization's policies; and
 - maintaining backups of any local Squill data you need to preserve.
 
@@ -53,6 +54,10 @@ Squill requests read-only Google OAuth scopes and does not automatically execute
 ## Google services
 
 BigQuery authorization and API requests are provided by Google and are subject to [Google Cloud terms](https://cloud.google.com/terms). Google may expire or revoke access tokens, require renewed consent, limit API access, or change its services independently of Squill.
+
+## Optional OpenAI service
+
+If you configure the line fixer, requests and charges are made against your OpenAI account and are subject to [OpenAI's terms](https://openai.com/policies/terms-of-use/). Squill stores the key unencrypted in your browser's IndexedDB and cannot recover, rotate, or protect it from someone who controls your device, browser profile, or code running on the page.
 
 ## Local data
 

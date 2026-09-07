@@ -9,8 +9,8 @@ import SettingsPanel from './SettingsPanel.vue'
 
 const emit = defineEmits<{
   'box-created': [boxId: number]
-  'connection-added': [type: 'bigquery', connectionId: string]
   'show-shortcuts': []
+  'start-tutorial': []
 }>()
 
 const canvasStore = useCanvasStore()
@@ -70,8 +70,7 @@ const loadProjects = async (connectionId: string) => {
 const connectBigQuery = async () => {
   isConnecting.value = true
   try {
-    const connectionId = await bigqueryStore.signInWithGoogle()
-    emit('connection-added', 'bigquery', connectionId)
+    await bigqueryStore.signInWithGoogle()
     closeMenus()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -147,7 +146,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
       </div>
 
       <div class="menu-item" :class="{ active: openMenu === 'new' }">
-        <button class="menu-button" @click.stop="toggleMenu('new')">
+        <button class="menu-button" data-tour="new-menu" @click.stop="toggleMenu('new')">
           <span class="menu-text">New</span>
           <span class="menu-caret">▾</span>
         </button>
@@ -165,7 +164,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
       </div>
 
       <div class="menu-item" :class="{ active: openMenu === 'connection' }">
-        <button class="menu-button" @click.stop="toggleMenu('connection')">
+        <button class="menu-button" data-tour="connection-menu" @click.stop="toggleMenu('connection')">
           <span class="menu-text">
             {{ activeConnection?.type === 'duckdb' ? 'DuckDB (local)' : (activeConnection?.email || 'Connect to BigQuery') }}
           </span>
@@ -223,7 +222,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
     </div>
 
     <div class="menu-right">
-      <button class="menu-button" @click="showSettings = true">
+      <button class="menu-button" data-tour="settings" @click="showSettings = true">
         Settings
       </button>
       <div class="menu-item" :class="{ active: openMenu === 'help' }">
@@ -232,6 +231,9 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
           <span class="menu-caret">▾</span>
         </button>
         <div v-if="openMenu === 'help'" class="dropdown os-dropdown dropdown-right">
+          <button class="dropdown-item" @click="emit('start-tutorial'); closeMenus()">
+            <span class="item-text">Tutorial</span>
+          </button>
           <button class="dropdown-item" @click="emit('show-shortcuts'); closeMenus()">
             <span class="item-text">Keyboard shortcuts</span>
           </button>
