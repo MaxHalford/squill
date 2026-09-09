@@ -29,11 +29,5 @@ dist-ssr
 .ruff_cache
 /*.jpeg
 
-# Tauri
-frontend/src-tauri/target/
-frontend/src-tauri/gen/
-
-# Rust backend
-backend/target/
 *.db-shm
 *.db-wal

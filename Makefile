@@ -5,16 +5,16 @@
 check: type-check lint test build
 
 type-check:
-	cd frontend && npm run type-check
+	npm run type-check
 
 lint:
-	cd frontend && npm run lint
+	npm run lint
 
 test:
-	cd frontend && npm run test:run
+	npm run test:run
 
 build:
-	cd frontend && npm run build
+	npm run build
 
 dev:
-	cd frontend && npm run dev
+	npm run dev

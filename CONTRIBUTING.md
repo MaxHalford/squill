@@ -4,7 +4,7 @@ Squill is a static Vue and TypeScript application. BigQuery is the only external
 
 ## Prerequisites
 
-- [Bun](https://bun.sh/)
+- [Node.js](https://nodejs.org/) 22 or later (includes npm)
 - A modern browser
 - A Google OAuth Web application client for testing authorization
 
@@ -12,10 +12,10 @@ Squill is a static Vue and TypeScript application. BigQuery is the only external
 
 ```sh
 git clone https://github.com/MaxHalford/squill
-cd squill/frontend
+cd squill
 cp .env.example .env.local
-bun install
-bun run dev
+npm install
+npm run dev
 ```
 
 Set `VITE_GOOGLE_CLIENT_ID` in `.env.local`. Register `http://localhost:5173` as an authorized JavaScript origin and enable the BigQuery and Cloud Resource Manager APIs.
@@ -23,10 +23,10 @@ Set `VITE_GOOGLE_CLIENT_ID` in `.env.local`. Register `http://localhost:5173` as
 ## Checks
 
 ```sh
-bun run type-check
-bun run lint
-bun run test:run
-bun run build
+npm run type-check
+npm run lint
+npm run test:run
+npm run build
 ```
 
 Please preserve the product's core constraints:

@@ -11,13 +11,12 @@ DuckDB works without any cloud configuration. To develop with BigQuery:
 1. Create a Google OAuth 2.0 **Web application** client.
 2. Add `http://localhost:5173` as an authorized JavaScript origin.
 3. Enable the BigQuery API and Cloud Resource Manager API in the Google Cloud project.
-4. Copy `frontend/.env.example` to `frontend/.env.local` and set the client ID.
+4. Copy `.env.example` to `.env.local` and set the client ID.
 5. Run:
 
 ```sh
-cd frontend
-bun install
-bun run dev
+npm install
+npm run dev
 ```
 
 Quality checks:

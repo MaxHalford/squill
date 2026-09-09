@@ -1,24 +1,24 @@
 repos:
   - repo: local
     hooks:
-      - id: frontend-typecheck
-        name: frontend type check
-        entry: bun run --cwd frontend type-check
+      - id: typecheck
+        name: type check
+        entry: npm run type-check
         language: system
-        files: ^frontend/
+        files: ^(src/|vite\.config\.ts$)
         types_or: [ts, vue]
         pass_filenames: false
-      - id: frontend-lint
-        name: frontend lint
-        entry: bun run --cwd frontend lint
+      - id: lint
+        name: lint
+        entry: npm run lint
         language: system
-        files: ^frontend/
+        files: ^(src/|vite\.config\.ts$)
         types_or: [ts, vue]
         pass_filenames: false
-      - id: frontend-test
-        name: frontend tests
-        entry: bun run --cwd frontend vitest run
+      - id: test
+        name: tests
+        entry: npm run test:run
         language: system
-        files: ^frontend/
+        files: ^(src/|vite\.config\.ts$)
         types_or: [ts, vue]
         pass_filenames: false
