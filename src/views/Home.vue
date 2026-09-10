@@ -14,12 +14,14 @@ const KeyboardShortcutsModal = defineAsyncComponent(() => import('../components/
 import { useCanvasStore } from '../stores/canvas'
 import { useSettingsStore } from '../stores/settings'
 import { useDuckDBStore } from '../stores/duckdb'
-import { useConnectionsStore } from '../stores/connections'
+import { LOCAL_DUCKDB_CONNECTION_ID, useConnectionsStore } from '../stores/connections'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useOpenAIStore } from '../stores/openai'
 import { useSqlGlotStore } from '../stores/sqlglot'
 import { generateSelectQuery, generateQueryBoxName } from '../utils/queryGenerator'
 import { useToast } from '../composables/useToast'
+import { formatRowCount } from '../utils/formatUtils'
+import { escapeIdentifier, isLocalDataFileName } from '../utils/sqlSanitize'
 
 const { showToast } = useToast()
 
@@ -34,11 +36,106 @@ const canvasRef = ref<InstanceType<typeof InfiniteCanvas> | null>(null)
 const copiedBoxId = ref<number | null>(null)
 const copiedBoxIds = ref<number[]>([])
 const showShortcutsModal = ref(false)
+const isDraggingFile = ref(false)
+const isImportingData = ref(false)
+const dataImportMessage = ref<string | null>(null)
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+let fileDragDepth = 0
 
 const handleStartTutorial = async () => {
   const { startTutorial } = await import('../composables/useTutorial')
   startTutorial()
+}
+
+const hasDraggedFiles = (event: DragEvent) =>
+  Array.from(event.dataTransfer?.types || []).includes('Files')
+
+const handleFileDragEnter = (event: DragEvent) => {
+  if (!hasDraggedFiles(event)) return
+  event.preventDefault()
+  fileDragDepth++
+  isDraggingFile.value = true
+}
+
+const handleFileDragOver = (event: DragEvent) => {
+  if (!hasDraggedFiles(event)) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+const handleFileDragLeave = () => {
+  if (!isDraggingFile.value) return
+  fileDragDepth = Math.max(0, fileDragDepth - 1)
+  if (fileDragDepth === 0) isDraggingFile.value = false
+}
+
+const importDataFiles = async (files: File[], dropPoint?: { x: number; y: number }) => {
+  if (isImportingData.value) {
+    showToast('A data import is already in progress.', 'info')
+    return
+  }
+
+  const dataFiles = files.filter(file => isLocalDataFileName(file.name))
+  const skippedCount = files.length - dataFiles.length
+  if (dataFiles.length === 0) {
+    showToast('Choose a Parquet, CSV, TSV, JSON, JSONL, or NDJSON file.')
+    return
+  }
+
+  isImportingData.value = true
+  let importedCount = 0
+  let lastBoxId: number | null = null
+
+  try {
+    for (const [index, file] of dataFiles.entries()) {
+      dataImportMessage.value = `Importing ${file.name} (${index + 1}/${dataFiles.length})…`
+      try {
+        const result = await duckdbStore.importLocalDataFile(file)
+        const basePosition = dropPoint
+          ? canvasRef.value?.screenToCanvas(dropPoint.x, dropPoint.y)
+          : canvasRef.value?.getViewportCenter()
+        const position = basePosition
+          ? { x: basePosition.x + index * 28, y: basePosition.y + index * 28 }
+          : null
+        const boxId = canvasStore.addBox('sql', position, 'duckdb', LOCAL_DUCKDB_CONNECTION_ID)
+        canvasStore.updateBoxQuery(boxId, `SELECT *\nFROM ${escapeIdentifier(result.tableName)}`)
+        lastBoxId = boxId
+        importedCount++
+
+        const persistence = duckdbStore.isPersistent
+          ? ' It will remain available after reload.'
+          : ' Persistent browser storage is unavailable, so it will last for this session.'
+        showToast(
+          `Imported ${file.name} as ${result.tableName} (${formatRowCount(result.rowCount)}).${persistence}`,
+          'info',
+          7000,
+        )
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        showToast(message)
+      }
+    }
+
+    if (lastBoxId !== null) selectBox(lastBoxId, { shouldPan: !dropPoint })
+    if (skippedCount > 0) {
+      showToast(`Skipped ${skippedCount} unsupported ${skippedCount === 1 ? 'file' : 'files'}.`, 'info')
+    }
+    if (importedCount === 0 && skippedCount === 0) showToast('No files were imported.')
+  } finally {
+    isImportingData.value = false
+    dataImportMessage.value = null
+  }
+}
+
+const handleFileDrop = (event: DragEvent) => {
+  if (!hasDraggedFiles(event)) return
+  event.preventDefault()
+  fileDragDepth = 0
+  isDraggingFile.value = false
+  void importDataFiles(Array.from(event.dataTransfer?.files || []), {
+    x: event.clientX,
+    y: event.clientY,
+  })
 }
 
 // Registry for box query executors
@@ -729,6 +826,10 @@ const handleKeyDown = (e: KeyboardEvent) => {
 
 onMounted(async () => {
   window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('dragenter', handleFileDragEnter)
+  window.addEventListener('dragover', handleFileDragOver)
+  window.addEventListener('dragleave', handleFileDragLeave)
+  window.addEventListener('drop', handleFileDrop)
 
   // Set canvas ref in store so it can be used when adding boxes.
   if (canvasRef.value) {
@@ -763,6 +864,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('dragenter', handleFileDragEnter)
+  window.removeEventListener('dragover', handleFileDragOver)
+  window.removeEventListener('dragleave', handleFileDragLeave)
+  window.removeEventListener('drop', handleFileDrop)
 })
 </script>
 
@@ -772,7 +877,17 @@ onUnmounted(() => {
       @box-created="handleBoxCreated"
       @show-shortcuts="handleShowShortcuts"
       @start-tutorial="handleStartTutorial"
+      @data-files-selected="importDataFiles"
     />
+
+    <Transition name="drop-overlay">
+      <div v-if="isDraggingFile" class="data-drop-overlay" role="status">
+        <div class="data-drop-target">
+          <strong>Drop data files here</strong>
+          <span>Parquet, CSV, TSV, JSON, JSONL, and NDJSON become local DuckDB tables.</span>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Keyboard Shortcuts Modal -->
     <KeyboardShortcutsModal
@@ -830,14 +945,14 @@ onUnmounted(() => {
     <!-- Bottom progress bar for DuckDB init and schema refresh -->
     <Transition name="slide">
       <div
-        v-if="duckdbStore.isInitializing || duckdbStore.schemaRefreshMessage || sqlglotStore.isLoading"
+        v-if="duckdbStore.isInitializing || duckdbStore.schemaRefreshMessage || sqlglotStore.isLoading || isImportingData"
         class="bottom-progress"
       >
         <div class="progress-bar">
           <div class="progress-bar-indeterminate" />
         </div>
         <div class="progress-info">
-          <span class="progress-text">{{ duckdbStore.schemaRefreshMessage || (duckdbStore.isInitializing ? 'Initializing DuckDB...' : 'Loading SQL tools...') }}</span>
+          <span class="progress-text">{{ dataImportMessage || duckdbStore.schemaRefreshMessage || (duckdbStore.isInitializing ? 'Initializing DuckDB...' : 'Loading SQL tools...') }}</span>
         </div>
       </div>
     </Transition>
@@ -851,6 +966,51 @@ onUnmounted(() => {
   height: 100vh;
   padding-top: 32px; /* Height of macOS-style menu bar */
   overflow: hidden;
+}
+
+.data-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: var(--space-8);
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  pointer-events: none;
+}
+
+.data-drop-target {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  width: min(560px, 100%);
+  padding: 64px var(--space-6);
+  border: 3px dashed var(--border-primary);
+  background: var(--surface-primary);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-family: var(--font-family-ui);
+  text-align: center;
+}
+
+.data-drop-target strong {
+  font-size: var(--font-size-heading);
+}
+
+.data-drop-target span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-body);
+}
+
+.drop-overlay-enter-active,
+.drop-overlay-leave-active {
+  transition: opacity 0.12s ease;
+}
+
+.drop-overlay-enter-from,
+.drop-overlay-leave-to {
+  opacity: 0;
 }
 
 .page-footer {

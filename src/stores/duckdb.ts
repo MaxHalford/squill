@@ -3,7 +3,16 @@ import { ref, computed } from 'vue'
 import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
 import { DataType as ArrowDataType } from 'apache-arrow'
-import { sanitizeTableName, escapeSqlString, escapeIdentifier } from '../utils/sqlSanitize'
+import {
+  buildLocalDataReaderSql,
+  escapeIdentifier,
+  escapeSqlString,
+  generateUniqueTableName,
+  getLocalDataFormat,
+  sanitizeFileName,
+  sanitizeTableName,
+} from '../utils/sqlSanitize'
+import type { LocalDataFormat } from '../utils/sqlSanitize'
 import { mapBigQueryTypeToDuckDB } from '../utils/bigqueryConversion'
 import { buildDuckDBSchema, type SchemaNamespace } from '../utils/schemaBuilder'
 import type { DatabaseEngine } from '../types/database'
@@ -20,6 +29,9 @@ interface TableMetadata {
   // True for DuckDB query results stored as views (not real tables).
   // These should not appear in the schema browser.
   isView?: boolean
+  // True for tables materialized from user-imported local files. These are
+  // user-owned data and must not be removed by query-result garbage collection.
+  isImportedFile?: boolean
 }
 
 /** Row in the _schemas DuckDB table */
@@ -35,7 +47,43 @@ export interface SchemaRow {
 }
 
 /** Internal tables that should be hidden from user-visible table lists */
-const INTERNAL_TABLES = new Set(['_schemas'])
+const INTERNAL_TABLES = new Set(['_schemas', '_imported_files'])
+
+export interface LocalDataImportResult {
+  tableName: string
+  rowCount: number
+  columns: string[]
+  sourceFileName: string
+  format: LocalDataFormat
+}
+
+export interface ImportedLocalTable {
+  tableName: string
+  sourceFileName: string
+  rowCount: number
+}
+
+export interface DuckDBDatabaseUsage {
+  browserStorageBytes: number
+  memoryUsage: string
+}
+
+const parseDuckDBByteSize = (value: unknown): number => {
+  const match = String(value || '').trim().match(/^(\d+(?:\.\d+)?)\s*(bytes?|[kmgtpe]ib)$/i)
+  if (!match) return 0
+  const unit = match[2].toLowerCase()
+  const powers: Record<string, number> = {
+    byte: 0,
+    bytes: 0,
+    kib: 1,
+    mib: 2,
+    gib: 3,
+    tib: 4,
+    pib: 5,
+    eib: 6,
+  }
+  return Number(match[1]) * (1024 ** powers[unit])
+}
 
 /** Group column rows by table name. */
 const groupColumnsByTable = (colRows: { table_name: unknown; column_name: unknown }[]): Map<string, string[]> => {
@@ -120,6 +168,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   const isInitialized = ref(false)
   const isInitializing = ref(false)
   const initError = ref<string | null>(null)
+  const isPersistent = ref(false)
+  const databaseUsage = ref<DuckDBDatabaseUsage | null>(null)
+  const databaseUsageError = ref<string | null>(null)
 
   // Schema refresh progress (set by MenuBar, read by Home.vue)
   const schemaRefreshMessage = ref<string | null>(null)
@@ -129,6 +180,16 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
   // Track available tables (table name -> metadata)
   const tables = ref<Record<string, TableMetadata>>({})
+  const importedTables = computed<ImportedLocalTable[]>(() =>
+    Object.entries(tables.value)
+      .filter(([, metadata]) => metadata.isImportedFile)
+      .map(([tableName, metadata]) => ({
+        tableName,
+        sourceFileName: metadata.originalBoxName || tableName,
+        rowCount: metadata.rowCount,
+      }))
+      .sort((a, b) => a.tableName.localeCompare(b.tableName)),
+  )
 
   // Reactive trigger for table schema changes
   const schemaVersion = ref(0)
@@ -179,8 +240,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
             path: 'opfs://squill.duckdb',
             accessMode: duckdb.DuckDBAccessMode.READ_WRITE,
           })
+          isPersistent.value = true
           console.log('DuckDB opened with OPFS persistence')
         } catch (err) {
+          isPersistent.value = false
           console.warn('OPFS unavailable, using in-memory DuckDB:', err)
         }
 
@@ -189,9 +252,11 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
         // Ensure _schemas table exists (OPFS may already have it from last session)
         await initSchemasTable()
+        await initImportedFilesTable()
 
         // Load existing tables metadata
         await loadTablesMetadata()
+        await loadDatabaseUsage()
 
         isInitialized.value = true
         schemaVersion.value++
@@ -212,6 +277,67 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
   const ensureInit = async () => {
     if (!isInitialized.value) await initialize()
+  }
+
+  const loadDatabaseUsage = async (): Promise<DuckDBDatabaseUsage | null> => {
+    if (!conn.value) return null
+    try {
+      const result = await conn.value.query(`
+        SELECT block_size, total_blocks, wal_size, memory_usage
+        FROM pragma_database_size()
+        WHERE database_name = current_database()
+      `)
+      const row = result.toArray()[0]
+      if (!row) {
+        databaseUsage.value = null
+        databaseUsageError.value = 'DuckDB did not return usage statistics.'
+        return null
+      }
+
+      databaseUsage.value = {
+        browserStorageBytes:
+          (Number(row.block_size || 0) * Number(row.total_blocks || 0))
+          + parseDuckDBByteSize(row.wal_size),
+        memoryUsage: String(row.memory_usage || '0 B'),
+      }
+      databaseUsageError.value = null
+      return databaseUsage.value
+    } catch (err) {
+      console.warn('Failed to load DuckDB database usage:', err)
+      databaseUsageError.value = getErrorMessage(err)
+      return databaseUsage.value
+    }
+  }
+
+  const refreshDatabaseUsage = async (): Promise<DuckDBDatabaseUsage | null> => {
+    await ensureInit()
+    return loadDatabaseUsage()
+  }
+
+  const refreshLocalData = async (): Promise<DuckDBDatabaseUsage | null> => {
+    await ensureInit()
+    await loadTablesMetadata()
+    return loadDatabaseUsage()
+  }
+
+  const flushDatabaseFiles = async () => {
+    try {
+      await db.value?.flushFiles()
+    } catch (err) {
+      console.warn('Could not flush DuckDB files:', err)
+    }
+  }
+
+  const getExistingRelationNames = async (): Promise<Record<string, true>> => {
+    const result = await conn.value!.query(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'main' AND table_catalog = current_database()
+    `)
+    return Object.fromEntries([
+      ...INTERNAL_TABLES,
+      ...result.toArray().map(row => row.table_name as string),
+    ].map(tableName => [tableName, true]))
   }
 
   // Load metadata about existing tables (names, row counts, column names)
@@ -236,6 +362,29 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       `)
       const colRows = colResult.toArray()
 
+      const importedResult = await conn.value.query(`
+        SELECT table_name, source_file_name
+        FROM _imported_files
+      `)
+      const importedFiles = new Map(
+        importedResult.toArray().map(row => [
+          row.table_name as string,
+          row.source_file_name as string,
+        ]),
+      )
+      const importedRowCounts = new Map<string, number>()
+      for (const tableName of importedFiles.keys()) {
+        if (INTERNAL_TABLES.has(tableName)) continue
+        try {
+          const result = await conn.value.query(
+            `SELECT COUNT(*) AS count FROM ${escapeIdentifier(tableName)}`,
+          )
+          importedRowCounts.set(tableName, Number(result.toArray()[0]?.count || 0))
+        } catch (err) {
+          console.warn(`Failed to count imported table ${tableName}:`, err)
+        }
+      }
+
       const columnsByTable = groupColumnsByTable(colRows)
 
       const now = Date.now()
@@ -245,13 +394,176 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
         tables.value[tableName] = {
           ...(tables.value[tableName] || {}),
-          rowCount: Number(row.row_count || 0),
+          rowCount: importedRowCounts.get(tableName) ?? Number(row.row_count || 0),
           columns: columnsByTable.get(tableName) || [],
           lastUpdated: now,
+          originalBoxName: importedFiles.get(tableName) || tables.value[tableName]?.originalBoxName,
+          isImportedFile: importedFiles.has(tableName),
         }
       }
     } catch (err) {
       console.warn('Failed to load tables metadata:', err)
+    }
+  }
+
+  // Materialize a user-selected local data file as a native DuckDB table. The
+  // browser File is registered only for the duration of the import; the table
+  // itself is stored in the OPFS-backed database when persistence is available.
+  const importLocalDataFile = async (file: File): Promise<LocalDataImportResult> => {
+    const format = getLocalDataFormat(file.name)
+    if (!format) {
+      throw new Error('Choose a Parquet, CSV, TSV, JSON, JSONL, or NDJSON file.')
+    }
+
+    await ensureInit()
+
+    const tableName = generateUniqueTableName(file.name, await getExistingRelationNames())
+    const quotedTableName = escapeIdentifier(tableName)
+    const registeredFileName = `_local_import_${crypto.randomUUID()}_${sanitizeFileName(file.name)}`
+    const readerSql = buildLocalDataReaderSql(format, registeredFileName)
+    let transactionOpen = false
+
+    try {
+      await db.value!.registerFileHandle(
+        registeredFileName,
+        file,
+        duckdb.DuckDBDataProtocol.BROWSER_FILEREADER,
+        true,
+      )
+
+      await conn.value!.query('BEGIN TRANSACTION')
+      transactionOpen = true
+      await conn.value!.query(
+        `CREATE TABLE ${quotedTableName} AS SELECT * FROM ${readerSql}`,
+      )
+
+      const countResult = await conn.value!.query(`SELECT COUNT(*) AS count FROM ${quotedTableName}`)
+      const rowCount = Number(countResult.toArray()[0]?.count || 0)
+      const schemaResult = await conn.value!.query(`SELECT * FROM ${quotedTableName} LIMIT 0`)
+      const columns = schemaResult.schema.fields.map(field => field.name)
+      const columnTypes = await describeTableTypes(tableName)
+
+      await conn.value!.query(`
+        INSERT INTO _imported_files (table_name, source_file_name, imported_at)
+        VALUES (
+          '${escapeSqlString(tableName)}',
+          '${escapeSqlString(file.name)}',
+          current_timestamp
+        )
+      `)
+      await conn.value!.query('COMMIT')
+      transactionOpen = false
+
+      tables.value[tableName] = {
+        rowCount,
+        columns,
+        lastUpdated: Date.now(),
+        originalBoxName: file.name,
+        nativeColumnTypes: columnTypes,
+        isImportedFile: true,
+      }
+      schemaVersion.value++
+
+      // Best-effort durability and statistics refresh. Individual OPFS writes
+      // are already synced, so either failure must not hide a completed import.
+      await flushDatabaseFiles()
+      await loadDatabaseUsage()
+
+      return { tableName, rowCount, columns, sourceFileName: file.name, format }
+    } catch (err: unknown) {
+      if (transactionOpen) {
+        try {
+          await conn.value!.query('ROLLBACK')
+        } catch (rollbackError) {
+          console.warn('Could not roll back failed local data import:', rollbackError)
+        }
+      }
+      console.error(`Failed to import local data file ${file.name}:`, err)
+      throw new Error(`Failed to import ${file.name}: ${getErrorMessage(err)}`, { cause: err })
+    } finally {
+      try {
+        await db.value!.dropFile(registeredFileName)
+      } catch {
+        // The file may not have registered if the import failed early.
+      }
+    }
+  }
+
+  /** Remove one materialized import and its registry record atomically. */
+  const removeImportedTable = async (tableName: string): Promise<boolean> => {
+    await ensureInit()
+    if (INTERNAL_TABLES.has(tableName)) return false
+    const safeTableName = escapeSqlString(tableName)
+    const registryResult = await conn.value!.query(`
+      SELECT table_name
+      FROM _imported_files
+      WHERE table_name = '${safeTableName}'
+    `)
+    if (registryResult.toArray().length === 0) return false
+
+    let transactionOpen = false
+    try {
+      await conn.value!.query('BEGIN TRANSACTION')
+      transactionOpen = true
+      await conn.value!.query(`DROP TABLE IF EXISTS ${escapeIdentifier(tableName)}`)
+      await conn.value!.query(`DELETE FROM _imported_files WHERE table_name = '${safeTableName}'`)
+      await conn.value!.query('COMMIT')
+      transactionOpen = false
+
+      delete tables.value[tableName]
+      schemaVersion.value++
+      await flushDatabaseFiles()
+      await loadDatabaseUsage()
+      return true
+    } catch (err: unknown) {
+      if (transactionOpen) {
+        try {
+          await conn.value!.query('ROLLBACK')
+        } catch (rollbackError) {
+          console.warn('Could not roll back imported-table deletion:', rollbackError)
+        }
+      }
+      throw new Error(`Failed to remove ${tableName}: ${getErrorMessage(err)}`, { cause: err })
+    }
+  }
+
+  /** Remove only tables recorded as local file imports. */
+  const clearImportedTables = async (): Promise<number> => {
+    await ensureInit()
+    const result = await conn.value!.query('SELECT table_name FROM _imported_files')
+    const tableNames = result.toArray()
+      .map(row => row.table_name as string)
+      .filter(tableName => !INTERNAL_TABLES.has(tableName))
+    if (tableNames.length === 0) {
+      await loadDatabaseUsage()
+      return 0
+    }
+
+    let transactionOpen = false
+    try {
+      await conn.value!.query('BEGIN TRANSACTION')
+      transactionOpen = true
+      for (const tableName of tableNames) {
+        await conn.value!.query(`DROP TABLE IF EXISTS ${escapeIdentifier(tableName)}`)
+      }
+      await conn.value!.query('DELETE FROM _imported_files')
+      await conn.value!.query('COMMIT')
+      transactionOpen = false
+
+      for (const tableName of tableNames) delete tables.value[tableName]
+      schemaVersion.value++
+      await flushDatabaseFiles()
+      await loadDatabaseUsage()
+      return tableNames.length
+    } catch (err: unknown) {
+      if (transactionOpen) {
+        try {
+          await conn.value!.query('ROLLBACK')
+        } catch (rollbackError) {
+          console.warn('Could not roll back clearing imported tables:', rollbackError)
+        }
+      }
+      throw new Error(`Failed to clear imported data: ${getErrorMessage(err)}`, { cause: err })
     }
   }
 
@@ -744,12 +1056,17 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     }
   }
 
-  // Garbage-collect orphaned tables and views from local DuckDB.
-  // Drops anything not in INTERNAL_TABLES and not owned by a live box.
+  // Garbage-collect orphaned query-result tables and views from local DuckDB.
+  // Imported files are user-owned data and are deliberately retained.
   const garbageCollect = async (liveBoxIds: Set<number>) => {
     if (!conn.value) return
 
     try {
+      const importedResult = await conn.value.query('SELECT table_name FROM _imported_files')
+      const importedTableNames = new Set(
+        importedResult.toArray().map(row => row.table_name as string),
+      )
+
       // Query DuckDB directly for all user tables and views in local database
       const result = await conn.value.query(`
         SELECT table_name, table_type FROM information_schema.tables
@@ -765,6 +1082,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
         // Check if any live box owns this table
         const meta = tables.value[name]
+        if (importedTableNames.has(name) || meta?.isImportedFile) continue
         if (meta?.boxId != null && liveBoxIds.has(meta.boxId)) continue
 
         // Orphaned — drop it
@@ -854,6 +1172,18 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // ---------------------------------------------------------------------------
   // _schemas table: unified schema catalog stored in DuckDB, persisted via OPFS
   // ---------------------------------------------------------------------------
+
+  /** Track materialized file imports so they survive query-result garbage collection. */
+  const initImportedFilesTable = async () => {
+    if (!conn.value) return
+    await conn.value.query(`
+      CREATE TABLE IF NOT EXISTS _imported_files (
+        table_name VARCHAR PRIMARY KEY,
+        source_file_name VARCHAR NOT NULL,
+        imported_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+      )
+    `)
+  }
 
   /** Create _schemas table if it doesn't already exist (OPFS persists it across sessions). */
   const initSchemasTable = async () => {
@@ -985,7 +1315,11 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     isInitialized,
     isInitializing,
     initError,
+    isPersistent,
+    databaseUsage,
+    databaseUsageError,
     tables,
+    importedTables,
     schemaVersion,
     getTableNames,
     getFreshTableNames,
@@ -993,6 +1327,11 @@ export const useDuckDBStore = defineStore('duckdb', () => {
     getTableBoxId,
     updateTableBoxId,
     initialize,
+    refreshDatabaseUsage,
+    refreshLocalData,
+    importLocalDataFile,
+    removeImportedTable,
+    clearImportedTables,
     storeResults,
     appendResults,
     storeResultsFromArrow,

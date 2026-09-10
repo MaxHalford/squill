@@ -4,24 +4,32 @@ import { getMenuBoxDefinitions } from '../boxes'
 import { useBigQueryStore } from '../stores/bigquery'
 import { useCanvasStore } from '../stores/canvas'
 import { LOCAL_DUCKDB_CONNECTION_ID, useConnectionsStore } from '../stores/connections'
+import { useDuckDBStore } from '../stores/duckdb'
+import { useDialog } from '../composables/useDialog'
 import { useToast } from '../composables/useToast'
+import { formatBytes, formatRowCountCompact } from '../utils/formatUtils'
 import SettingsPanel from './SettingsPanel.vue'
 
 const emit = defineEmits<{
   'box-created': [boxId: number]
   'show-shortcuts': []
   'start-tutorial': []
+  'data-files-selected': [files: File[]]
 }>()
 
 const canvasStore = useCanvasStore()
 const connectionsStore = useConnectionsStore()
 const bigqueryStore = useBigQueryStore()
+const duckdbStore = useDuckDBStore()
+const { confirm } = useDialog()
 const { showToast } = useToast()
 
-const openMenu = ref<'canvas' | 'new' | 'connection' | 'help' | null>(null)
+const openMenu = ref<'canvas' | 'new' | 'connection' | 'local-data' | 'help' | null>(null)
 const showSettings = ref(false)
 const isConnecting = ref(false)
 const isLoadingProjects = ref(false)
+const isManagingLocalData = ref(false)
+const dataFileInput = ref<HTMLInputElement | null>(null)
 
 const bigQueryConnections = computed(() => connectionsStore.getConnectionsByType('bigquery'))
 const activeConnection = computed(() => connectionsStore.activeConnection)
@@ -33,6 +41,18 @@ const canvases = computed(() => canvasStore.getCanvasList())
 
 const toggleMenu = (menu: typeof openMenu.value) => {
   openMenu.value = openMenu.value === menu ? null : menu
+}
+
+const toggleLocalDataMenu = async () => {
+  const isOpening = openMenu.value !== 'local-data'
+  toggleMenu('local-data')
+  if (!isOpening) return
+  try {
+    await duckdbStore.refreshLocalData()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    showToast(`Could not refresh local storage usage: ${message}`)
+  }
 }
 
 const closeMenus = () => {
@@ -93,6 +113,50 @@ const chooseConnection = async (connectionId: string) => {
 const chooseDuckDB = () => {
   connectionsStore.setActiveConnection(LOCAL_DUCKDB_CONNECTION_ID)
   closeMenus()
+}
+
+const chooseDataFiles = () => {
+  closeMenus()
+  dataFileInput.value?.click()
+}
+
+const handleDataFileSelection = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  if (files.length > 0) emit('data-files-selected', files)
+  // Allow choosing the same file again later.
+  input.value = ''
+}
+
+const removeImportedTable = async (tableName: string) => {
+  isManagingLocalData.value = true
+  try {
+    const removed = await duckdbStore.removeImportedTable(tableName)
+    if (removed) showToast(`Removed local table ${tableName}.`, 'info')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    showToast(message)
+  } finally {
+    isManagingLocalData.value = false
+  }
+}
+
+const clearImportedTables = async () => {
+  const confirmed = await confirm(
+    'Remove all imported local tables? Query results, schemas, canvases, settings, and connection metadata will be preserved.',
+  )
+  if (!confirmed) return
+
+  isManagingLocalData.value = true
+  try {
+    const removed = await duckdbStore.clearImportedTables()
+    showToast(`Removed ${removed} imported ${removed === 1 ? 'table' : 'tables'}.`, 'info')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    showToast(message)
+  } finally {
+    isManagingLocalData.value = false
+  }
 }
 
 const chooseProject = (event: Event) => {
@@ -179,6 +243,10 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
             <span class="item-text">DuckDB (local)</span>
             <span class="item-hint">no sign-in</span>
           </button>
+          <button class="dropdown-item" @click="chooseDataFiles">
+            <span class="item-text">Import data…</span>
+            <span class="item-hint">local</span>
+          </button>
           <div class="dropdown-divider" />
           <button class="dropdown-item" :disabled="isConnecting" @click="connectBigQuery">
             <span class="item-text">{{ isConnecting ? 'Connecting to BigQuery' : 'Connect to BigQuery' }}</span>
@@ -204,6 +272,84 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
               </button>
             </template>
           </template>
+        </div>
+      </div>
+
+      <div
+        v-if="activeConnection?.type === 'duckdb'"
+        class="menu-item"
+        :class="{ active: openMenu === 'local-data' }"
+      >
+        <button class="menu-button" @click.stop="toggleLocalDataMenu">
+          <span class="menu-text">Local data</span>
+          <span class="menu-caret">▾</span>
+        </button>
+        <div v-if="openMenu === 'local-data'" class="dropdown os-dropdown local-data-dropdown">
+          <div class="local-data-stats">
+            <template v-if="duckdbStore.databaseUsage">
+              <div class="local-data-stat local-data-stat-total">
+                <span>Browser storage</span>
+                <strong>
+                  {{ duckdbStore.isPersistent ? formatBytes(duckdbStore.databaseUsage.browserStorageBytes) : 'Not persisted' }}
+                </strong>
+              </div>
+              <div class="local-data-stat local-data-stat-total">
+                <span>RAM</span>
+                <strong>{{ duckdbStore.databaseUsage.memoryUsage }}</strong>
+              </div>
+              <div class="local-data-note">
+                Storage includes the DuckDB file and pending writes. RAM is DuckDB’s buffer memory. Totals include cached query results and refresh when this menu opens.
+              </div>
+            </template>
+            <div v-else class="local-data-empty">
+              Usage statistics unavailable
+            </div>
+            <div
+              v-if="duckdbStore.databaseUsageError && duckdbStore.databaseUsage"
+              class="local-data-note local-data-note-error"
+              :title="duckdbStore.databaseUsageError"
+            >
+              Usage could not be refreshed; these figures may be stale.
+            </div>
+          </div>
+
+          <div class="dropdown-divider" />
+          <div class="dropdown-label">
+            Imported tables
+          </div>
+          <div v-if="duckdbStore.importedTables.length === 0" class="local-data-empty">
+            No imported tables
+          </div>
+          <div
+            v-for="table in duckdbStore.importedTables"
+            :key="table.tableName"
+            class="local-data-table"
+          >
+            <div class="local-data-table-details">
+              <strong :title="table.tableName">{{ table.tableName }}</strong>
+              <span :title="table.sourceFileName">
+                {{ table.sourceFileName }} · {{ formatRowCountCompact(table.rowCount) }}
+              </span>
+            </div>
+            <button
+              class="local-data-remove"
+              :disabled="isManagingLocalData"
+              :aria-label="`Remove imported table ${table.tableName}`"
+              title="Remove imported table"
+              @click="removeImportedTable(table.tableName)"
+            >
+              ×
+            </button>
+          </div>
+
+          <div class="dropdown-divider" />
+          <button
+            class="dropdown-item dropdown-item-danger"
+            :disabled="isManagingLocalData || duckdbStore.importedTables.length === 0"
+            @click="clearImportedTables"
+          >
+            <span class="item-text">Clear all imported data…</span>
+          </button>
         </div>
       </div>
 
@@ -246,6 +392,15 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
         </div>
       </div>
     </div>
+
+    <input
+      ref="dataFileInput"
+      class="sr-only"
+      type="file"
+      accept=".parquet,.parq,.pq,.csv,.tsv,.json,.jsonl,.ndjson"
+      multiple
+      @change="handleDataFileSelection"
+    >
 
     <SettingsPanel :show="showSettings" @close="showSettings = false" />
   </nav>
@@ -372,6 +527,117 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 .os-dropdown {
   min-width: 220px;
   padding: var(--space-1) 0;
+}
+
+.local-data-dropdown {
+  width: 320px;
+  border-radius: 0;
+}
+
+.local-data-stats {
+  padding: var(--space-2) var(--space-3);
+}
+
+.local-data-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--font-size-caption);
+  line-height: 1.6;
+}
+
+.local-data-stat-total {
+  font-size: var(--font-size-body-sm);
+  line-height: 1.8;
+}
+
+.local-data-stat strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.local-data-note {
+  margin-top: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-normal);
+}
+
+.local-data-note-error {
+  color: var(--color-error, #ef4444);
+}
+
+.local-data-empty {
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+}
+
+.local-data-stats .local-data-empty {
+  padding: var(--space-1) 0 0;
+}
+
+.local-data-table {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.local-data-table:hover {
+  background: var(--surface-secondary);
+}
+
+.local-data-table-details {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.local-data-table-details strong,
+.local-data-table-details span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-data-table-details strong {
+  font-size: var(--font-size-body-sm);
+  font-weight: 600;
+}
+
+.local-data-table-details span {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+}
+
+.local-data-remove {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: var(--border-width-thin) solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.local-data-remove:hover:not(:disabled) {
+  border-color: var(--border-primary);
+  background: var(--surface-primary);
+  color: var(--color-error, #ef4444);
+}
+
+.local-data-remove:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .dropdown-label {
