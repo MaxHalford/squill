@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { SettingsSchema } from '../utils/storageSchemas'
 import { loadItem, saveItem } from '../utils/storage'
+import type { MonoFontId } from '../utils/fonts'
 
 type ThemePreference = 'system' | 'light' | 'dark'
 type CanvasPattern = 'dots' | 'grid' | 'waves' | 'none'
@@ -17,6 +18,7 @@ interface Settings {
   // Code editor settings
   showEditorLineNumbers: boolean
   editorFontSize: number  // Font size in pixels for code editor
+  monoFont: MonoFontId
   tableLinkEnabled: boolean  // Cmd+click to navigate to table definitions
   accentColor: string  // Highlighter color for Cmd+click table links
   // Appearance settings
@@ -36,6 +38,7 @@ const DEFAULT_SETTINGS: Settings = {
   themePreference: 'system',
   showEditorLineNumbers: false,
   editorFontSize: 13,  // Default font size in pixels for code editor
+  monoFont: 'ibm-plex-mono',
   tableLinkEnabled: true,  // Cmd+click to navigate to table definitions
   accentColor: '#9333ea',  // Purple (default accent color)
   canvasPattern: 'dots',  // Default canvas pattern
@@ -52,6 +55,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const themePreference = ref<ThemePreference>(DEFAULT_SETTINGS.themePreference)
   const showEditorLineNumbers = ref(DEFAULT_SETTINGS.showEditorLineNumbers)
   const editorFontSize = ref(DEFAULT_SETTINGS.editorFontSize)
+  const monoFont = ref<MonoFontId>(DEFAULT_SETTINGS.monoFont)
   const tableLinkEnabled = ref(DEFAULT_SETTINGS.tableLinkEnabled)
   const accentColor = ref(DEFAULT_SETTINGS.accentColor)
   const canvasPattern = ref<CanvasPattern>(DEFAULT_SETTINGS.canvasPattern)
@@ -66,6 +70,7 @@ export const useSettingsStore = defineStore('settings', () => {
     themePreference.value = s.themePreference
     showEditorLineNumbers.value = s.showEditorLineNumbers
     editorFontSize.value = s.editorFontSize
+    monoFont.value = s.monoFont
     tableLinkEnabled.value = s.tableLinkEnabled
     accentColor.value = s.accentColor
     canvasPattern.value = s.canvasPattern
@@ -81,6 +86,7 @@ export const useSettingsStore = defineStore('settings', () => {
     themePreference: themePreference.value,
     showEditorLineNumbers: showEditorLineNumbers.value,
     editorFontSize: editorFontSize.value,
+    monoFont: monoFont.value,
     tableLinkEnabled: tableLinkEnabled.value,
     accentColor: accentColor.value,
     canvasPattern: canvasPattern.value,
@@ -111,7 +117,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const ready = loadState()
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, themePreference, showEditorLineNumbers, editorFontSize, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled, sqlBoxLayout], saveState)
+  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, themePreference, showEditorLineNumbers, editorFontSize, monoFont, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled, sqlBoxLayout], saveState)
 
   // Reactive system theme tracking
   const systemTheme = ref<'light' | 'dark'>(
@@ -178,6 +184,10 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  const setMonoFont = (font: MonoFontId) => {
+    monoFont.value = font
+  }
+
   const setTableLinkHighlightColor = (color: string) => {
     // Validate hex color format
     if (/^#[0-9a-fA-F]{6}$/.test(color)) {
@@ -223,6 +233,8 @@ export const useSettingsStore = defineStore('settings', () => {
     toggleEditorLineNumbers,
     editorFontSize,
     setEditorFontSize,
+    monoFont,
+    setMonoFont,
     tableLinkEnabled,
     toggleTableLink,
     // Table link highlight

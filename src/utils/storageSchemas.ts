@@ -3,12 +3,14 @@
  * Ensures type safety when loading state from IndexedDB
  */
 import { z } from 'zod'
+import { MONO_FONT_IDS } from './fonts'
 
 // ============================================
 // Settings Schema
 // ============================================
 export const ThemePreferenceSchema = z.enum(['system', 'light', 'dark'])
 export const CanvasPatternSchema = z.enum(['dots', 'grid', 'waves', 'none'])
+export const MonoFontSchema = z.enum(MONO_FONT_IDS)
 
 export const SqlBoxLayoutSchema = z.enum(['vertical', 'horizontal'])
 
@@ -20,6 +22,7 @@ export const SettingsSchema = z.object({
   themePreference: ThemePreferenceSchema,
   showEditorLineNumbers: z.boolean(),
   editorFontSize: z.number().min(8).max(24),
+  monoFont: MonoFontSchema,
   tableLinkEnabled: z.boolean(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   canvasPattern: CanvasPatternSchema,

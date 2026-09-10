@@ -183,6 +183,11 @@
   --border-on-inverse-strong: rgba(255, 255, 255, 0.4);
 }
 
+:root[data-mono-font="rec-mono-linear"] {
+  --font-family-mono: "Recursive Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-variation-settings: "MONO" 1;
+}
+
 /* ===== DARK MODE ===== */
 html.dark {
   /* Surface Colors - inverted palette */

@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useOpenAIStore } from '../stores/openai'
 import { useDialog } from '../composables/useDialog'
+import { MONO_FONT_OPTIONS, type MonoFontId } from '../utils/fonts'
 
 const { confirm } = useDialog()
 
@@ -318,6 +319,25 @@ const handleResetAll = async () => {
 
               <div class="setting-row">
                 <label class="setting-label">
+                  <span>Monospace font</span>
+                  <select
+                    :value="settingsStore.monoFont"
+                    class="setting-select"
+                    @change="settingsStore.setMonoFont(($event.target as HTMLSelectElement).value as MonoFontId)"
+                  >
+                    <option
+                      v-for="font in MONO_FONT_OPTIONS"
+                      :key="font.id"
+                      :value="font.id"
+                    >
+                      {{ font.label }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="setting-row">
+                <label class="setting-label">
                   <span>Canvas pattern</span>
                   <select
                     :value="settingsStore.canvasPattern"
@@ -624,7 +644,7 @@ const handleResetAll = async () => {
   border: none;
   background: var(--surface-primary);
   font-size: var(--font-size-body-sm);
-  font-family: var(--font-family-mono);
+  font-family: var(--font-family-ui);
   color: var(--text-primary);
   text-align: right;
   outline: none;
@@ -664,7 +684,7 @@ const handleResetAll = async () => {
   border: var(--border-width-thin) solid var(--border-secondary);
   background: var(--surface-primary);
   color: var(--text-primary);
-  font-family: var(--font-family-mono);
+  font-family: var(--font-family-ui);
   font-size: var(--font-size-body-sm);
 }
 

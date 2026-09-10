@@ -851,6 +851,7 @@ defineExpose({
   height: 100%;
   overflow: hidden;
   font-feature-settings: "liga" 0;
+  text-rendering: geometricPrecision;
 }
 
 .query-editor :deep(.cm-scroller) {

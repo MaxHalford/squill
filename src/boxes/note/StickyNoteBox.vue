@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import '@fontsource/patrick-hand-sc/latin-400.css'
 import BaseBox from '../../components/BaseBox.vue'
 
 const props = defineProps({
@@ -166,7 +167,7 @@ onUnmounted(() => {
   border: none;
   outline: none;
   resize: none;
-  font-family: var(--font-family-mono);
+  font-family: "Patrick Hand SC", cursive;
   /* Font size scales with container width */
   font-size: clamp(16px, 20cqi, 72px);
   line-height: 1.1;

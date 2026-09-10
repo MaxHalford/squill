@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { watch, onMounted } from 'vue'
 import { useSettingsStore } from './stores/settings'
+import { applyMonoFont } from './utils/fonts'
 import DialogHost from './components/DialogHost.vue'
 import ToastHost from './components/ToastHost.vue'
 
@@ -19,6 +20,7 @@ const applyAccentColor = () => {
 onMounted(() => {
   applyTheme()
   applyAccentColor()
+  void settingsStore.ready.then(() => applyMonoFont(settingsStore.monoFont))
 })
 
 // Watch resolved theme (reacts to both preference changes and OS theme changes)
@@ -29,6 +31,10 @@ watch(() => settingsStore.resolvedTheme, () => {
 // Watch for accent color changes
 watch(() => settingsStore.accentColor, () => {
   applyAccentColor()
+})
+
+watch(() => settingsStore.monoFont, (font) => {
+  void applyMonoFont(font)
 })
 </script>
 
