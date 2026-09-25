@@ -16,6 +16,7 @@ import { useQueryResultsStore } from '../stores/queryResults'
 import { useBoxConnection } from '../composables/useBoxConnection'
 import { getEffectiveEngine, isLocalConnectionType, type TableReferenceWithPosition } from '../utils/queryAnalyzer'
 import { cleanQueryForExecution } from '../utils/sqlSanitize'
+import { explainDuckDBQuery } from '../utils/duckdbExplain'
 import { useQueryExecution } from '../composables/useQueryExecution'
 import { useCanvasStore } from '../stores/canvas'
 import { useQueryHistoryStore } from '../stores/queryHistory'
@@ -553,11 +554,7 @@ const explainQuery = async (event: { clientX: number; clientY: number }) => {
     let planData: unknown
 
     if (engine === 'duckdb') {
-      const result = await duckdbStore.runQuery(`EXPLAIN (ANALYZE, FORMAT JSON) ${query}`)
-      // EXPLAIN returns column "explain_value", EXPLAIN ANALYZE may use a different column name
-      const row = result.rows[0]
-      const raw = row?.explain_value ?? (row ? Object.values(row)[0] : null) ?? result.rows
-      planData = typeof raw === 'string' ? JSON.parse(raw) : raw
+      planData = await explainDuckDBQuery(query, duckdbStore.runQuery)
     } else if (engine === 'bigquery') {
       if (!lastBigQueryJobRef.value) throw new Error('Run the query first to get its execution plan')
       planData = await bigqueryStore.fetchQueryPlan(
