@@ -124,6 +124,7 @@ describe('parsePlan', () => {
       expect(parsePlan('duckdb', null)).toBeNull()
       expect(parsePlan('duckdb', [])).toBeNull()
       expect(parsePlan('duckdb', '')).toBeNull()
+      expect(parsePlan('duckdb', { result: 'error' })).toBeNull()
     })
   })
 

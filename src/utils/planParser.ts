@@ -32,6 +32,7 @@ interface DuckDBNode {
   name?: string
   // EXPLAIN ANALYZE fields
   operator_type?: string
+  operator_name?: string
   operator_timing?: number
   operator_cardinality?: number
   // Common fields
@@ -72,7 +73,7 @@ function parseDuckDBNode(raw: DuckDBNode): PlanNode {
 
   return {
     id: nextNodeId++,
-    operator: raw.operator_type || raw.name || 'Unknown',
+    operator: raw.operator_type || raw.operator_name || raw.name || 'Unknown',
     rows,
     durationMs,
     cost,
@@ -107,6 +108,10 @@ function parseDuckDBPlan(raw: unknown): PlanNode | null {
       }
     }
   }
+
+  // DuckDB can return { "result": "error" } instead of an analyzed plan.
+  // A nameless object is not a renderable plan node.
+  if (!node.operator_type && !node.operator_name && !node.name) return null
 
   return parseDuckDBNode(node)
 }
