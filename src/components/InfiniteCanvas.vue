@@ -68,7 +68,7 @@ const r4 = (v: number) => Math.round(v * 1e4) / 1e4
 watchEffect(() => {
   const el = viewportRef.value
   if (!el) return
-  el.style.transform = `translate3d(${r4(pan.value.x)}px, ${r4(pan.value.y)}px, 0) scale(${r4(zoom.value)})`
+  el.style.transform = `translate(${r4(pan.value.x)}px, ${r4(pan.value.y)}px) scale(${r4(zoom.value)})`
 })
 
 // Provide live zoom to children (used for coordinate correction in drag/resize)
@@ -554,8 +554,6 @@ onUnmounted(() => {
   position: relative;
   /* Contain layout recalcs to this element */
   contain: layout style;
-  /* Permanent GPU layer — viewport always uses transform: scale() */
-  will-change: transform;
 }
 
 /* Single overlay that blocks all hit-testing during camera movement */

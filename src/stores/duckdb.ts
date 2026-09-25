@@ -194,9 +194,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   // Reactive trigger for table schema changes
   const schemaVersion = ref(0)
 
-  // Cache for getEditorSchema() results, keyed by "connectionType:connectionId"
+  // Remote catalog cache; local result-table changes do not invalidate it.
   const editorSchemaCache = new Map<string, SchemaNamespace>()
-  let lastSchemaCacheVersion = -1
+  let editorSchemaCatalogVersion = 0
 
   // Initialize DuckDB with OPFS persistence
   const initialize = async (): Promise<void> => {
@@ -1221,15 +1221,10 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   ): Promise<SchemaNamespace> => {
     if (!isInitialized.value || !conn.value) return {}
 
-    // Invalidate cache when schema data has changed
-    if (schemaVersion.value !== lastSchemaCacheVersion) {
-      editorSchemaCache.clear()
-      lastSchemaCacheVersion = schemaVersion.value
-    }
-
-    const cacheKey = `${connectionType}:${connectionId}`
+    const cacheKey = JSON.stringify([connectionType, connectionId, activeProject ?? ''])
     const cached = editorSchemaCache.get(cacheKey)
     if (cached) return cached
+    const catalogVersion = editorSchemaCatalogVersion
 
     const safeType = escapeSqlString(connectionType)
     const safeId = escapeSqlString(connectionId)
@@ -1269,6 +1264,9 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       }
     }
 
+    if (catalogVersion !== editorSchemaCatalogVersion) {
+      return getEditorSchema(connectionType, connectionId, activeProject)
+    }
     editorSchemaCache.set(cacheKey, schema)
     return schema
   }
@@ -1308,6 +1306,8 @@ export const useDuckDBStore = defineStore('duckdb', () => {
       await insertSchemaRows(rows)
     }
 
+    editorSchemaCatalogVersion++
+    editorSchemaCache.clear()
     schemaVersion.value++
   }
 

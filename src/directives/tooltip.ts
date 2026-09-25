@@ -33,6 +33,7 @@ const showTooltip = (el: HTMLElement) => {
 
   const text = getTooltipText(value)
   if (!text) return
+  if (currentTarget === el && (showTimeout || tooltipEl?.classList.contains('visible'))) return
 
   // Clear any pending show
   if (showTimeout) {
@@ -43,6 +44,7 @@ const showTooltip = (el: HTMLElement) => {
 
   // Small delay to prevent flicker on quick mouse movements
   showTimeout = setTimeout(() => {
+    showTimeout = null
     if (currentTarget !== el) return
 
     const tooltip = createTooltipElement()
@@ -249,6 +251,6 @@ export const vTooltip: Directive<HTMLElement, TooltipValue> = {
       handlers.delete(el)
     }
     currentValues.delete(el)
-    hideTooltip()
+    if (currentTarget === el) hideTooltip()
   },
 }

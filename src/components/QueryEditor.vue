@@ -54,6 +54,7 @@ const emit = defineEmits<{
   'navigate-to-table': [ref: TableReferenceWithPosition]
   'ready': []
   'activate': []
+  'deactivate': []
 }>()
 
 const settingsStore = useSettingsStore()
@@ -585,13 +586,13 @@ watch(() => props.suggestion, (newSuggestion) => {
 onMounted(() => {
   if (!editorRef.value) return
 
-  let hasActivated = false
   const keyboardHandlers = EditorView.domEventHandlers({
     focus() {
-      if (!hasActivated) {
-        hasActivated = true
-        emit('activate')
-      }
+      emit('activate')
+      return false
+    },
+    blur() {
+      emit('deactivate')
       return false
     },
     keydown(event, view) {

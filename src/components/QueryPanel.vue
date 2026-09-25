@@ -184,9 +184,9 @@ const connectionDisplayName = computed(() => {
 // ---------------------------------------------------------------------------
 
 const currentEngine = computed(() => {
-  const tables = duckdbStore.tables
   const connectionType = boxConnection.value?.type
-  return getEffectiveEngine(connectionType, queryText.value, Object.keys(tables), boxConnection.value?.id, canvasStore.boxes)
+  if (!connectionType || isLocalConnectionType(connectionType)) return 'duckdb'
+  return getEffectiveEngine(connectionType, queryText.value, duckdbStore.getTableNames, boxConnection.value?.id, canvasStore.boxes)
 })
 
 const currentDialect = computed((): 'bigquery' | 'duckdb' => {
@@ -213,25 +213,44 @@ const canSuggestFix = computed(() => {
 // Editor schema for CodeMirror autocompletion.
 // DuckDB's own tables are always included; connection-specific schemas are
 // loaded asynchronously from the _schemas DuckDB table.
-// Schema loading is deferred until the editor is first focused to avoid
-// N redundant queries on page load with N SQL boxes.
+// Schema loading follows focus so idle editors do not all rebuild completions
+// when a query creates or updates a table.
 const editorSchema = ref<SchemaNamespace>({})
-const isEditorActive = ref(false)
+const isEditorFocused = ref(false)
 
 let schemaTimeout: ReturnType<typeof setTimeout> | null = null
-const updateEditorSchema = async () => {
+let schemaRequestId = 0
+let loadedSchemaVersion = -1
+let loadedConnectionKey = ''
+const getSchemaConnectionKey = () => {
+  const conn = boxConnection.value
+  return JSON.stringify([conn?.type ?? '', conn?.id ?? '', conn?.projectId ?? ''])
+}
+const updateEditorSchema = async (): Promise<void> => {
+  const schemaVersion = duckdbStore.schemaVersion
+  const connectionKey = getSchemaConnectionKey()
+  if (loadedSchemaVersion === schemaVersion && loadedConnectionKey === connectionKey) return
+  const requestId = ++schemaRequestId
   const duckdbSchema = duckdbStore.duckdbEditorSchema
   const conn = boxConnection.value
+  let schema: SchemaNamespace
   if (conn?.type && conn.type !== 'duckdb' && conn?.id) {
     const connectionSchema = await duckdbStore.getEditorSchema(
       conn.type,
       conn.id,
       conn.projectId,
     )
-    editorSchema.value = { ...duckdbSchema, ...connectionSchema }
+    schema = { ...duckdbSchema, ...connectionSchema }
   } else {
-    editorSchema.value = duckdbSchema
+    schema = duckdbSchema
   }
+  if (requestId !== schemaRequestId) return
+  if (schemaVersion !== duckdbStore.schemaVersion || connectionKey !== getSchemaConnectionKey()) {
+    return updateEditorSchema()
+  }
+  editorSchema.value = schema
+  loadedSchemaVersion = schemaVersion
+  loadedConnectionKey = connectionKey
 }
 
 // When layout switches, re-read the correct dimension and reset editor size
@@ -246,16 +265,21 @@ watch(isHorizontal, () => {
 })
 
 const handleEditorActivate = () => {
-  if (!isEditorActive.value) {
-    isEditorActive.value = true
-    updateEditorSchema()
-  }
+  isEditorFocused.value = true
+  if (schemaTimeout) clearTimeout(schemaTimeout)
+  void updateEditorSchema()
+}
+
+const handleEditorDeactivate = () => {
+  isEditorFocused.value = false
+  if (schemaTimeout) clearTimeout(schemaTimeout)
+  schemaRequestId++
 }
 
 watch(
   [() => boxConnection.value, () => duckdbStore.schemaVersion],
   () => {
-    if (!isEditorActive.value) return
+    if (!isEditorFocused.value) return
     if (schemaTimeout) clearTimeout(schemaTimeout)
     schemaTimeout = setTimeout(updateEditorSchema, 300)
   },
@@ -507,6 +531,8 @@ const requestFix = async () => {
   try {
     await queryHistoryStore.ready
     if (controller.signal.aborted) return
+    await updateEditorSchema()
+    if (controller.signal.aborted) return
 
     const sampleQueries = connectionId
       ? queryHistoryStore.getHistory({ connectionId, limit: 3, successOnly: true }).map(entry => entry.query)
@@ -718,6 +744,7 @@ defineExpose({
       @dismiss-suggestion="suggestion = null"
       @navigate-to-table="emit('navigate-to-table', $event)"
       @activate="handleEditorActivate"
+      @deactivate="handleEditorDeactivate"
       @ready="() => {}"
     />
 
