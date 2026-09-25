@@ -147,7 +147,8 @@ onUnmounted(() => {
 /* Override box border and background */
 :deep(.resizable-box) {
   border-color: var(--sticky-note-border);
-  background: var(--sticky-note-bg);
+  --box-header-bg: var(--sticky-note-border);
+  --box-content-bg: var(--sticky-note-bg);
 }
 
 .sticky-note-content {

@@ -247,7 +247,7 @@ onUnmounted(() => {
   top: 0;
   display: flex;
   flex-direction: column;
-  background: var(--surface-primary);
+  background: var(--box-header-bg);
   border: var(--box-border-width) solid var(--box-border-color);
   border-radius: var(--box-border-radius);
   box-shadow: var(--box-shadow);
@@ -328,6 +328,7 @@ onUnmounted(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: var(--box-content-bg, var(--surface-primary));
   overflow: hidden;
   cursor: auto;
   /* Browser-native viewport culling: skip rendering for off-screen boxes */
