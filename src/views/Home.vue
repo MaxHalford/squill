@@ -176,13 +176,10 @@ provide('executeBoxQuery', executeBoxQuery)
 const sortedBoxes = computed(() => [...canvasStore.boxes].sort((a, b) => a.id - b.id))
 
 // Computed: get the currently selected SQL box for creation buttons
-// Only returns the box if it's actually mounted (ref exists)
 const selectedSqlBox = computed(() => {
   if (canvasStore.selectedBoxId === null) return null
   const box = canvasStore.boxes.find(b => b.id === canvasStore.selectedBoxId)
-  if (!box || box.type !== 'sql') return null
-  // Only return the box if it's actually mounted
-  return sqlBoxRefs.value.has(box.id) ? box : null
+  return box?.type === 'sql' ? box : null
 })
 
 // Handle box created from MenuBar

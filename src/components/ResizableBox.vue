@@ -80,6 +80,7 @@ const handleContentClick = (e: MouseEvent) => {
 
 const handleHeaderMouseDown = (e: MouseEvent) => {
   if (!headerRef.value?.contains(e.target as Node)) return
+  if ((e.target as Element).closest('button, a, input, select, textarea, [contenteditable="true"], [role="button"]')) return
 
   e.stopPropagation()
   emit('select', { shouldPan: false })
@@ -303,8 +304,6 @@ onUnmounted(() => {
 .resizable-box.dragging {
   z-index: 100;
   outline: none !important;
-  /* GPU-accelerate during drag only */
-  will-change: transform;
 }
 
 .box-header {

@@ -96,13 +96,20 @@ const missingConnectionType = computed((): string | undefined => {
 // Dependency tracking
 // ---------------------------------------------------------------------------
 
+let cachedReferenceQuery: string | null = null
+let cachedReferences: string[] = []
+
 const updateDependenciesFromQuery = (query: string) => {
   try {
     // Track dependencies for ALL engines (not just DuckDB) so that
     // same-connection CTE chains also show dependency arrows.
-    const tableRefs = extractTableReferences(query)
-    const dependencyBoxIds = tableRefs
-      .filter(ref => !ref.includes('.')) // skip qualified remote refs
+    if (cachedReferenceQuery !== query) {
+      cachedReferences = extractTableReferences(query)
+        .filter(ref => !ref.includes('.')) // skip qualified remote refs
+      cachedReferenceQuery = query
+    }
+
+    const dependencyBoxIds = cachedReferences
       .map(ref => {
         const tableName = ref.replace(/`/g, '').toLowerCase()
         let boxId = duckdbStore.getTableBoxId(tableName)
@@ -119,7 +126,10 @@ const updateDependenciesFromQuery = (query: string) => {
       .filter((boxId): boxId is number => boxId !== null && boxId !== undefined && boxId !== props.boxId)
 
     const uniqueDeps = [...new Set(dependencyBoxIds)]
-    canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
+    const currentDeps = canvasStore.boxes.find(box => box.id === props.boxId)?.dependencies ?? []
+    if (currentDeps.length !== uniqueDeps.length || currentDeps.some((id, index) => id !== uniqueDeps[index])) {
+      canvasStore.updateBoxDependencies(props.boxId, uniqueDeps)
+    }
   } catch (err) {
     console.warn('Failed to update dependencies:', err)
   }
@@ -272,6 +282,7 @@ const handleUpdateName = async (newName: string) => {
 
 // A run command executes this box only. Dependencies are never run implicitly.
 const registeredRun = async () => {
+  if (panelIsEngineLoading.value || panelIsRunning.value) return
   lastQueryStartTime.value = performance.now()
   await queryPanelRef.value?.runQuery()
 }
@@ -333,8 +344,9 @@ defineExpose({
       <button
         v-tooltip="runButtonTooltip"
         class="header-action-btn"
-        :disabled="panelIsEngineLoading || panelIsRunning"
-        @click.stop="queryPanelRef?.runQuery()"
+        :disabled="panelIsEngineLoading"
+        :aria-disabled="panelIsRunning"
+        @click.stop="registeredRun"
       >
         <svg
           width="14"
@@ -351,8 +363,9 @@ defineExpose({
       <button
         v-tooltip="panelExplainDisabledReason || 'Explain query'"
         class="header-action-btn"
-        :disabled="panelIsEngineLoading || panelIsRunning || !!panelExplainDisabledReason"
-        @click.stop="queryPanelRef?.explainQuery({ clientX: $event.clientX, clientY: $event.clientY })"
+        :disabled="panelIsEngineLoading || !!panelExplainDisabledReason"
+        :aria-disabled="panelIsRunning"
+        @click.stop="!panelIsRunning && queryPanelRef?.explainQuery({ clientX: $event.clientX, clientY: $event.clientY })"
       >
         <svg
           width="14"
@@ -374,8 +387,9 @@ defineExpose({
         v-tooltip="formatButtonTooltip"
         class="header-action-btn"
         :class="{ formatted: panelJustFormatted }"
-        :disabled="panelIsEngineLoading || panelIsRunning || !sqlglotStore.isReady"
-        @click.stop="queryPanelRef?.formatQuery()"
+        :disabled="panelIsEngineLoading || !sqlglotStore.isReady"
+        :aria-disabled="panelIsRunning"
+        @click.stop="!panelIsRunning && queryPanelRef?.formatQuery()"
       >
         <svg
           v-if="panelJustFormatted"
