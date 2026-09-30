@@ -5,8 +5,8 @@ declare function importScripts(...urls: string[]): void
 declare function loadPyodide(config?: Record<string, unknown>): Promise<PyodideInterface>
 
 interface PyodideInterface {
-  loadPackage: (name: string) => Promise<void>
   runPython: (code: string) => unknown
+  unpackArchive: (archive: ArrayBuffer, format: string, options: { extractDir: string }) => void
   globals: {
     get: (name: string) => (...args: string[]) => string
   }
@@ -15,6 +15,7 @@ interface PyodideInterface {
 interface WorkerRequest {
   id: number
   type: 'init' | 'validate' | 'format' | 'parse-ctes'
+  baseUrl?: string
   query?: string
   dialect?: string
 }
@@ -42,7 +43,8 @@ export interface SqlGlotError {
   highlight: string
 }
 
-const PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v0.27.4/full/'
+const SQLGLOT_WHEEL = 'sqlglot-30.20.0-py3-none-any.whl'
+const SQLGLOT_SHA256 = '886fd92eba9bf944dee97164b16760f21576a7f55ef4a9211337903442e8aded'
 
 let pyodide: PyodideInterface | null = null
 
@@ -156,12 +158,18 @@ def parse_ctes(query, dialect="duckdb"):
         return json.dumps({"error": str(e)})
 `
 
-async function initPyodide(): Promise<void> {
-  importScripts(`${PYODIDE_CDN}pyodide.js`)
-  pyodide = await loadPyodide({ indexURL: PYODIDE_CDN })
-  await pyodide!.loadPackage('micropip')
-  const micropip = pyodide!.runPython('import micropip; micropip') as { install: (pkg: string) => Promise<void> }
-  await micropip.install('sqlglot')
+async function initPyodide(baseUrl: string): Promise<void> {
+  const pyodideBase = new URL(`${baseUrl}vendor/pyodide/`, self.location.origin).href
+  importScripts(`${pyodideBase}pyodide.js`)
+  pyodide = await loadPyodide({ indexURL: pyodideBase })
+  const response = await fetch(new URL(`${baseUrl}vendor/sqlglot/${SQLGLOT_WHEEL}`, self.location.origin))
+  if (!response.ok) throw new Error('Could not load the bundled SQL parser.')
+  const wheel = await response.arrayBuffer()
+  const digest = await crypto.subtle.digest('SHA-256', wheel)
+  const digestHex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  if (digestHex !== SQLGLOT_SHA256) throw new Error('The bundled SQL parser failed its integrity check.')
+  const sitePackages = pyodide.runPython("import site; site.getsitepackages()[0]") as string
+  pyodide.unpackArchive(wheel, 'wheel', { extractDir: sitePackages })
   pyodide!.runPython(PYTHON_CODE)
 }
 
@@ -170,7 +178,7 @@ onmessage = async (e: MessageEvent<WorkerRequest>) => {
 
   try {
     if (type === 'init') {
-      await initPyodide()
+      await initPyodide(e.data.baseUrl || '/')
       postMessage({ id, type: 'ready' } satisfies WorkerResponse)
       return
     }

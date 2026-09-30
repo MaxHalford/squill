@@ -5,6 +5,7 @@
  */
 
 import type { DatabaseEngine } from './database'
+import type { BigQueryJobReference } from './bigquery'
 
 /**
  * Tracks fetch state for a query result.
@@ -26,6 +27,7 @@ export interface QueryFetchState {
 
   /** BigQuery: page token for continuation */
   pageToken?: string
+  jobReference?: BigQueryJobReference
 
   /** Original query for fetching more rows */
   originalQuery?: string

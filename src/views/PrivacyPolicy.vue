@@ -31,7 +31,7 @@ const goBack = () => {
 const markdownContent = `
 # Privacy Policy
 
-**Last Updated: September 7, 2026**
+**Last Updated: September 30, 2026**
 
 ## Summary
 
@@ -47,7 +47,7 @@ Squill is a static, local-first SQL canvas. Squill has no application backend, n
 - There is no Squill server to receive your token, queries, or results.
 - You can revoke Squill's access from your Google Account permissions at any time.
 
-Squill requests read-only Google scopes needed to identify the selected account, discover accessible projects, inspect BigQuery metadata, and run BigQuery queries. It does not request BigQuery write access. Google's handling of this information is governed by [Google's Privacy Policy](https://policies.google.com/privacy).
+Squill requests Google account email and BigQuery read-only scopes to identify the account, discover accessible projects, inspect BigQuery metadata, and run queries. It does not request BigQuery write access. Google's BigQuery read-only scope may also permit Cloud Storage read access where your account already has permission; Squill does not call Cloud Storage. Google's handling of this information is governed by [Google's Privacy Policy](https://policies.google.com/privacy).
 
 ## Query execution
 
@@ -57,7 +57,7 @@ Query results are copied into an in-browser DuckDB WebAssembly database so Squil
 
 ## Local storage
 
-Squill uses IndexedDB and browser storage for canvas documents, query history, settings, non-secret connection metadata, schema caches, and query-result caches. This data remains on the device and browser profile where it was created. Clearing Squill's site data removes it.
+Squill uses IndexedDB and browser file storage (OPFS) for canvas documents, query history, settings, non-secret connection metadata, schema caches, imported files, and query-result caches. This data remains on the device and browser profile where it was created. Reset all data in Settings clears both stores; clearing Squill's site data also removes them. Signing out of Google does not erase local query data.
 
 Because Squill has no backend, it cannot recover, synchronize, or remotely delete local data for you.
 
@@ -72,10 +72,8 @@ When you explicitly click Suggest fix after a query error, Squill sends the fail
 The app may contact:
 
 - Google Identity Services and Google OAuth endpoints for authorization
-- Google Cloud Resource Manager to list accessible projects
 - Google BigQuery APIs for metadata and queries
 - OpenAI's Responses API, only when you explicitly request a line fix and have saved a key
-- Static asset hosts required by the in-browser SQL tooling
 - GitHub Pages to load the application itself
 
 Squill does not send this data to an operator-controlled application server.

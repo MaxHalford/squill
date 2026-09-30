@@ -17,6 +17,7 @@ export const SqlBoxLayoutSchema = z.enum(['vertical', 'horizontal'])
 export const SettingsSchema = z.object({
   fetchBatchSize: z.number().positive(),
   fetchPaginationEnabled: z.boolean(),
+  bigQueryMaxBytesBilledGiB: z.number().int().min(1).max(1024),
   paginationSize: z.number().positive(),
   panToBoxOnSelect: z.boolean(),
   themePreference: ThemePreferenceSchema,

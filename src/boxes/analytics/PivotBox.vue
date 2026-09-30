@@ -9,6 +9,7 @@ import { useConnectionsStore } from '../../stores/connections'
 import { useQueryResultsStore } from '../../stores/queryResults'
 import { useSettingsStore } from '../../stores/settings'
 import { buildAggregationQuery, buildPivotQuery } from '../../utils/pivotQueryBuilder'
+import { escapeIdentifier } from '../../utils/sqlSanitize'
 import { getTypeCategory } from '../../utils/typeUtils'
 import type { DatabaseEngine } from '../../types/database'
 import { getConnectionDisplayName } from '../../utils/connectionHelpers'
@@ -285,6 +286,7 @@ const runAggregationOnSource = async (query: string, storageTableName: string): 
       fetchedRows: result.rows.length,
       hasMoreRows: result.hasMore,
       pageToken: result.pageToken,
+      jobReference: result.jobReference,
       originalQuery: query,
       connectionId,
       schema: result.columns,
@@ -318,7 +320,7 @@ const handleRequestMoreData = async (_neededRows: number) => {
     if (engine === 'bigquery') {
       const pageToken = fetchState.pageToken
       if (!pageToken) return
-      const result = await bigqueryStore.runQueryPaginated(query, batchSize, pageToken, null, connectionId)
+      const result = await bigqueryStore.runQueryPaginated(query, batchSize, pageToken, null, connectionId, fetchState.jobReference)
       await duckdbStore.appendResults(tableName, result.rows as Record<string, unknown>[], schema)
       queryResultsStore.updateFetchProgress(props.boxId, fetchState.fetchedRows + result.rows.length, result.hasMore, result.pageToken)
     }
@@ -331,6 +333,7 @@ const handleRequestMoreData = async (_neededRows: number) => {
 
 // Apply ROUND() via DuckDB when decimals setting changes
 const applyDecimals = async (d: number | null) => {
+  if (d !== null && (!Number.isInteger(d) || d < 0 || d > 10)) return
   decimals.value = d
   if (!rawTableName.value) return
   const source = rawTableName.value
@@ -349,12 +352,13 @@ const applyDecimals = async (d: number | null) => {
     )
     const cols = info.rows.map(r => {
       const name = r.column_name as string
+      const identifier = escapeIdentifier(name)
       const type = (r.data_type as string).toLowerCase()
       const isNumeric = /int|float|double|decimal|numeric|real|bigint|smallint|tinyint|hugeint/.test(type)
-      return isNumeric ? `ROUND("${name}", ${d}) AS "${name}"` : `"${name}"`
+      return isNumeric ? `ROUND(${identifier}, ${d}) AS ${identifier}` : identifier
     })
     await duckdbStore.runQueryWithStorage(
-      `SELECT ${cols.join(', ')} FROM "${source}"`, roundedName, null
+      `SELECT ${cols.join(', ')} FROM ${escapeIdentifier(source)}`, roundedName, null
     )
     displayTableName.value = roundedName
   } catch {

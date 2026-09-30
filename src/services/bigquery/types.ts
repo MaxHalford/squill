@@ -10,6 +10,7 @@ import type {
   BigQueryDataset,
   BigQueryTable,
   BigQueryField,
+  BigQueryJobReference,
 } from '../../types/bigquery'
 import type { TableMetadataInfo } from '../../types/database'
 
@@ -30,7 +31,7 @@ export interface BigQueryPaginatedQueryResult {
   totalRows: number | null
   hasMore: boolean
   pageToken?: string
-  jobReference?: { projectId: string; jobId: string }
+  jobReference?: BigQueryJobReference
   stats: { totalBytesProcessed?: string; cacheHit?: boolean }
 }
 
@@ -59,9 +60,7 @@ export interface BigQueryClient {
   ): Promise<BigQueryQueryResult>
 
   /**
-   * Run a SQL query with pagination support.
-   * Note: the CLI implementation returns the full result in a single page
-   * (hasMore: false) since `bq query` doesn't expose pageToken.
+   * Submit a query or fetch another page from the existing job.
    */
   runQueryPaginated(
     query: string,
@@ -69,6 +68,7 @@ export interface BigQueryClient {
     options?: {
       maxResults?: number
       pageToken?: string
+      jobReference?: BigQueryJobReference
       signal?: AbortSignal | null
     },
   ): Promise<BigQueryPaginatedQueryResult>

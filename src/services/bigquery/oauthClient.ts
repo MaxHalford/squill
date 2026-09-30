@@ -6,6 +6,7 @@
  */
 
 import { useConnectionsStore } from '../../stores/connections'
+import { useSettingsStore } from '../../stores/settings'
 import { convertBigQueryRows, extractSimpleSchema } from '../../utils/bigqueryConversion'
 import type {
   BigQueryProject,
@@ -13,6 +14,7 @@ import type {
   BigQueryTable,
   BigQueryField,
   BigQueryQueryResponse,
+  BigQueryJobReference,
   BigQueryTableDetail,
 } from '../../types/bigquery'
 import type { TableMetadataInfo } from '../../types/database'
@@ -39,6 +41,9 @@ function extractTableMetadata(data: BigQueryTableDetail): TableMetadataInfo {
 
 export function createOAuthClient(connectionId: string): BigQueryClient {
   const connectionsStore = useConnectionsStore()
+  const settingsStore = useSettingsStore()
+
+  const maximumBytesBilled = () => String(settingsStore.bigQueryMaxBytesBilledGiB * 1024 ** 3)
 
   async function getToken(): Promise<string> {
     const cached = connectionsStore.getAccessToken(connectionId)
@@ -86,10 +91,30 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
     return allItems
   }
 
+  async function getQueryResults(
+    jobReference: BigQueryJobReference,
+    signal: AbortSignal | null,
+    maxResults?: number,
+    pageToken?: string,
+  ): Promise<BigQueryQueryResponse> {
+    const params = new URLSearchParams({ timeoutMs: '10000' })
+    if (maxResults !== undefined) params.set('maxResults', String(maxResults))
+    if (pageToken) params.set('pageToken', pageToken)
+    if (jobReference.location) params.set('location', jobReference.location)
+
+    return apiCall<BigQueryQueryResponse>(token => {
+      const fetchOptions: RequestInit = { headers: { Authorization: `Bearer ${token}` } }
+      if (signal) fetchOptions.signal = signal
+      return fetch(
+        `${BQ_BASE}/projects/${encodeURIComponent(jobReference.projectId)}/queries/${encodeURIComponent(jobReference.jobId)}?${params}`,
+        fetchOptions,
+      )
+    })
+  }
+
   /** Poll getQueryResults with exponential backoff until the job completes. */
   async function pollQueryResults(
-    projectId: string,
-    jobId: string,
+    jobReference: BigQueryJobReference,
     signal: AbortSignal | null,
     maxResults?: number,
   ): Promise<BigQueryQueryResponse> {
@@ -105,16 +130,7 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
       await new Promise(resolve => setTimeout(resolve, delay))
       attempt++
 
-      const params = new URLSearchParams({ timeoutMs: '10000' })
-      if (maxResults !== undefined) params.set('maxResults', String(maxResults))
-
-      const data = await apiCall<BigQueryQueryResponse>(token => {
-        const fetchOptions: RequestInit = {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-        if (signal) fetchOptions.signal = signal
-        return fetch(`${BQ_BASE}/projects/${projectId}/queries/${jobId}?${params}`, fetchOptions)
-      })
+      const data = await getQueryResults(jobReference, signal, maxResults)
       if (data.jobComplete !== false) return data
     }
   }
@@ -143,24 +159,21 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
     })
 
     if (data.jobComplete === false && data.jobReference) {
-      return pollQueryResults(projectId, data.jobReference.jobId, signal, pollMaxResults)
+      const polled = await pollQueryResults(data.jobReference, signal, pollMaxResults)
+      return { ...polled, jobReference: polled.jobReference ?? data.jobReference }
     }
     return data
   }
 
   return {
     async listProjects(): Promise<BigQueryProject[]> {
-      const data = await apiCall<{
-        projects?: Array<{ projectId: string; displayName?: string; state: string }>
-      }>(token =>
-        fetch(
-          'https://cloudresourcemanager.googleapis.com/v3/projects:search?query=state:ACTIVE',
-          { headers: { Authorization: `Bearer ${token}` } },
-        ),
-      )
-      return (data.projects || []).map(p => ({
-        projectId: p.projectId,
-        name: p.displayName || p.projectId,
+      const projects = await paginatedList<{
+        projectReference: { projectId: string }
+        friendlyName?: string
+      }>(`${BQ_BASE}/projects`, 'projects')
+      return projects.map(project => ({
+        projectId: project.projectReference.projectId,
+        name: project.friendlyName || project.projectReference.projectId,
       }))
     },
 
@@ -204,6 +217,7 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
         query,
         useLegacySql: false,
         useQueryCache: true,
+        maximumBytesBilled: maximumBytesBilled(),
         formatOptions: { useInt64Timestamp: false },
       }, signal)
 
@@ -221,21 +235,27 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
     async runQueryPaginated(
       query: string,
       projectId: string,
-      options: { maxResults?: number; pageToken?: string; signal?: AbortSignal | null } = {},
+      options: { maxResults?: number; pageToken?: string; jobReference?: BigQueryJobReference; signal?: AbortSignal | null } = {},
     ): Promise<BigQueryPaginatedQueryResult> {
       const maxResults = options.maxResults ?? 5000
       const signal = options.signal ?? null
 
-      const body: Record<string, unknown> = {
-        query,
-        useLegacySql: false,
-        useQueryCache: true,
-        maxResults,
-        formatOptions: { useInt64Timestamp: false },
+      let data: BigQueryQueryResponse
+      if (options.pageToken) {
+        if (!options.jobReference?.projectId || !options.jobReference.jobId) {
+          throw new Error('Cannot fetch more BigQuery rows without the original job reference.')
+        }
+        data = await getQueryResults(options.jobReference, signal, maxResults, options.pageToken)
+      } else {
+        data = await submitQuery(projectId, {
+          query,
+          useLegacySql: false,
+          useQueryCache: true,
+          maximumBytesBilled: maximumBytesBilled(),
+          maxResults,
+          formatOptions: { useInt64Timestamp: false },
+        }, signal, maxResults)
       }
-      if (options.pageToken) body.pageToken = options.pageToken
-
-      const data = await submitQuery(projectId, body, signal, maxResults)
 
       const stats = {
         totalBytesProcessed: data.totalBytesProcessed || '0',
@@ -243,9 +263,7 @@ export function createOAuthClient(connectionId: string): BigQueryClient {
       }
       const totalRows = data.totalRows ? parseInt(data.totalRows as unknown as string, 10) : null
       const hasMore = !!data.pageToken
-      const jobReference = data.jobReference
-        ? { projectId: data.jobReference.projectId, jobId: data.jobReference.jobId }
-        : undefined
+      const jobReference = data.jobReference ?? options.jobReference
 
       if (data.schema && data.rows) {
         const rows = convertBigQueryRows(data.rows, data.schema.fields)

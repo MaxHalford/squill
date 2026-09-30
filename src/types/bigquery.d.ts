@@ -13,6 +13,12 @@ export interface BigQueryRow {
   f: Array<{ v: unknown }>
 }
 
+export interface BigQueryJobReference {
+  projectId: string
+  jobId: string
+  location?: string
+}
+
 export interface BigQueryQueryResponse {
   schema?: BigQuerySchema
   rows?: BigQueryRow[]
@@ -21,11 +27,7 @@ export interface BigQueryQueryResponse {
   totalRows?: string  // BigQuery returns this as a string
   pageToken?: string  // Token for pagination
   jobComplete?: boolean  // false when query is still running
-  jobReference?: {
-    projectId: string
-    jobId: string
-    location: string
-  }
+  jobReference?: BigQueryJobReference
 }
 
 export interface BigQueryProject {

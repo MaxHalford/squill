@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as duckdb from '@duckdb/duckdb-wasm'
 import type { AsyncDuckDB, AsyncDuckDBConnection } from '@duckdb/duckdb-wasm'
+import { SQUILL_DUCKDB_FILE } from '../utils/opfsStorage'
 import { DataType as ArrowDataType } from 'apache-arrow'
 import {
   buildLocalDataReaderSql,
@@ -172,6 +173,15 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   const databaseUsage = ref<DuckDBDatabaseUsage | null>(null)
   const databaseUsageError = ref<string | null>(null)
 
+  const closeForReset = async (): Promise<void> => {
+    if (initPromise) await initPromise.catch(() => undefined)
+    if (conn.value) await conn.value.close()
+    if (db.value) await db.value.terminate()
+    conn.value = null
+    db.value = null
+    isInitialized.value = false
+  }
+
   // Schema refresh progress (set by MenuBar, read by Home.vue)
   const schemaRefreshMessage = ref<string | null>(null)
 
@@ -237,7 +247,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         // Open with OPFS persistence; fall back to in-memory if unavailable
         try {
           await db.value.open({
-            path: 'opfs://squill.duckdb',
+            path: `opfs://${SQUILL_DUCKDB_FILE}`,
             accessMode: duckdb.DuckDBAccessMode.READ_WRITE,
           })
           isPersistent.value = true
@@ -591,7 +601,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
             const duckdbType = sourceEngine === 'bigquery'
               ? mapBigQueryTypeToDuckDB(col.type)
               : 'VARCHAR'
-            return `"${col.name}" ${duckdbType}`
+            return `${escapeIdentifier(col.name)} ${duckdbType}`
           }).join(', ')
           await conn.value!.query(`CREATE OR REPLACE TABLE ${quoted} (${columnDefs})`)
         } else {
@@ -631,19 +641,20 @@ export const useDuckDBStore = defineStore('duckdb', () => {
 
         // Build column definitions with BigQuery-specific type casts
         const columnDefs = columns.map(col => {
+          const identifier = escapeIdentifier(col)
           const sourceType = schemaMap.get(col)
           const duckdbType = sourceType ? mapBigQueryTypeToDuckDB(sourceType) : 'VARCHAR'
           // Cast JSON string values to proper DuckDB types
           if (duckdbType === 'TIMESTAMP') {
-            return `"${col}"::TIMESTAMP AS "${col}"`
+            return `${identifier}::TIMESTAMP AS ${identifier}`
           } else if (duckdbType === 'DATE') {
-            return `"${col}"::DATE AS "${col}"`
+            return `${identifier}::DATE AS ${identifier}`
           } else if (duckdbType === 'TIME') {
-            return `"${col}"::TIME AS "${col}"`
+            return `${identifier}::TIME AS ${identifier}`
           } else if (duckdbType === 'JSON') {
-            return `to_json("${col}") AS "${col}"`
+            return `to_json(${identifier}) AS ${identifier}`
           }
-          return `"${col}"`
+          return identifier
         }).join(', ')
 
         await conn.value!.query(
@@ -651,7 +662,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
         )
       } else {
         // Local results are already represented with JavaScript-native values.
-        const columnList = columns.map(c => `"${c}"`).join(', ')
+        const columnList = columns.map(escapeIdentifier).join(', ')
         await conn.value!.query(
           `CREATE OR REPLACE TABLE ${quoted} AS SELECT ${columnList} FROM read_json_auto('${jsonFileName}')`
         )
@@ -1312,6 +1323,7 @@ export const useDuckDBStore = defineStore('duckdb', () => {
   }
 
   return {
+    closeForReset,
     isInitialized,
     isInitializing,
     initError,

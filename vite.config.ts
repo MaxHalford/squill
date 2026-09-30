@@ -6,6 +6,12 @@ import path from 'path'
 export default defineConfig(({ command }) => ({
   plugins: [
     vue(),
+    {
+      name: 'production-csp',
+      transformIndexHtml(html) {
+        return html.replace('__DEV_CONNECT_SRC__', command === 'serve' ? ' ws://localhost:* http://localhost:*' : '')
+      },
+    },
   ],
   base: process.env.VITE_BASE_PATH || (command === 'build' ? '/squill/' : '/'),
   build: {

@@ -9,6 +9,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { QueryFetchState } from '../types/pagination'
 import type { DatabaseEngine } from '../types/database'
+import type { BigQueryJobReference } from '../types/bigquery'
 
 export const useQueryResultsStore = defineStore('queryResults', () => {
   // Fetch state per box ID
@@ -25,6 +26,7 @@ export const useQueryResultsStore = defineStore('queryResults', () => {
       fetchedRows?: number
       hasMoreRows?: boolean
       pageToken?: string
+      jobReference?: BigQueryJobReference
       originalQuery?: string
       connectionId?: string
       schema?: { name: string; type: string }[]
@@ -38,6 +40,7 @@ export const useQueryResultsStore = defineStore('queryResults', () => {
       isBackgroundLoading: false,
       sourceEngine: engine,
       pageToken: options.pageToken,
+      jobReference: options.jobReference,
       originalQuery: options.originalQuery,
       connectionId: options.connectionId,
       schema: options.schema

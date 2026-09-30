@@ -13,8 +13,13 @@ const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
 export const BIGQUERY_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/bigquery.readonly',
-  'https://www.googleapis.com/auth/cloud-platform.read-only',
 ]
+
+export function hasOnlyRequiredBigQueryScopes(grantedScopes: string | undefined): boolean {
+  if (!grantedScopes) return false
+  const granted = new Set(grantedScopes.split(/\s+/).filter(Boolean))
+  return granted.size === BIGQUERY_SCOPES.length && BIGQUERY_SCOPES.every(scope => granted.has(scope))
+}
 
 export interface BigQueryAuthorization {
   email: string
@@ -72,7 +77,7 @@ async function requestToken(
   authorizationUrl.searchParams.set('redirect_uri', redirectUri)
   authorizationUrl.searchParams.set('response_type', 'token')
   authorizationUrl.searchParams.set('scope', BIGQUERY_SCOPES.join(' '))
-  authorizationUrl.searchParams.set('include_granted_scopes', 'true')
+  authorizationUrl.searchParams.set('include_granted_scopes', 'false')
   authorizationUrl.searchParams.set('state', state)
   if (options.prompt) authorizationUrl.searchParams.set('prompt', options.prompt)
   if (options.hint) authorizationUrl.searchParams.set('login_hint', options.hint)
@@ -159,6 +164,10 @@ export async function authorizeBigQuery(
     prompt: options.prompt ?? '',
     hint: options.expectedEmail,
   })
+
+  if (!hasOnlyRequiredBigQueryScopes(response.scope)) {
+    throw new Error('Google returned unexpected permissions. Revoke Squill access in your Google Account and connect again.')
+  }
 
   const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
     headers: { Authorization: `Bearer ${response.access_token}` },
