@@ -72,7 +72,7 @@ describe('Full pivot pipeline', () => {
 
     const phase1 = buildAggregationQuery(c, 'duckdb')
     expect(phase1).toContain("STRFTIME('%Y-%m', \"order_date\")")
-    expect(phase1).toContain('AS order_date_month')
+    expect(phase1).toContain('AS "order_date_month"')
     expect(phase1).toContain('"product"')
 
     const phase2 = buildPivotQuery('_pivot_2_agg', c)
@@ -130,7 +130,7 @@ describe('Full pivot pipeline', () => {
     const phase1 = buildAggregationQuery(c, 'duckdb')
     expect(phase1).toContain('fiscal_date_quarter')
     expect(phase1).toContain('QUARTER')  // Quarter expression includes QUARTER function
-    expect(phase1).toContain('EXTRACT(YEAR FROM "fiscal_date") AS fiscal_date_year')
+    expect(phase1).toContain('EXTRACT(YEAR FROM "fiscal_date") AS "fiscal_date_year"')
 
     const phase2 = buildPivotQuery('_pivot_4_agg', c)
     expect(phase2).toContain('ON "fiscal_date_year"')

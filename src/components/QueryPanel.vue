@@ -311,6 +311,7 @@ const fetchNextBatch = async (
 
       const result = await bigqueryStore.runQueryPaginated(
         query, batchSize, pageToken, backgroundLoadController.signal, boxConnection.value?.id,
+        queryResultsStore.getFetchState(props.boxId)?.jobReference,
       )
       await duckdbStore.appendResults(tableName, result.rows as Record<string, unknown>[], schema)
 
@@ -444,6 +445,7 @@ const runQuery = async (overrideQuery?: string): Promise<QueryCompleteEvent> => 
             fetchedRows: paginatedResult.rows.length,
             hasMoreRows: paginatedResult.hasMore,
             pageToken: paginatedResult.pageToken,
+            jobReference: paginatedResult.jobReference,
             originalQuery: finalQuery,
             connectionId,
             schema: paginatedResult.columns,

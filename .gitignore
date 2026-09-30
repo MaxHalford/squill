@@ -8,6 +8,7 @@ lerna-debug.log*
 
 node_modules
 dist
+/public/vendor/pyodide/
 dist-ssr
 *.local
 .vscode/*

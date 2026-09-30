@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useOpenAIStore } from '../stores/openai'
+import { useDuckDBStore } from '../stores/duckdb'
 import { useDialog } from '../composables/useDialog'
 import { MONO_FONT_OPTIONS, type MonoFontId } from '../utils/fonts'
 
@@ -17,6 +18,7 @@ const emit = defineEmits<{
 
 const settingsStore = useSettingsStore()
 const openAIStore = useOpenAIStore()
+const duckdbStore = useDuckDBStore()
 
 // Accent color palette presets
 const accentColors = [
@@ -29,12 +31,15 @@ const accentColors = [
 
 // Settings state
 const fetchBatchInputValue = ref<number | string>(settingsStore.fetchBatchSize)
+const bigQueryMaxBytesBilledInputValue = ref<number | string>(settingsStore.bigQueryMaxBytesBilledGiB)
 const paginationInputValue = ref<number | string>(settingsStore.paginationSize)
 const editorFontSizeInputValue = ref<number | string>(settingsStore.editorFontSize)
 const openAIApiKeyInput = ref('')
 const showOpenAIApiKey = ref(false)
 const isSavingOpenAIApiKey = ref(false)
 const openAIKeyStatus = ref('')
+const resetError = ref('')
+const isResetting = ref(false)
 
 watch(() => props.show, (show) => {
   if (!show) {
@@ -82,6 +87,12 @@ const handleFetchBatchChange = (e: Event) => {
   }, 500)
 }
 
+const handleBigQueryMaxBytesBilledChange = (e: Event) => {
+  const value = (e.target as HTMLInputElement).value
+  bigQueryMaxBytesBilledInputValue.value = value
+  settingsStore.setBigQueryMaxBytesBilledGiB(Number(value))
+}
+
 // Handle pagination size changes with debouncing
 let paginationDebounceTimer: ReturnType<typeof setTimeout> | null = null
 const handlePaginationChange = (e: Event) => {
@@ -119,6 +130,10 @@ watch(() => settingsStore.fetchBatchSize, (newValue) => {
   fetchBatchInputValue.value = newValue
 })
 
+watch(() => settingsStore.bigQueryMaxBytesBilledGiB, (newValue) => {
+  bigQueryMaxBytesBilledInputValue.value = newValue
+})
+
 // Sync pagination input when store changes
 watch(() => settingsStore.paginationSize, (newValue) => {
   paginationInputValue.value = newValue
@@ -132,10 +147,19 @@ watch(() => settingsStore.editorFontSize, (newValue) => {
 // Handle reset all data
 const handleResetAll = async () => {
   const confirmed = await confirm('This will clear all data including connections, queries, and cached results. Are you sure?')
-  if (confirmed) {
+  if (confirmed && !isResetting.value) {
+    isResetting.value = true
+    resetError.value = ''
     const { deleteDatabase } = await import('../utils/db')
-    await deleteDatabase()
-    window.location.reload()
+    try {
+      await duckdbStore.closeForReset()
+      await deleteDatabase()
+      window.location.reload()
+    } catch (error) {
+      resetError.value = error instanceof Error ? error.message : 'Reset failed. Clear site data in browser settings instead.'
+    } finally {
+      isResetting.value = false
+    }
   }
 }
 </script>
@@ -201,6 +225,29 @@ const handleResetAll = async () => {
                     max="100000"
                     class="setting-input-number"
                     @input="handleFetchBatchChange"
+                  >
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="setting-header">
+                BigQuery billing limit
+              </div>
+              <div class="setting-description">
+                Maximum bytes billed per query. Queries above this limit fail before incurring a scan charge. The default is 10 GiB.
+              </div>
+              <div class="setting-row">
+                <label class="setting-label">
+                  <span>GiB per query</span>
+                  <input
+                    type="number"
+                    :value="bigQueryMaxBytesBilledInputValue"
+                    min="1"
+                    max="1024"
+                    step="1"
+                    class="setting-input-number"
+                    @change="handleBigQueryMaxBytesBilledChange"
                   >
                 </label>
               </div>
@@ -503,10 +550,14 @@ const handleResetAll = async () => {
               </div>
               <button
                 class="reset-button"
+                :disabled="isResetting"
                 @click="handleResetAll"
               >
                 Reset all data
               </button>
+              <p v-if="resetError" role="alert">
+                {{ resetError }}
+              </p>
             </div>
           </div>
         </div>

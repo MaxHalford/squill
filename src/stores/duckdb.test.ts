@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
   const unescapeIdentifier = (value: string) => value.replace(/""/g, '"')
 
   const connection = {
+    close: vi.fn(async () => undefined),
     query: vi.fn(async (sql: string) => {
       const normalized = sql.trim()
       statements.push(normalized)
@@ -90,10 +91,12 @@ const mocks = vi.hoisted(() => {
   }
 
   const database = {
+    terminate: vi.fn(async () => undefined),
     instantiate: vi.fn(async () => undefined),
     open: vi.fn(async () => undefined),
     connect: vi.fn(async () => connection),
     registerFileHandle: vi.fn(async () => undefined),
+    registerFileText: vi.fn(async () => undefined),
     dropFile: vi.fn(async () => undefined),
     flushFiles: vi.fn(async () => undefined),
   }
@@ -107,8 +110,10 @@ vi.mock('@duckdb/duckdb-wasm', () => ({
     open = mocks.database.open
     connect = mocks.database.connect
     registerFileHandle = mocks.database.registerFileHandle
+    registerFileText = mocks.database.registerFileText
     dropFile = mocks.database.dropFile
     flushFiles = mocks.database.flushFiles
+    terminate = mocks.database.terminate
   },
   ConsoleLogger: class {},
   DuckDBAccessMode: { READ_WRITE: 3 },
@@ -130,6 +135,32 @@ describe('DuckDB local data imports', () => {
   })
 
   afterEach(() => vi.restoreAllMocks())
+
+  it('closes the connection and worker before resetting browser storage', async () => {
+    const store = useDuckDBStore()
+    await store.initialize()
+    await store.closeForReset()
+
+    expect(mocks.connection.close).toHaveBeenCalledOnce()
+    expect(mocks.database.terminate).toHaveBeenCalledOnce()
+    expect(store.isInitialized).toBe(false)
+  })
+
+  it('escapes source column names when storing query results', async () => {
+    const store = useDuckDBStore()
+    await store.initialize()
+    mocks.statements.length = 0
+    const column = 'value"; DROP TABLE secrets; --'
+
+    await store.storeResults('empty', [], null, [{ name: column, type: 'TIMESTAMP' }], 'bigquery')
+    await store.storeResults('filled', [{ [column]: '2026-09-30T00:00:00Z' }], null, [{ name: column, type: 'TIMESTAMP' }], 'bigquery')
+    await store.storeResults('local', [{ [column]: 'text' }])
+
+    const escaped = '"value""; DROP TABLE secrets; --"'
+    expect(mocks.statements).toContain(`CREATE OR REPLACE TABLE "empty" (${escaped} TIMESTAMP)`)
+    expect(mocks.statements).toContain(`CREATE OR REPLACE TABLE "filled" AS SELECT ${escaped}::TIMESTAMP AS ${escaped} FROM read_json_auto('filled.json')`)
+    expect(mocks.statements).toContain(`CREATE OR REPLACE TABLE "local" AS SELECT ${escaped} FROM read_json_auto('local.json')`)
+  })
 
   it('materializes a file, registers metadata, and refreshes usage', async () => {
     const store = useDuckDBStore()

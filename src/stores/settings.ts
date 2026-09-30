@@ -12,6 +12,7 @@ interface Settings {
   // Fetch pagination: rows loaded per batch from source databases
   fetchBatchSize: number
   fetchPaginationEnabled: boolean
+  bigQueryMaxBytesBilledGiB: number
   paginationSize: number  // Display pagination: rows per page in UI
   panToBoxOnSelect: boolean
   themePreference: ThemePreference
@@ -33,6 +34,7 @@ interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   fetchBatchSize: 500,  // Rows loaded per batch from source databases
   fetchPaginationEnabled: true,
+  bigQueryMaxBytesBilledGiB: 10,
   paginationSize: 100,  // Display pagination: rows per page in UI
   panToBoxOnSelect: true,
   themePreference: 'system',
@@ -50,6 +52,7 @@ export const useSettingsStore = defineStore('settings', () => {
   // Refs start with defaults, hydrate from IDB when ready
   const fetchBatchSize = ref(DEFAULT_SETTINGS.fetchBatchSize)
   const fetchPaginationEnabled = ref(DEFAULT_SETTINGS.fetchPaginationEnabled)
+  const bigQueryMaxBytesBilledGiB = ref(DEFAULT_SETTINGS.bigQueryMaxBytesBilledGiB)
   const paginationSize = ref(DEFAULT_SETTINGS.paginationSize)
   const panToBoxOnSelect = ref(DEFAULT_SETTINGS.panToBoxOnSelect)
   const themePreference = ref<ThemePreference>(DEFAULT_SETTINGS.themePreference)
@@ -65,6 +68,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const applySettings = (s: Settings) => {
     fetchBatchSize.value = s.fetchBatchSize
     fetchPaginationEnabled.value = s.fetchPaginationEnabled
+    bigQueryMaxBytesBilledGiB.value = s.bigQueryMaxBytesBilledGiB
     paginationSize.value = s.paginationSize
     panToBoxOnSelect.value = s.panToBoxOnSelect
     themePreference.value = s.themePreference
@@ -81,6 +85,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const collectSettings = (): Settings => ({
     fetchBatchSize: fetchBatchSize.value,
     fetchPaginationEnabled: fetchPaginationEnabled.value,
+    bigQueryMaxBytesBilledGiB: bigQueryMaxBytesBilledGiB.value,
     paginationSize: paginationSize.value,
     panToBoxOnSelect: panToBoxOnSelect.value,
     themePreference: themePreference.value,
@@ -117,7 +122,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const ready = loadState()
 
   // Watch for changes and auto-save
-  watch([fetchBatchSize, fetchPaginationEnabled, paginationSize, panToBoxOnSelect, themePreference, showEditorLineNumbers, editorFontSize, monoFont, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled, sqlBoxLayout], saveState)
+  watch([fetchBatchSize, fetchPaginationEnabled, bigQueryMaxBytesBilledGiB, paginationSize, panToBoxOnSelect, themePreference, showEditorLineNumbers, editorFontSize, monoFont, tableLinkEnabled, accentColor, canvasPattern, voiceNotifyEnabled, sqlBoxLayout], saveState)
 
   // Reactive system theme tracking
   const systemTheme = ref<'light' | 'dark'>(
@@ -145,6 +150,12 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const toggleFetchPagination = () => {
     fetchPaginationEnabled.value = !fetchPaginationEnabled.value
+  }
+
+  const setBigQueryMaxBytesBilledGiB = (value: number) => {
+    if (Number.isInteger(value) && value >= 1 && value <= 1024) {
+      bigQueryMaxBytesBilledGiB.value = value
+    }
   }
 
   const setPaginationSize = (value: string | number) => {
@@ -216,6 +227,8 @@ export const useSettingsStore = defineStore('settings', () => {
     // Fetch pagination (rows loaded per batch from source)
     fetchBatchSize,
     fetchPaginationEnabled,
+    bigQueryMaxBytesBilledGiB,
+    setBigQueryMaxBytesBilledGiB,
     setFetchBatchSize,
     toggleFetchPagination,
     // Display pagination (rows per page in UI)

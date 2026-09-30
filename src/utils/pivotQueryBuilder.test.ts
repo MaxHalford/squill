@@ -65,6 +65,12 @@ describe('quoteIdentifier', () => {
   it('uses double quotes for DuckDB', () => {
     expect(quoteIdentifier('col', 'duckdb')).toBe('"col"')
   })
+
+  it('escapes embedded identifier delimiters', () => {
+    expect(quoteIdentifier('a"b', 'duckdb')).toBe('"a""b"')
+    expect(quoteIdentifier('a`b', 'bigquery')).toBe('`a\\`b`')
+    expect(quoteIdentifier('a\\`b', 'bigquery')).toBe('`a\\\\\\`b`')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -72,9 +78,9 @@ describe('quoteIdentifier', () => {
 // ---------------------------------------------------------------------------
 
 describe('quoteAlias', () => {
-  it('returns unquoted aliases', () => {
-    expect(quoteAlias('metric_value', 'duckdb')).toBe('metric_value')
-    expect(quoteAlias('metric_value', 'bigquery')).toBe('metric_value')
+  it('quotes aliases as identifiers', () => {
+    expect(quoteAlias('metric_value', 'duckdb')).toBe('"metric_value"')
+    expect(quoteAlias('metric_value', 'bigquery')).toBe('`metric_value`')
   })
 })
 
@@ -175,6 +181,15 @@ describe('buildFieldExpression', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildFilterClause', () => {
+  it('rejects an operator outside the supported list', () => {
+    const filter: PivotFilter = {
+      field: 'region',
+      operator: 'OR 1=1' as PivotFilter['operator'],
+      value: 'x',
+      typeCategory: 'text',
+    }
+    expect(() => buildFilterClause([filter], 'duckdb')).toThrow('Unsupported pivot filter operator')
+  })
   it('returns empty string for no filters', () => {
     expect(buildFilterClause([], 'duckdb')).toBe('')
   })
@@ -258,6 +273,13 @@ describe('buildFilterClause', () => {
     expect(clause).toContain('`col`')
   })
 
+  it('escapes BigQuery backslashes before string delimiters', () => {
+    const filters: PivotFilter[] = [
+      { field: 'col', operator: '=', value: "x\\' OR 1=1 --", typeCategory: 'text' },
+    ]
+    expect(buildFilterClause(filters, 'bigquery')).toBe("WHERE `col` = 'x\\\\\\' OR 1=1 --'")
+  })
+
   it('uses unquoted boolean literals for boolean filters', () => {
     const filters: PivotFilter[] = [
       { field: 'active', operator: '=', value: 'true', typeCategory: 'boolean' },
@@ -296,6 +318,16 @@ describe('buildFromClause', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildAggregationQuery', () => {
+  it('keeps imported column names inside identifiers', () => {
+    const config = baseConfig({
+      rowFields: [textField('region"; DROP TABLE secrets; --')],
+      metrics: [{ field: 'sales"; DROP TABLE secrets; --', aggregation: 'sum' }],
+    })
+    const sql = buildAggregationQuery(config, 'duckdb')
+    expect(sql).toContain('"region""; DROP TABLE secrets; --"')
+    expect(sql).toContain('SUM("sales""; DROP TABLE secrets; --")')
+    expect(sql).toContain('AS "sum_sales""; DROP TABLE secrets; --"')
+  })
   it('builds basic SUM query with one row field', () => {
     const config = baseConfig({
       rowFields: [textField('region')],
@@ -440,6 +472,16 @@ describe('buildAggregationQuery', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildPivotQuery', () => {
+  it('escapes imported column names in the pivot statement', () => {
+    const config = baseConfig({
+      rowFields: [textField('row"name')],
+      columnField: textField('column"name'),
+    })
+    const sql = buildPivotQuery('table"name', config)
+    expect(sql).toContain('PIVOT "table""name"')
+    expect(sql).toContain('ON "column""name"')
+    expect(sql).toContain('GROUP BY "row""name"')
+  })
   it('builds basic PIVOT query', () => {
     const config = baseConfig({
       rowFields: [textField('region')],

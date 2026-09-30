@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie'
+import { deleteSquillDuckDBFiles } from './opfsStorage'
 
 export interface KVEntry<T = unknown> {
   key: string
@@ -47,5 +48,9 @@ export const dbReady: Promise<void> = db.open().then(() => {}).catch(async (err)
  * After calling this, the page should be reloaded.
  */
 export async function deleteDatabase(): Promise<void> {
+  if (navigator.storage?.getDirectory) {
+    const root = await navigator.storage.getDirectory()
+    await deleteSquillDuckDBFiles(root)
+  }
   await db.delete()
 }

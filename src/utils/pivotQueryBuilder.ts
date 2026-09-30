@@ -8,6 +8,7 @@
  */
 
 import type { DatabaseEngine } from '../types/database'
+import { escapeIdentifier } from './sqlSanitize'
 import type {
   PivotConfig,
   PivotField,
@@ -23,11 +24,14 @@ export type PivotDialect = DatabaseEngine
 // ---------------------------------------------------------------------------
 
 export const quoteIdentifier = (name: string, dialect: PivotDialect): string => {
-  if (dialect === 'bigquery') return `\`${name}\``
-  return `"${name}"`
+  if (dialect === 'bigquery') {
+    const escaped = name.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+    return `\`${escaped}\``
+  }
+  return escapeIdentifier(name)
 }
 
-export const quoteAlias = (alias: string, _dialect: PivotDialect): string => alias
+export const quoteAlias = (alias: string, dialect: PivotDialect): string => quoteIdentifier(alias, dialect)
 
 // ---------------------------------------------------------------------------
 // Date expressions
@@ -119,6 +123,10 @@ export const buildFilterClause = (
 const buildFilterCondition = (filter: PivotFilter, dialect: PivotDialect): string => {
   const col = quoteIdentifier(filter.field, dialect)
 
+  if (!['=', '!=', '<', '<=', '>', '>=', 'contains', 'starts_with', 'before', 'after', 'between', 'is_null', 'is_not_null'].includes(filter.operator)) {
+    throw new Error('Unsupported pivot filter operator')
+  }
+
   switch (filter.operator) {
     case 'is_null':
       return `${col} IS NULL`
@@ -145,9 +153,10 @@ const buildFilterCondition = (filter: PivotFilter, dialect: PivotDialect): strin
   }
 }
 
-const quoteValue = (value: string, _dialect: PivotDialect): string => {
-  // Escape single quotes
-  const escaped = value.replace(/'/g, "''")
+const quoteValue = (value: string, dialect: PivotDialect): string => {
+  const escaped = dialect === 'bigquery'
+    ? value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+    : value.replace(/'/g, "''")
   return `'${escaped}'`
 }
 
@@ -291,16 +300,16 @@ export const buildPivotQuery = (
   )
 
   const groupByClause = rowAliases.length > 0
-    ? `GROUP BY ${rowAliases.map(a => `"${a}"`).join(', ')}`
+    ? `GROUP BY ${rowAliases.map(a => escapeIdentifier(a)).join(', ')}`
     : ''
 
   const orderByClause = rowAliases.length > 0
-    ? `ORDER BY ${rowAliases.map(a => `"${a}"`).join(', ')}`
+    ? `ORDER BY ${rowAliases.map(a => escapeIdentifier(a)).join(', ')}`
     : ''
 
   return [
-    `PIVOT "${aggTableName}"`,
-    `ON "${columnAlias}"`,
+    `PIVOT ${escapeIdentifier(aggTableName)}`,
+    `ON ${escapeIdentifier(columnAlias)}`,
     `USING SUM("metric_value")`,
     groupByClause,
     orderByClause,
@@ -312,5 +321,5 @@ export const buildPivotQuery = (
  * Used when no column field is set.
  */
 export const buildDisplayQuery = (aggTableName: string): string => {
-  return `SELECT * FROM "${aggTableName}"`
+  return `SELECT * FROM ${escapeIdentifier(aggTableName)}`
 }

@@ -4,7 +4,7 @@ import { useConnectionsStore } from './connections'
 import { loadItem, saveItem, deleteItem } from '../utils/storage'
 import { createBigQueryClient } from '../services/bigquery'
 import type { BigQueryClient } from '../services/bigquery'
-import type { BigQueryProject } from '../types/bigquery'
+import type { BigQueryJobReference, BigQueryProject } from '../types/bigquery'
 import { prepareBigQueryAuth, revokeBigQueryAccessToken } from '../services/oauth/bigqueryAuth'
 
 export type {
@@ -170,6 +170,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     pageToken?: string,
     signal: AbortSignal | null = null,
     targetConnectionId?: string,
+    jobReference?: BigQueryJobReference,
   ) => {
     const connectionId = targetConnectionId || connectionsStore.activeConnectionId
     if (!connectionId) throw new Error('Please sign in with Google first')
@@ -182,6 +183,7 @@ export const useBigQueryStore = defineStore('bigquery', () => {
     return clientFor(connectionId).runQueryPaginated(query, targetProjectId, {
       maxResults,
       pageToken,
+      jobReference,
       signal,
     })
   }

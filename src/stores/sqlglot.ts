@@ -65,7 +65,7 @@ export const useSqlGlotStore = defineStore('sqlglot', () => {
           console.error('SQLGlot worker error:', err)
         }
 
-        await sendMessage({ type: 'init' })
+        await sendMessage({ type: 'init', baseUrl: import.meta.env.BASE_URL })
         isReady.value = true
         console.log('SQLGlot initialized successfully')
       } catch (err) {
